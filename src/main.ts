@@ -4,6 +4,9 @@ import path from 'path';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import { promisify } from "util";
+import { logger } from "./util/logger";
+// import { requestLoggerMiddleware } from "./middleware/request-logger";
 
 // Load environment variables
 dotenv.config();
@@ -16,6 +19,8 @@ import v1Router from "@/router/v1.js";
 import { requestLoggerMiddleware } from "./middlewares/request-logger";
 import { fileURLToPath } from "url";
 import { env } from "./env";
+import { exec } from "child_process";
+import { initAccounts } from "./scripts/init-accounts";
 
 const app = express();
 
@@ -47,6 +52,31 @@ app.use('/api/v1', v1Router);
 
 const PORT = env.PORT || 3000;
 
-ViteExpress.listen(app, Number(PORT), () =>
-  console.log(`Server is listening on port ${PORT}...`),
-);
+const execAsync = promisify(exec);
+
+// Helper function to run migrations
+async function runMigrations(): Promise<void> {
+  try {
+    await execAsync('pnpm run migrate');
+    logger.info('✅ Migrations completed successfully');
+  } catch (error) {
+    logger.warn('⚠️  Migrations warning (might already be applied):', error);
+  }
+}
+
+ViteExpress.listen(app, Number(PORT), async () => {
+  console.log(`Server is listening on port ${PORT}...`);
+
+  try {
+    logger.info('🚀 Running migrations...');
+    await runMigrations();
+    logger.info('✅ Migrations completed successfully');
+
+    logger.info('🚀 Initializing accounts...');
+    await initAccounts();
+    logger.info('✅ Accounts initialized successfully');
+  } catch (error) {
+    console.error('❌ Error running migrations:', error);
+  }
+
+});

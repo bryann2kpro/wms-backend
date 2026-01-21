@@ -1,0 +1,1 @@
+ALTER SCHEMA "dev2" RENAME TO "main";

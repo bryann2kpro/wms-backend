@@ -8,6 +8,13 @@
       "when": 1728371631795,
       "tag": "0000_famous_mojo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1768959696531,
+      "tag": "0001_dashing_black_bolt",
+      "breakpoints": true
     }
   ]
 }

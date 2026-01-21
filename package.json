@@ -8,7 +8,8 @@
     "start": "tsc && node dist/main.js",
     "build": "NODE_ENV=production tsc",
     "migrate": "drizzle-kit generate && drizzle-kit migrate",
-    "initialize": "node init.js"
+    "initialize": "node init.js",
+    "test": "vitest"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
@@ -24,7 +25,9 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vite-tsconfig-paths": "^6.0.4",
+    "vitest": "^4.0.17"
   },
   "dependencies": {
     "@t3-oss/env-core": "^0.13.10",

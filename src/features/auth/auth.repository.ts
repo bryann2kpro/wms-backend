@@ -3,10 +3,16 @@
 import { CompanyAdmin, CompanyAdminType, SuperAdmin, SuperAdminType, User, UserType, UserRole, UserRoleType, RolePermission, RolePermissionType } from './auth.model.js';
 import { db } from '@/db/index';
 import { eq, sql } from 'drizzle-orm';
+import type { NodePgQueryResultHKT } from 'drizzle-orm/node-postgres';
+import type { PgTransaction } from 'drizzle-orm/pg-core';
+import type { ExtractTablesWithRelations } from 'drizzle-orm';
 // JWT
 import { verifyToken } from '@/features/jwt/jwt.controller.js';
 
 class AuthRepositoryClass {
+
+  constructor() {}
+
   // User
   // Get User by token
   async getUserDataByToken(token: string): Promise<UserType | null> {
@@ -43,15 +49,17 @@ class AuthRepositoryClass {
     return users.length > 0 && users[0].userId ? users[0] : null;
   }
 
-  async createUser(userData: UserType): Promise<void> {
+  async createUser(userData: UserType, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<void> {
     if (!userData) {
       throw new Error('Create User: User data is required');
     }
     
-    // await db.insert(User).values({
-    //   ...userData,
-    //   userId: sql`'USR_' || substr(gen_random_uuid()::text, 1, 32)`
-    // }).returning();
+    if (tx) {
+      await tx.insert(User).values({
+        ...userData,
+        userId: sql`'USR_' || substr(gen_random_uuid()::text, 1, 32)`
+      }).returning();
+    }
 
     await db.insert(User).values({
       ...userData,
