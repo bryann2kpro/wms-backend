@@ -1,0 +1,85 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code, and run tests across different versions of node
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+
+name: Deploy
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    env:
+        PROJECT_NAME: express-template
+    
+    steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Log in to Docker Hub
+              run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+            - name: Build Docker image
+              run: |
+                  docker build \
+                    -t gremoryyx/${{ env.PROJECT_NAME }}:${{ github.ref_name }} \
+                    -t gremoryyx/${{ env.PROJECT_NAME }}:latest .
+
+            - name: Push Docker image
+              run: |
+                  docker push gremoryyx/${{ env.PROJECT_NAME }}:latest
+                  docker push gremoryyx/${{ env.PROJECT_NAME }}:${{ github.ref_name }}
+
+  deploy:
+      needs: docker
+      runs-on: ubuntu-latest
+
+      env:
+          PROJECT_NAME: semutz-backend
+          EXPOSED_PORT: 3002
+
+      steps:
+          - name: Checkout code
+            uses: actions/checkout@v4
+
+          - name: Set up SSH Key
+            run: |
+                echo "${{ secrets.DEPLOY_KEY }}" > deploy_key.pem
+                chmod 600 deploy_key.pem
+
+          - name: Upload Nginx configuration to temporary location
+            run: |
+                scp -o StrictHostKeyChecking=no -i deploy_key.pem ./server.nginx.conf ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:/home/${{ secrets.SSH_USER }}/nginx.conf
+
+          - name: Deploy Docker container to the server
+            run: |
+                ssh -o StrictHostKeyChecking=no -i deploy_key.pem ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
+                  # Check if the container exists and remove it if it does
+                  if docker ps -a --format '{{.Names}}' | grep -q "^${{ env.PROJECT_NAME }}$"; then
+                    echo "Container exists. Stopping and removing..."
+                    docker stop ${{ env.PROJECT_NAME }}
+                    docker rm ${{ env.PROJECT_NAME }}
+                  else
+                    echo "Container doesn't exist. Logging into Docker Hub..."
+                    echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+                  fi
+                  # Pull the latest image and run the container
+                  echo "Pulling latest image..."
+                  docker pull gremoryyx/${{ env.PROJECT_NAME }}:latest
+                  echo "Running container..."
+                  docker run -d --name ${{ env.PROJECT_NAME }} -p ${{ secrets.EXPOSED_PORT }}:3000 gremoryyx/${{ env.PROJECT_NAME }}:latest
+                EOF
+
+          - name: Update Nginx configuration
+            run: |
+                ssh -o StrictHostKeyChecking=no -i deploy_key.pem ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
+                  sudo mv /home/${{ secrets.SSH_USER }}/nginx.conf /etc/nginx/sites-available/${{ env.PROJECT_NAME }}
+                  sudo ln -sf /etc/nginx/sites-available/${{ env.PROJECT_NAME }} /etc/nginx/sites-enabled/${{ env.PROJECT_NAME }}
+                  sudo nginx -t
+                  sudo systemctl reload nginx
+                EOF
+
+          - name: Clean up SSH key
+          32
+            run: rm -f deploy_key.pem

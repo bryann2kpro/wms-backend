@@ -1,0 +1,109 @@
+name: Version Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Type of version bump (major/minor/patch)'
+        required: true
+        default: 'patch'
+      branch:
+        description: 'Branch to create release from'
+        required: true
+        default: 'dev'
+permissions:
+    contents: write
+    pull-requests: write
+
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '21'
+      
+      - name: Install dependencies
+        run: |
+          npm install -g semver conventional-changelog-cli
+      
+      - name: Configure Git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Fetch latest changes
+        run: |
+          git fetch --all
+          git checkout ${{ github.event.inputs.branch }}
+          git pull origin ${{ github.event.inputs.branch }}
+
+      - name: Calculate new version
+        id: calculate_version
+        run: |
+          # Get current version
+          current_version=$(node -p "require('./package.json').version")
+          
+          # Bump version
+          new_version=$(semver -i ${{ github.event.inputs.version_type }} $current_version)
+          
+          echo "new_version=$new_version" >> $GITHUB_OUTPUT
+
+      - name: Create and switch to release branch
+        run: |
+          new_version=${{ steps.calculate_version.outputs.new_version }}
+
+          # Fetch all branches
+          git fetch --all
+
+          # Check if the release branch exists on remote
+          if git ls-remote --heads origin release-v$new_version | grep release-v$new_version; then
+            # Branch exists on remote, check it out and pull latest changes
+            git checkout release-v$new_version
+            git pull origin release-v$new_version
+          else
+            # Branch does not exist, create it from the input branch
+            git checkout -b release-v$new_version ${{ github.event.inputs.branch }}
+          fi
+
+      - name: Bump version in package.json
+        run: |
+          new_version=${{ steps.calculate_version.outputs.new_version }}
+          # Update package.json using npm version
+          npm version $new_version --no-git-tag-version
+
+      - name: Generate changelog
+        run: |
+          # Ensure CHANGELOG.md exists
+          if [ ! -f CHANGELOG.md ]; then
+            touch CHANGELOG.md
+          fi
+          # Generate changelog using conventional-changelog
+          conventional-changelog -p angular -i CHANGELOG.md -s -r 0
+
+      - name: Commit and push changes
+        run: |
+          new_version=${{ steps.calculate_version.outputs.new_version }}
+          
+          # Commit changes
+          git add package.json CHANGELOG.md
+          git commit -m "chore(release): bump version to $new_version and update changelog"
+          
+          # Push new branch
+          git push -u origin release-v$new_version
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          title: "Release v${{ steps.calculate_version.outputs.new_version }}"
+          body: "This PR bumps the version to ${{ steps.calculate_version.outputs.new_version }} and updates the changelog. Please review and merge to initiate the release process."
+          head: "release-v${{ steps.calculate_version.outputs.new_version }}"
+          base: "${{ github.event.inputs.branch }}"
+          draft: false
