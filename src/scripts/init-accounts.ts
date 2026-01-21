@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { authRepository } from '@/features/auth/auth.repository';
 import { hashPassword } from '@/util/password-checker';
 import { UserType } from '@/features/auth/auth.model';
@@ -9,11 +10,15 @@ type UserData = Omit<UserType, 'userId' | 'createdAt' | 'updatedAt'>;
 /**
  * Create a user account with Hedera account
  */
-async function createUserWithHederaAccount(userData: UserData): Promise<void> {
-  await db.transaction(async (tx) => {
-    const createdUser = await authRepository.createUser(userData, tx);
-    
-  });
+async function createUser(userData: UserData): Promise<void> {
+    try {
+      const createdUser = await authRepository.createUser(userData);
+      return createdUser;
+    } catch (error) {
+      logger.error('❌ Error creating user:', error);
+      throw error;
+    }
+  
 }
 
 /**
@@ -28,7 +33,7 @@ async function initPlatformAccount(): Promise<void> {
     const hashedPassword = await hashPassword(password);
 
     const userData = {
-      userEmail: 'platform@silsilat.finance',
+      userEmail: 'admin@smee.com.my',
       balance: 0,
       userContactNo: '+60123567890',
       userPassword: hashedPassword,
@@ -52,7 +57,7 @@ async function initPlatformAccount(): Promise<void> {
       updatedBy: 'system'
     }; 
 
-    await createUserWithHederaAccount(userData);
+    await createUser(userData);
     
     logger.info('✅ Platform user account created successfully!');
     logger.info(`   Email: ${email}`);
@@ -66,16 +71,15 @@ async function initPlatformAccount(): Promise<void> {
  * Create admin user (pawnshop) account if it doesn't exist
  */
 async function initAdminUser(): Promise<void> {
-  const email = 'admin@silsilat.finance';
+  const email = 'admin@smee.com.my';
   const password = 'admin123';
   const existingAdminUser = await authRepository.getUserByEmail(email);
   
   if (!existingAdminUser) {
     const hashedPassword = await hashPassword(password);
 
-    await createUserWithHederaAccount({
+    await createUser({
       userEmail: email,
-      balance: 0,
       userContactNo: '+60123567891',
       userPassword: hashedPassword,
       icNo: '000000000000',
@@ -84,7 +88,6 @@ async function initAdminUser(): Promise<void> {
       userFirstName: 'Silsilat',
       userLastName: 'Admin',
       gender: 'M',
-      accountId: '',
       addressId: 'DEFAULT_ADDRESS',
       companyId: 'DEFAULT_COMPANY',
       vehicleId: null,
@@ -110,16 +113,15 @@ async function initAdminUser(): Promise<void> {
  * Create investor user account if it doesn't exist
  */
 async function initInvestorUser(): Promise<void> {
-  const email = 'investor@silsilat.finance';
+  const email = 'investor@smee.com.my';
   const password = 'investor123';
   const existingInvestorUser = await authRepository.getUserByEmail(email);
   
   if (!existingInvestorUser) {
     const hashedPassword = await hashPassword(password);
 
-    await createUserWithHederaAccount({
+    await createUser({
       userEmail: email,
-      balance: 0,
       userContactNo: '+60123567892',
       userPassword: hashedPassword,
       icNo: '000000000001',
@@ -128,7 +130,6 @@ async function initInvestorUser(): Promise<void> {
       userFirstName: 'Silsilat',
       userLastName: 'Investor',
       gender: 'M',
-      accountId: '',
       addressId: 'DEFAULT_ADDRESS',
       companyId: 'DEFAULT_COMPANY',
       vehicleId: null,
@@ -150,82 +151,16 @@ async function initInvestorUser(): Promise<void> {
   }
 }
 
-/**
- * Get decrypted keys for admin account
- */
-async function getAdminAccountKeys() {
-  const adminAccount = await hederaAccountRepository.getAccountByHederaId(
-    process.env.ADMIN_HEDERA_ACCOUNT_ID || ''
-  );
-  
-  if (!adminAccount) {
-    throw new Error('Admin account not found. Cannot create LQT token.');
-  }
-  
-  const hashedPrivateKey = decryptPrivateKey(
-    adminAccount.privateKey || '', 
-    process.env.ENCRYPTION_MASTER_KEY || ''
-  );
-  const hashedPublicKey = PublicKey.fromString(adminAccount.publicKey || '');
-  
-  return {
-    adminAccount,
-    privateKey: PrivateKey.fromStringECDSA(hashedPrivateKey),
-    publicKey: hashedPublicKey
-  };
-}
-
-/**
- * Create LQT (Liquidity Token) if it doesn't exist
- */
-async function initLQTToken(): Promise<void> {  
-  try {
-    const existingLQTToken = await hederaTokenRepository.findFungibleTokenBySymbol('LQT');
-    
-    if (!existingLQTToken) {      
-      const { adminAccount, privateKey, publicKey } = await getAdminAccountKeys();
-      
-      const lqtParams = {
-        name: 'Liquidity Token',
-        symbol: 'LQT',
-        treasuryAccountId: adminAccount.hederaAccountId,
-        treasuryPrivateKey: privateKey,
-        supplyKey: publicKey,
-        adminKey: publicKey,
-        freezeKey: publicKey,
-        wipeKey: publicKey,
-        initialSupply: 1000000, // Initial supply of 1,000,000 LQT
-        price: 1,
-        expiredAt: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString()
-      };
-      
-      const result = await hederaTokenRepository.createFungibleToken(lqtParams);
-      
-      logger.info('✅ LQT token created successfully!');
-      logger.info(`   Token ID: ${result.tokenId}`);
-      logger.info(`   Transaction ID: ${result.transactionId}`);
-      logger.info(`   Add this to your .env file: FUNGIBLE_TOKEN_ID=${result.tokenId}`);
-    } else {
-      logger.info('✓ LQT token already exists');
-      logger.info(`   Token ID: ${existingLQTToken.tokenId}`);
-      logger.info(`   Symbol: ${existingLQTToken.symbol}`);
-      logger.info(`   Total Supply: ${existingLQTToken.totalSupply}`);
-    }
-  } catch (error) {
-    logger.error('⚠️  Failed to initialize LQT token:', error);
-    throw error; // Re-throw so initAccounts() knows it failed
-  }
-}
 
 /**
  * Main initialization function
  */
 export async function initAccounts() {
   try {
-    await initPlatformAccount();
+    // await initPlatformAccount();
     await initAdminUser();
-    await initInvestorUser();
-    await initLQTToken();
+    // await initInvestorUser();
+    // await initLQTToken();
     
     logger.info('✅ Accounts initialization complete!');
   } catch (error) {

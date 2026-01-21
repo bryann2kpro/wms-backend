@@ -1,11 +1,13 @@
 import { config } from 'dotenv';
 import { defineConfig } from 'drizzle-kit';
-import { env } from './src/env';
 
 config({ path: '.env' });
 
+if (!process.env.DATABASE_URL) {
+  throw new Error ("🚨 Database URL not initialized")
+}
 
-console.log('🚀 DATABASE_URL', env.DATABASE_URL);
+console.log('🚀 DATABASE_URL', process.env.DATABASE_URL);
 
 export default defineConfig({
   schema: [
@@ -15,6 +17,6 @@ export default defineConfig({
   out: './postgres/migrations',
   dialect: 'postgresql',
   dbCredentials: {
-    url: env.DATABASE_URL,
+    url: process.env.DATABASE_URL,
   },
 });

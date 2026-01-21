@@ -10,7 +10,6 @@ export type UserLogin = {
 // User Type
 export type UserType = {
   userId?:        string; // UUID type
-  userCode:       string;
   userEmail:      string;
   userContactNo:  string;
   userPassword:   string;
@@ -37,8 +36,8 @@ export type UserType = {
 
 // User
 export const User = MainSchema.table('user', {
-  userId:         varchar('user_id', { length: 40 }).notNull(),
-  userCode:       varchar('user_code', { length: 10 }).unique().notNull(),
+  userId:         uuid('user_id').primaryKey().defaultRandom().notNull(),
+  // userCode:       varchar('user_code', { length: 10 }).unique().notNull(),
   userEmail:      varchar('user_email', { length: 100 }).unique().notNull(),
   userContactNo:  varchar('user_contact_no', { length: 20 }).unique().notNull(),
   userPassword:   varchar('user_password', { length: 100 }).notNull(),
@@ -128,7 +127,7 @@ export type SuperAdminType = {
 
 // Super Admin
 export const SuperAdmin = MainSchema.table('super_admin', {
-  superAdminId:        uuid('super_admin_id').defaultRandom().notNull(),
+  superAdminId:        uuid('super_admin_id').defaultRandom().notNull().primaryKey(),
   superAdminNickname:  varchar('super_admin_nickname', { length: 50 }).notNull(),
   superAdminFirstName: varchar('super_admin_first_name', { length: 50 }).notNull(),
   superAdminLastName:  varchar('super_admin_last_name', { length: 50 }).notNull(),
@@ -161,7 +160,7 @@ export type UserRoleType = {
 
 // User Role
 export const UserRole = MainSchema.table('user_role', {
-  roleId:       uuid('role_id').defaultRandom().notNull(), // UUID type
+  roleId:       uuid('role_id').defaultRandom().notNull().primaryKey(), // UUID type
   roleName:     varchar('role_name', { length: 50 }).notNull(),
   permissionId: varchar('permission_id', { length: 50 }).notNull(),
   status:       varchar('status', { length: 50 }).notNull(),

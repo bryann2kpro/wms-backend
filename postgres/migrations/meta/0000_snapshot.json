@@ -1,12 +1,12 @@
 {
-  "id": "0e8ab8a5-2461-469f-b8a8-29a4aedc9649",
+  "id": "499ed8b6-9198-4851-b251-1412d7d1492f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "dev2.company_admin": {
+    "main.company_admin": {
       "name": "company_admin",
-      "schema": "dev2",
+      "schema": "main",
       "columns": {
         "company_admin_id": {
           "name": "company_admin_id",
@@ -125,11 +125,14 @@
             "company_admin_email"
           ]
         }
-      }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "dev2.role_permission": {
+    "main.role_permission": {
       "name": "role_permission",
-      "schema": "dev2",
+      "schema": "main",
       "columns": {
         "permission_id": {
           "name": "permission_id",
@@ -186,16 +189,19 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "dev2.super_admin": {
+    "main.super_admin": {
       "name": "super_admin",
-      "schema": "dev2",
+      "schema": "main",
       "columns": {
         "super_admin_id": {
           "name": "super_admin_id",
           "type": "uuid",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
         },
@@ -309,23 +315,21 @@
             "super_admin_email"
           ]
         }
-      }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "dev2.user": {
+    "main.user": {
       "name": "user",
-      "schema": "dev2",
+      "schema": "main",
       "columns": {
         "user_id": {
           "name": "user_id",
-          "type": "varchar(40)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_code": {
-          "name": "user_code",
-          "type": "varchar(10)",
-          "primaryKey": false,
-          "notNull": true
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
         "user_email": {
           "name": "user_email",
@@ -466,13 +470,6 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "user_user_code_unique": {
-          "name": "user_user_code_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "user_code"
-          ]
-        },
         "user_user_email_unique": {
           "name": "user_user_email_unique",
           "nullsNotDistinct": false,
@@ -487,16 +484,19 @@
             "user_contact_no"
           ]
         }
-      }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "dev2.user_role": {
+    "main.user_role": {
       "name": "user_role",
-      "schema": "dev2",
+      "schema": "main",
       "columns": {
         "role_id": {
           "name": "role_id",
           "type": "uuid",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
         },
@@ -548,11 +548,14 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "dev2.permission": {
+    "main.permission": {
       "name": "permission",
-      "schema": "dev2",
+      "schema": "main",
       "columns": {
         "permission_id": {
           "name": "permission_id",
@@ -603,11 +606,14 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "dev2.role": {
+    "main.role": {
       "name": "role",
-      "schema": "dev2",
+      "schema": "main",
       "columns": {
         "role_id": {
           "name": "role_id",
@@ -664,14 +670,20 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {},
   "schemas": {
-    "dev2": "dev2"
+    "main": "main"
   },
   "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

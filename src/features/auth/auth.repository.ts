@@ -55,16 +55,10 @@ class AuthRepositoryClass {
     }
     
     if (tx) {
-      await tx.insert(User).values({
-        ...userData,
-        userId: sql`'USR_' || substr(gen_random_uuid()::text, 1, 32)`
-      }).returning();
+      await tx.insert(User).values(userData).returning();
     }
 
-    await db.insert(User).values({
-      ...userData,
-      userId: sql`'USR_' || substr(gen_random_uuid()::text, 1, 32)`
-    }).returning();
+    await db.insert(User).values(userData).returning();
   }
   // End User
 

@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1728371631795,
-      "tag": "0000_famous_mojo",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1768959696531,
-      "tag": "0001_dashing_black_bolt",
+      "when": 1768972677053,
+      "tag": "0000_slim_sauron",
       "breakpoints": true
     }
   ]

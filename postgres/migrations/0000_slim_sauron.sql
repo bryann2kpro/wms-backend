@@ -1,6 +1,6 @@
-CREATE SCHEMA "dev2";
+CREATE SCHEMA "main";
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "dev2"."company_admin" (
+CREATE TABLE "main"."company_admin" (
 	"company_admin_id" uuid DEFAULT gen_random_uuid() NOT NULL,
 	"company_admin_first_name" varchar(50) NOT NULL,
 	"company_admin_last_name" varchar(50) NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS "dev2"."company_admin" (
 	CONSTRAINT "company_admin_company_admin_email_unique" UNIQUE("company_admin_email")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "dev2"."role_permission" (
+CREATE TABLE "main"."role_permission" (
 	"permission_id" uuid DEFAULT gen_random_uuid() NOT NULL,
 	"permission_name" varchar(50) NOT NULL,
 	"policy" varchar(50) NOT NULL,
@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS "dev2"."role_permission" (
 	"updated_by" varchar(40) NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "dev2"."super_admin" (
-	"super_admin_id" uuid DEFAULT gen_random_uuid() NOT NULL,
+CREATE TABLE "main"."super_admin" (
+	"super_admin_id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"super_admin_nickname" varchar(50) NOT NULL,
 	"super_admin_first_name" varchar(50) NOT NULL,
 	"super_admin_last_name" varchar(50) NOT NULL,
@@ -53,9 +53,8 @@ CREATE TABLE IF NOT EXISTS "dev2"."super_admin" (
 	CONSTRAINT "super_admin_super_admin_email_unique" UNIQUE("super_admin_email")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "dev2"."user" (
-	"user_id" varchar(40) NOT NULL,
-	"user_code" varchar(10) NOT NULL,
+CREATE TABLE "main"."user" (
+	"user_id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_email" varchar(100) NOT NULL,
 	"user_contact_no" varchar(20) NOT NULL,
 	"user_password" varchar(100) NOT NULL,
@@ -78,13 +77,12 @@ CREATE TABLE IF NOT EXISTS "dev2"."user" (
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	"created_by" varchar(40) NOT NULL,
 	"updated_by" varchar(40) NOT NULL,
-	CONSTRAINT "user_user_code_unique" UNIQUE("user_code"),
 	CONSTRAINT "user_user_email_unique" UNIQUE("user_email"),
 	CONSTRAINT "user_user_contact_no_unique" UNIQUE("user_contact_no")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "dev2"."user_role" (
-	"role_id" uuid DEFAULT gen_random_uuid() NOT NULL,
+CREATE TABLE "main"."user_role" (
+	"role_id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"role_name" varchar(50) NOT NULL,
 	"permission_id" varchar(50) NOT NULL,
 	"status" varchar(50) NOT NULL,
@@ -94,7 +92,7 @@ CREATE TABLE IF NOT EXISTS "dev2"."user_role" (
 	"updated_by" varchar(40) NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "dev2"."permission" (
+CREATE TABLE "main"."permission" (
 	"permission_id" uuid DEFAULT gen_random_uuid() NOT NULL,
 	"permission_name" varchar(40) NOT NULL,
 	"status" varchar(20) NOT NULL,
@@ -104,7 +102,7 @@ CREATE TABLE IF NOT EXISTS "dev2"."permission" (
 	"updated_by" varchar(40) NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "dev2"."role" (
+CREATE TABLE "main"."role" (
 	"role_id" uuid DEFAULT gen_random_uuid() NOT NULL,
 	"role_name" varchar(40) NOT NULL,
 	"permission_id" varchar(40)[],

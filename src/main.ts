@@ -1,15 +1,13 @@
+import 'dotenv/config';
+
 import express from "express";
 import ViteExpress from "vite-express";
 import path from 'path';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import cors from 'cors';
 import { promisify } from "util";
 import { logger } from "./util/logger";
 // import { requestLoggerMiddleware } from "./middleware/request-logger";
-
-// Load environment variables
-dotenv.config();
 
 // Import Middleware
 // import { responseFormatter } from "./middlewares/responseFormatter/index.js";

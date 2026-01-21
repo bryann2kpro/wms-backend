@@ -1,7 +1,6 @@
 import jwt, {JwtPayload} from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { UserTokenInfo } from './jwt.model.js';
-import { env } from '@/env.js';
 
 // Load environment variables
 dotenv.config();
@@ -18,8 +17,8 @@ class JwtControllerClass {
   private publicKey: string;
 
   constructor() {
-    this.privateKey = env.JWT_PRIVATE_KEY.replace(/\\n/g, '\n') ?? '';
-    this.publicKey = env.JWT_PUBLIC_KEY.replace(/\\n/g, '\n') ?? '';
+    this.privateKey = process.env.JWT_PRIVATE_KEY?.replace(/\\n/g, '\n') ?? '';
+    this.publicKey = process.env.JWT_PUBLIC_KEY?.replace(/\\n/g, '\n') ?? '';
   }
 
   generateAccessToken(userTokenInfo: UserTokenInfo): string {
