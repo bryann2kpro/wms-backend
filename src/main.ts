@@ -15,6 +15,7 @@ dotenv.config();
 import v1Router from "@/router/v1.js";
 import { requestLoggerMiddleware } from "./middlewares/request-logger";
 import { fileURLToPath } from "url";
+import { env } from "./env";
 
 const app = express();
 
@@ -44,7 +45,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Router
 app.use('/api/v1', v1Router);
 
-const PORT = process.env.PORT || 3000;
+const PORT = env.PORT || 3000;
 
 ViteExpress.listen(app, Number(PORT), () =>
   console.log(`Server is listening on port ${PORT}...`),
