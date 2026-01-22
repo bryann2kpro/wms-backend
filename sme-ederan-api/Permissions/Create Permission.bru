@@ -1,0 +1,32 @@
+meta {
+  name: Create Permission
+  type: http
+  seq: 2
+}
+
+# Create Permission
+# Creates a new permission in the system.
+#
+# Request body:
+# - permissionName: string (required) - Unique permission name (max 40 chars)
+# - status: string (required) - Permission status (e.g., "ACTIVE", "INACTIVE")
+#
+# Response:
+# - Created permission object
+
+post {
+  url: {{local_path}}/auth/permissions
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "permissionName": "DELIVERY_ORDER_VIEW",
+    "status": "ACTIVE"
+  }
+}

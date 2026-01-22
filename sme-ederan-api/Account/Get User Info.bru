@@ -1,0 +1,30 @@
+meta {
+  name: Get User Profile
+  type: http
+  seq: 3
+}
+
+# Get Current User Profile
+# Returns the authenticated user's profile information.
+#
+# Headers:
+# - Authorization: Bearer <access_token>
+#
+# Response:
+# - id: string - User's UUID
+# - email: string - User's email
+# - displayName: string - User's display name
+# - contactNo: string | null - Contact number
+# - isActive: boolean - Whether account is active
+# - role: { id, name } | null - User's role
+# - permissions: string[] | null - User's permission IDs
+
+get {
+  url: {{local_path}}/auth/profile
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}

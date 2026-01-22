@@ -1,20 +1,60 @@
-// DB
-// Model
-import { CompanyAdmin, CompanyAdminType, SuperAdmin, SuperAdminType, User, UserType, UserRole, UserRoleType, RolePermission, RolePermissionType } from './auth.model.js';
+/**
+ * Auth Repository
+ * 
+ * @description Data access layer for authentication-related operations.
+ * Handles user, role, and permission CRUD operations.
+ */
+
+import { UsersTable, UserType } from './auth.model.js';
+import { Role, Permission } from '@/features/rbac/rbac.model.js';
 import { db } from '@/db/index';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { NodePgQueryResultHKT } from 'drizzle-orm/node-postgres';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import type { ExtractTablesWithRelations } from 'drizzle-orm';
-// JWT
 import { verifyToken } from '@/features/jwt/jwt.controller.js';
 
-class AuthRepositoryClass {
+/**
+ * Role Type
+ * @description TypeScript type for Role entity
+ */
+export type RoleType = {
+  roleId?: string;
+  roleName: string;
+  permissionId: string[] | null;
+  status: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+  createdBy: string;
+  updatedBy: string;
+};
 
+/**
+ * Permission Type
+ * @description TypeScript type for Permission entity
+ */
+export type PermissionType = {
+  permissionId?: string;
+  permissionName: string;
+  status: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+  createdBy: string;
+  updatedBy: string;
+};
+
+export class AuthRepositoryClass {
   constructor() {}
 
-  // User
-  // Get User by token
+  // ============================================
+  // USER OPERATIONS
+  // ============================================
+
+  /**
+   * Get user data by JWT token
+   * @param token - JWT access token
+   * @returns User data or null if not found
+   */
   async getUserDataByToken(token: string): Promise<UserType | null> {
     try {
       const decodedToken = verifyToken(token);
@@ -23,218 +63,275 @@ class AuthRepositoryClass {
         throw new Error('(getUserByToken) Invalid token: username not found');
       }
 
-      const loginType = decodedToken.loginType;
-      let user: UserType | null = null;
-
-      if (loginType === 'EMAIL') {
-        user = await this.getUserByEmail(decodedToken.username);
-      } else if (loginType === 'CONTACT_NO') {
-        user = await this.getUserByContactNo(decodedToken.username);
-      }
-
-      return user ? user : null;
+      // Get user by email (primary login method)
+      const user = await this.getUserByEmail(decodedToken.username);
+      return user;
     } catch (error) {
       console.error('Error getting user from token:', error);
       return null;
     }
   }
 
-  async getUserByEmail(email: string): Promise<UserType | null> { 
-    const users = await db.select().from(User).where(eq(User.userEmail, email)).limit(1);
-    return users.length > 0 && users[0].userId ? users[0] : null;
-  }
-  
-  async getUserByContactNo(contactNo: string): Promise<UserType | null> {
-    const users = await db.select().from(User).where(eq(User.userContactNo, contactNo)).limit(1);
-    return users.length > 0 && users[0].userId ? users[0] : null;
+  /**
+   * Get user by email
+   * @param email - User email address
+   * @returns User data or null if not found
+   */
+  async getUserByEmail(email: string): Promise<UserType | null> {
+    const users = await db
+      .select()
+      .from(UsersTable)
+      .where(eq(UsersTable.email, email))
+      .limit(1);
+    
+    return users.length > 0 ? users[0] as unknown as UserType : null;
   }
 
-  async createUser(userData: UserType, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<void> {
-    if (!userData) {
-      throw new Error('Create User: User data is required');
-    }
+  /**
+   * Get user by ID
+   * @param id - User UUID
+   * @returns User data or null if not found
+   */
+  async getUserById(id: string): Promise<UserType | null> {
+    const users = await db
+      .select()
+      .from(UsersTable)
+      .where(eq(UsersTable.id, id))
+      .limit(1);
+    
+    return users.length > 0 ? users[0] as unknown as UserType : null;
+  }
+
+  /**
+   * Create a new user
+   * @param userData - User data to insert
+   * @param tx - Optional transaction
+   * @returns Created user
+   */
+  async createUser(
+    userData: Omit<UserType, 'id' | 'createdAt' | 'updatedAt'>,
+    tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>
+  ): Promise<UserType> {
+    const dbClient = tx || db;
+    
+    const [user] = await dbClient
+      .insert(UsersTable)
+      .values(userData)
+      .returning();
+    
+    return user as unknown as UserType;
+  }
+
+  /**
+   * Update user by ID
+   * @param id - User UUID
+   * @param userData - Partial user data to update
+   * @returns Updated user
+   */
+  async updateUser(id: string, userData: Partial<UserType>, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<UserType | null> {
     
     if (tx) {
-      await tx.insert(User).values(userData).returning();
-    }
+      const [user] = await tx
+        .update(UsersTable)
+        .set({ ...userData, updatedAt: new Date() })
+        .where(eq(UsersTable.id, id))
+        .returning();
 
-    await db.insert(User).values(userData).returning();
-  }
-  // End User
-
-  // Company Admin
-  async getCompanyAdminDataByToken(token: string): Promise<CompanyAdminType | null> {
-    try {
-      const decodedToken = verifyToken(token);
-      
-      if (!decodedToken.username) {
-        throw new Error('(getCompanyAdminByToken) Invalid token: username not found');
-      }
-
-      const loginType = decodedToken.loginType;
-      let user: CompanyAdminType | null = null;
-
-      if (loginType === 'EMAIL') {
-        user = await this.getCompanyAdminByEmail(decodedToken.username);
-      } else if (loginType === 'CONTACT_NO') {
-        user = await this.getCompanyAdminByContactNo(decodedToken.username);
-      }
-      
-      return user ? user : null;
-    } catch (error) {
-      console.error('Error getting company admin from token:', error);
-      return null;
-    }
-  }
-
-  async getCompanyAdminByEmail(email: string): Promise<CompanyAdminType | null> { 
-    const companyAdmins = await db.select().from(CompanyAdmin).where(eq(CompanyAdmin.companyAdminEmail, email)).limit(1);
-    return companyAdmins.length > 0 && companyAdmins[0].companyAdminId ? companyAdmins[0] : null;
-  }
-
-  async getCompanyAdminByContactNo(contact: string): Promise<CompanyAdminType | null> {
-    const companyAdmins = await db.select().from(CompanyAdmin).where(eq(CompanyAdmin.companyAdminContactNo, contact)).limit(1);
-    return companyAdmins.length > 0 && companyAdmins[0].companyAdminId ? companyAdmins[0] : null;
-  }
-
-  async createCompanyAdmin(userData: CompanyAdminType): Promise<void> {
-    if (!userData) {
-      throw new Error('Create Company Admin: User data is required');
+      return user ? user as unknown as UserType : null;
     }
     
-    await db.insert(CompanyAdmin).values(userData).returning();
-  }
-  // End Company Admin
-
-  // Super Admin
-  async getSuperAdminDataByToken(token: string): Promise<SuperAdminType | null> {
-    try {
-      const decodedToken = verifyToken(token);
-      
-      if (!decodedToken.username) {
-        throw new Error('(getSuperAdminDataByToken) Invalid token: username not found');
-      }
-
-      const user = decodedToken.loginType === 'EMAIL' 
-        ? await this.getSuperAdminByEmail(decodedToken.username) 
-        : await this.getSuperAdminByContactNo(decodedToken.username);
-
-      return user || null;
-    } catch (error) {
-      console.error('Error getting super admin from token:', error);
-      return null;
-    }
-  }
-
-  async getSuperAdminByEmail(email: string): Promise<SuperAdminType | null> { 
-    const superAdmins = await db.select().from(SuperAdmin).where(eq(SuperAdmin.superAdminEmail, email)).limit(1);
-    return superAdmins.length > 0 && superAdmins[0].superAdminId ? superAdmins[0] : null;
-  }
-
-  async getSuperAdminByContactNo(contact: string): Promise<SuperAdminType | null> {
-    const superAdmins = await db.select().from(SuperAdmin).where(eq(SuperAdmin.superAdminContactNo, contact)).limit(1);
-    return superAdmins.length > 0 && superAdmins[0].superAdminId ? superAdmins[0] : null;
-  }
-  // End Super Admin
-
-  // User Role
-  async getUserRoleByRoleId(roleId: string): Promise<UserRoleType | null> {
-    const userRoles = await db.select().from(UserRole).where(eq(UserRole.roleId, roleId)).limit(1);
-    return userRoles.length > 0 && userRoles[0].roleId ? userRoles[0] : null;
-  }
-
-  async getUserRole(roleName: string): Promise<UserRoleType | null> {
-    const userRoles = await db.select().from(UserRole).where(eq(UserRole.roleName, roleName)).limit(1);
-    return userRoles.length > 0 && userRoles[0].roleName ? userRoles[0] : null;
-  }
-
-  async createUserRole(userRoleData: UserRoleType): Promise<void> {
-    if (!userRoleData) {
-      throw new Error('Create User Role: User role data is required');
-    }
-    
-    await db.insert(UserRole).values(userRoleData).returning();
-  }
-
-  async updateUserRole(userRoleData: Partial<UserRoleType>): Promise<void> {
-    if (!userRoleData || !userRoleData.roleId) {
-      throw new Error('Update User Role: User role data and roleId are required');
-    }
-    
-    await db.update(UserRole)
-      .set(userRoleData)
-      .where(eq(UserRole.roleId, userRoleData.roleId))
+    const [user] = await db
+      .update(UsersTable)
+      .set({ ...userData, updatedAt: new Date() })
+      .where(eq(UsersTable.id, id))
       .returning();
-  }
-  // End User Role
-
-  // Role Permission
-  async createRolePermission(rolePermissionData: RolePermissionType): Promise<void> {
-    if (!rolePermissionData) {
-      throw new Error('Create Role Permission: Role permission data is required');
-    }
     
-    await db.insert(RolePermission).values(rolePermissionData).returning();
+    return user ? user as unknown as UserType : null;
   }
 
-  async updateRolePermission(rolePermissionData: Partial<RolePermissionType>): Promise<void> {
-    if (!rolePermissionData || !rolePermissionData.permissionId) {
-      throw new Error('Update Role Permission: Role permission data and permissionId are required');
-    }
+  // ============================================
+  // ROLE OPERATIONS
+  // ============================================
+
+  /**
+   * Get role by ID
+   * @param roleId - Role UUID
+   * @returns Role data or null if not found
+   */
+  async getRoleById(roleId: string): Promise<RoleType | null> {
+    const roles = await db
+      .select()
+      .from(Role)
+      .where(eq(Role.roleId, roleId))
+      .limit(1);
     
-    await db.update(RolePermission)
-      .set(rolePermissionData)
-      .where(eq(RolePermission.permissionId, rolePermissionData.permissionId))
+    return roles.length > 0 ? roles[0] as unknown as RoleType : null;
+  }
+
+  /**
+   * Get role by name
+   * @param roleName - Role name
+   * @returns Role data or null if not found
+   */
+  async getRoleByName(roleName: string): Promise<RoleType | null> {
+    const roles = await db
+      .select()
+      .from(Role)
+      .where(eq(Role.roleName, roleName))
+      .limit(1);
+    
+    return roles.length > 0 ? roles[0] as unknown as RoleType : null;
+  }
+
+  /**
+   * Get all roles
+   * @returns Array of all roles
+   */
+  async getAllRoles(): Promise<RoleType[]> {
+    const roles = await db.select().from(Role);
+    return roles as unknown as RoleType[];
+  }
+
+  /**
+   * Create a new role
+   * @param roleData - Role data to insert
+   * @returns Created role
+   */
+  async createRole(roleData: Omit<RoleType, 'roleId' | 'createdAt' | 'updatedAt'>, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<RoleType> {
+    const dbClient = tx || db;
+    
+    const [role] = await dbClient
+      .insert(Role)
+      .values(roleData)
       .returning();
+    
+    return role as unknown as RoleType;
   }
 
-  async getRolePermision(permissionName: string): Promise<RolePermissionType | null> { 
-    const rolePermissions = await db.select().from(RolePermission).where(eq(RolePermission.permissionName, permissionName)).limit(1);
-    return rolePermissions.length > 0 && rolePermissions[0].permissionName ? rolePermissions[0] : null;
+  /**
+   * Update role by ID
+   * @param roleId - Role UUID
+   * @param roleData - Partial role data to update
+   * @returns Updated role
+   */
+  async updateRole(roleId: string, roleData: Partial<RoleType>, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<RoleType | null> {
+    
+    const dbClient = tx || db;
+    
+    const [role] = await dbClient
+      .update(Role)
+      .set({ ...roleData, updatedAt: new Date() })
+      .where(eq(Role.roleId, roleId))
+      .returning();
+    
+    return role ? role as unknown as RoleType : null;
   }
 
-  async getRolePermissionByRoleId(roleId: string): Promise<string | null> {
-    try {
-      const result = await db.select({
-        permissionId: UserRole.permissionId
-      })
-      .from(UserRole)
-      .where(eq(UserRole.roleId, roleId))
-      .execute();
+  // ============================================
+  // PERMISSION OPERATIONS
+  // ============================================
 
-      return result.length > 0 ? result[0].permissionId : null;
-    } catch (error) {
-      console.error('Error in getRolePermissionByRoleId:', error);
-      throw error;
-    }
+  /**
+   * Get permission by ID
+   * @param permissionId - Permission UUID
+   * @returns Permission data or null if not found
+   */
+  async getPermissionById(permissionId: string): Promise<PermissionType | null> {
+    const permissions = await db
+      .select()
+      .from(Permission)
+      .where(eq(Permission.permissionId, permissionId))
+      .limit(1);
+    
+    return permissions.length > 0 ? permissions[0] as unknown as PermissionType : null;
+  }
+
+  /**
+   * Get permission by name
+   * @param permissionName - Permission name
+   * @returns Permission data or null if not found
+   */
+  async getPermissionByName(permissionName: string): Promise<PermissionType | null> {
+    const permissions = await db
+      .select()
+      .from(Permission)
+      .where(eq(Permission.permissionName, permissionName))
+      .limit(1);
+    
+    return permissions.length > 0 ? permissions[0] as unknown as PermissionType : null;
+  }
+
+  /**
+   * Get all permissions
+   * @returns Array of all permissions
+   */
+  async getAllPermissions(): Promise<PermissionType[]> {
+    const permissions = await db.select().from(Permission);
+    return permissions as unknown as PermissionType[];
+  }
+
+  /**
+   * Create a new permission
+   * @param permissionData - Permission data to insert
+   * @returns Created permission
+   */
+  async createPermission(permissionData: Omit<PermissionType, 'permissionId' | 'createdAt' | 'updatedAt'>, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<PermissionType> {
+    const dbClient = tx || db;
+    
+    const [permission] = await dbClient
+      .insert(Permission)
+      .values(permissionData)
+      .returning();
+    
+    return permission as unknown as PermissionType;
+  }
+
+  /**
+   * Update permission by ID
+   * @param permissionId - Permission UUID
+   * @param permissionData - Partial permission data to update
+   * @returns Updated permission
+   */
+  async updatePermission(permissionId: string, permissionData: Partial<PermissionType>, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<PermissionType | null> {
+    const dbClient = tx || db;
+    
+    const [permission] = await dbClient
+      .update(Permission)
+      .set({ ...permissionData, updatedAt: new Date() })
+      .where(eq(Permission.permissionId, permissionId))
+      .returning();
+    
+    return permission ? permission as unknown as PermissionType : null;
+  }
+
+  /**
+   * Get user's permissions via their role
+   * @param roleId - Role UUID
+   * @returns Array of permission IDs or null
+   */
+  async getPermissionsByRoleId(roleId: string): Promise<string[] | null> {
+    const role = await this.getRoleById(roleId);
+    return role?.permissionId || null;
   }
 }
 
-// Export an instance of the class
-export const authRepository = new AuthRepositoryClass();
+// Export singleton instance
+// export const authRepository = new AuthRepositoryClass();
 
-// Export individual methods for backward compatibility
-export const getUserDataByToken = authRepository.getUserDataByToken.bind(authRepository);
-export const getUserByEmail = authRepository.getUserByEmail.bind(authRepository);
-export const getUserByContactNo = authRepository.getUserByContactNo.bind(authRepository);
-export const createUser = authRepository.createUser.bind(authRepository);
-export const getCompanyAdminDataByToken = authRepository.getCompanyAdminDataByToken.bind(authRepository);
-export const getCompanyAdminByEmail = authRepository.getCompanyAdminByEmail.bind(authRepository);
-export const getCompanyAdminByContactNo = authRepository.getCompanyAdminByContactNo.bind(authRepository);
-export const createCompanyAdmin = authRepository.createCompanyAdmin.bind(authRepository);
-export const getSuperAdminDataByToken = authRepository.getSuperAdminDataByToken.bind(authRepository);
-export const getSuperAdminByEmail = authRepository.getSuperAdminByEmail.bind(authRepository);
-export const getSuperAdminByContactNo = authRepository.getSuperAdminByContactNo.bind(authRepository);
-export const getUserRoleByRoleId = authRepository.getUserRoleByRoleId.bind(authRepository);
-export const getUserRole = authRepository.getUserRole.bind(authRepository);
-export const createUserRole = authRepository.createUserRole.bind(authRepository);
-export const updateUserRole = authRepository.updateUserRole.bind(authRepository);
-export const createRolePermission = authRepository.createRolePermission.bind(authRepository);
-export const updateRolePermission = authRepository.updateRolePermission.bind(authRepository);
-export const getRolePermision = authRepository.getRolePermision.bind(authRepository);
-export const getRolePermissionByRoleId = authRepository.getRolePermissionByRoleId.bind(authRepository);
-
-
-
-
-
+// Export individual methods for convenience
+// export const getUserDataByToken = authRepository.getUserDataByToken.bind(authRepository);
+// export const getUserByEmail = authRepository.getUserByEmail.bind(authRepository);
+// export const getUserById = authRepository.getUserById.bind(authRepository);
+// export const createUser = authRepository.createUser.bind(authRepository);
+// export const updateUser = authRepository.updateUser.bind(authRepository);
+// export const getRoleById = authRepository.getRoleById.bind(authRepository);
+// export const getRoleByName = authRepository.getRoleByName.bind(authRepository);
+// export const getAllRoles = authRepository.getAllRoles.bind(authRepository);
+// export const createRole = authRepository.createRole.bind(authRepository);
+// export const updateRole = authRepository.updateRole.bind(authRepository);
+// export const getPermissionById = authRepository.getPermissionById.bind(authRepository);
+// export const getPermissionByName = authRepository.getPermissionByName.bind(authRepository);
+// export const getAllPermissions = authRepository.getAllPermissions.bind(authRepository);
+// export const createPermission = authRepository.createPermission.bind(authRepository);
+// export const updatePermission = authRepository.updatePermission.bind(authRepository);
+// export const getPermissionsByRoleId = authRepository.getPermissionsByRoleId.bind(authRepository);

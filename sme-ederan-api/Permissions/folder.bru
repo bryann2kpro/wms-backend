@@ -1,0 +1,23 @@
+meta {
+  name: Permissions
+}
+
+# Permissions API
+#
+# Manage permissions in the WMS system.
+# Permissions are assigned to roles to control access.
+#
+# Permission categories:
+# - Inbound: SUPPLIER_DELIVERY_*, GRN_*
+# - Outbound: TRANSFER_ORDER_*, DELIVERY_ORDER_*
+# - Exceptions: EXCEPTION_*
+# - Inventory: INVENTORY_*
+# - Invoicing: INVOICE_*
+# - Settlement: SETTLEMENT_*
+# - Reports: REPORT_*
+# - Admin: USER_*, ROLE_*, SYSTEM_*
+#
+# Endpoints:
+# - GET /auth/permissions - Get all permissions
+# - POST /auth/permissions - Create a new permission
+# - PUT /auth/permissions/:id - Update a permission
