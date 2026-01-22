@@ -4,19 +4,6 @@ meta {
   seq: 1
 }
 
-# User Login
-# Authenticates a user with email and password.
-# Returns JWT access and refresh tokens on success.
-#
-# Request body:
-# - email: string (required) - User's email address
-# - password: string (required) - User's password
-#
-# Response:
-# - accessToken: string - JWT access token
-# - refreshToken: string - JWT refresh token
-# - expiredAt: number - Token expiration timestamp (ms)
-
 post {
   url: {{local_path}}/auth/login
   body: json
@@ -30,14 +17,6 @@ body:json {
   }
 }
 
-vars:post-response {
-  bearerToken: res.body.data.accessToken
-}
-
-tests {
-  const body = res.body;
-  if (body.success && body.data) {
-    bru.setVar("access_token", body.data.accessToken);
-    bru.setVar("refresh_token", body.data.refreshToken);
-  }
+settings {
+  encodeUrl: true
 }

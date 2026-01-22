@@ -4,21 +4,6 @@ meta {
   seq: 2
 }
 
-# User Registration
-# Creates a new user account.
-#
-# Request body:
-# - email: string (required) - Unique email address
-# - displayName: string (required) - User's display name
-# - password: string (required) - Password (min 6 characters)
-# - contactNo: string (optional) - Contact number
-# - roleId: string (required) - UUID of the role to assign
-#
-# Response:
-# - id: string - Created user's UUID
-# - email: string - User's email
-# - displayName: string - User's display name
-
 post {
   url: {{local_path}}/auth/register
   body: json
@@ -33,4 +18,8 @@ body:json {
     "contactNo": "+60123456789",
     "roleId": "{{role_id}}"
   }
+}
+
+settings {
+  encodeUrl: true
 }
