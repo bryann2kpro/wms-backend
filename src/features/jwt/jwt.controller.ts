@@ -71,10 +71,5 @@ class JwtControllerClass {
   }
 }
 
-// Export an instance of the class
-export const jwtController = new JwtControllerClass();
-
-// Export individual methods for backward compatibility
-export const generateAccessToken = jwtController.generateAccessToken.bind(jwtController);
-export const generateRefreshToken = jwtController.generateRefreshToken.bind(jwtController);
-export const verifyToken = jwtController.verifyToken.bind(jwtController);
+// Export class
+export { JwtControllerClass };

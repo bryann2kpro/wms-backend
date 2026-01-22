@@ -13,7 +13,7 @@ import {
   type PermissionType
 } from './auth.repository.js';
 import { UserType } from './auth.model.js';
-import { generateAccessToken, generateRefreshToken, verifyToken } from '@/features/jwt/index.js';
+import { JwtControllerClass } from '@/features/jwt/jwt.controller.js';
 import { Error } from '@/error/index.js';
 import { hashPassword, comparePassword } from '@/util/password.js';
 
@@ -82,7 +82,9 @@ const UpdatePermissionSchema = z.object({
 
 class AuthControllerClass {
 
-  constructor(private authRepository: AuthRepositoryClass) {}
+  constructor(
+    private authRepository: AuthRepositoryClass, 
+    private jwtController: JwtControllerClass) {}
   
   // ============================================
   // AUTH ENDPOINTS
@@ -143,9 +145,9 @@ class AuthControllerClass {
 
       // Generate tokens
       const tokenPayload = { username: email, loginType: 'EMAIL' as const };
-      const accessToken = generateAccessToken(tokenPayload);
-      const refreshToken = generateRefreshToken(tokenPayload);
-      const decodedToken = verifyToken(accessToken);
+      const accessToken = this.jwtController.generateAccessToken(tokenPayload);
+      const refreshToken = this.jwtController.generateRefreshToken(tokenPayload);
+      const decodedToken = this.jwtController.verifyToken(accessToken);
 
       return res.status(200).json({
         success: true,

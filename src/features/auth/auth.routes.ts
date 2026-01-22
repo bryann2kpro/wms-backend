@@ -16,11 +16,9 @@
  */
 
 import { Router } from 'express';
-import { AuthControllerClass } from '@/features/auth/auth.controller.js';
-import { AuthRepositoryClass } from '@/features/auth/auth.repository.js';
+import { authController } from '@/composition-root.js';
+
 const router = Router();
-const authRepository = new AuthRepositoryClass();
-const authController = new AuthControllerClass(authRepository);
 
 // ============================================
 // AUTH ROUTES
