@@ -3,20 +3,25 @@
  * 
  * @description Handles authentication-related HTTP requests.
  * Uses Zod v4 for request validation.
+ * 
+ * Uses normalized RBAC structure:
+ * - Users → UserRole (junction) → Role
+ * - Role → RolePermission (junction) → Permission → Module
  */
 
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { 
   AuthRepositoryClass,
-  type RoleType,
-  type PermissionType
+  type RoleInsertType,
+  type PermissionInsertType,
 } from './auth.repository.js';
-import { UserType } from './auth.model.js';
+import { UserInsertType } from './auth.model.js';
 import { JwtControllerClass } from '@/features/jwt/jwt.controller.js';
 import { Error } from '@/error/index.js';
 import { hashPassword, comparePassword } from '@/util/password.js';
 import { logger } from '@/util/logger.js';
+import { db } from '@/db/index.js';
 
 // ============================================
 // ZOD SCHEMAS
@@ -45,9 +50,9 @@ const RegisterUserSchema = z.object({
  * Create role request schema
  */
 const CreateRoleSchema = z.object({
-  roleName: z.string().min(1, 'Role name is required').max(40),
-  permissionId: z.array(z.string()).optional(),
-  status: z.string().min(1, 'Status is required').max(20),
+  roleName: z.string().min(1, 'Role name is required').max(50),
+  status: z.string().max(20).default('active'),
+  permissionIds: z.array(z.uuid()).optional(),
 });
 
 /**
@@ -55,17 +60,19 @@ const CreateRoleSchema = z.object({
  */
 const UpdateRoleSchema = z.object({
   roleId: z.uuid('Invalid role ID format'),
-  roleName: z.string().min(1).max(40).optional(),
-  permissionId: z.array(z.string()).optional(),
+  roleName: z.string().min(1).max(50).optional(),
   status: z.string().max(20).optional(),
+  permissionIds: z.array(z.uuid()).optional(),
 });
 
 /**
  * Create permission request schema
  */
 const CreatePermissionSchema = z.object({
-  permissionName: z.string().min(1, 'Permission name is required').max(40),
-  status: z.string().min(1, 'Status is required').max(20),
+  moduleId: z.uuid('Invalid module ID format'),
+  permissionType: z.string().min(1, 'Permission type is required').max(50),
+  description: z.string().max(255).optional(),
+  status: z.string().max(20).default('active'),
 });
 
 /**
@@ -73,7 +80,8 @@ const CreatePermissionSchema = z.object({
  */
 const UpdatePermissionSchema = z.object({
   permissionId: z.uuid('Invalid permission ID format'),
-  permissionName: z.string().min(1).max(40).optional(),
+  permissionType: z.string().min(1).max(50).optional(),
+  description: z.string().max(255).optional(),
   status: z.string().max(20).optional(),
 });
 
@@ -85,7 +93,8 @@ class AuthControllerClass {
 
   constructor(
     private authRepository: AuthRepositoryClass, 
-    private jwtController: JwtControllerClass) {}
+    private jwtController: JwtControllerClass
+  ) {}
   
   // ============================================
   // AUTH ENDPOINTS
@@ -102,22 +111,20 @@ class AuthControllerClass {
     try {
       logger.info('ℹ️ [AuthController.login] Processing login request...');
       
-      // Validate request body with Zod
       const parseResult = LoginSchema.safeParse(req.body);
       
       if (!parseResult.success) {
-        logger.warn('⚠️ [AuthController.login] Validation failed: missing credentials');
+        logger.warn('⚠️ [AuthController.login] Validation failed');
         return res.status(400).json({
-          status: false,
-          message: 'Username and Password are required',
+          success: false,
+          message: 'Email and Password are required',
           data: null,
         });
       }
 
       const { email, password } = parseResult.data;
-      logger.debug('🔍 [AuthController.login] Attempting login for email:', email);
+      logger.debug('🔍 [AuthController.login] Attempting login for:', email);
 
-      // Find user by email
       const user = await this.authRepository.getUserByEmail(email);
 
       if (!user) {
@@ -129,7 +136,6 @@ class AuthControllerClass {
         });
       }
 
-      // Check if user is active
       if (!user.isActive) {
         logger.warn('⚠️ [AuthController.login] Account deactivated:', email);
         return res.status(403).json({
@@ -139,7 +145,6 @@ class AuthControllerClass {
         });
       }
 
-      // Verify password
       const isPasswordValid = await comparePassword(password, user.passwordHash);
       
       if (!isPasswordValid) {
@@ -151,7 +156,6 @@ class AuthControllerClass {
         });
       }
 
-      // Generate tokens
       const tokenPayload = { username: email, loginType: 'EMAIL' as const };
       const accessToken = this.jwtController.generateAccessToken(tokenPayload);
       const refreshToken = this.jwtController.generateRefreshToken(tokenPayload);
@@ -182,13 +186,12 @@ class AuthControllerClass {
    * Register User
    * POST /auth/register
    * 
-   * @description Creates a new user account.
+   * @description Creates a new user account and assigns role via UserRole junction table.
    */
   async register(req: Request, res: Response) {
     try {
       logger.info('ℹ️ [AuthController.register] Processing registration request...');
       
-      // Validate request body with Zod
       const parseResult = RegisterUserSchema.safeParse(req.body);
       
       if (!parseResult.success) {
@@ -207,7 +210,6 @@ class AuthControllerClass {
       const { email, displayName, password, contactNo, roleId } = parseResult.data;
       logger.debug('🔍 [AuthController.register] Registering user:', email);
 
-      // Check if user already exists
       const existingUser = await this.authRepository.getUserByEmail(email);
       
       if (existingUser) {
@@ -219,7 +221,6 @@ class AuthControllerClass {
         });
       }
 
-      // Verify role exists
       const role = await this.authRepository.getRoleById(roleId);
       
       if (!role) {
@@ -231,20 +232,34 @@ class AuthControllerClass {
         });
       }
 
-      // Hash password
       const passwordHash = await hashPassword(password);
 
-      // Create user
-      const userData: Omit<UserType, 'id' | 'createdAt' | 'updatedAt'> = {
-        email,
-        displayName,
-        passwordHash,
-        contactNo,
-        roleId,
-        isActive: true,
-      };
+      // Use transaction to create user and assign role atomically
+      const result = await db.transaction(async (tx) => {
+        // Create user
+        const userData: Omit<UserInsertType, 'id' | 'createdAt' | 'updatedAt'> = {
+          email,
+          displayName,
+          passwordHash,
+          contactNo,
+          isActive: true,
+          createdBy: 'system',
+          updatedBy: 'system',
+        };
 
-      const newUser = await this.authRepository.createUser(userData);
+        const newUser = await this.authRepository.createUser(userData, tx);
+
+        // Assign role to user via UserRole junction table
+        await this.authRepository.assignRoleToUser({
+          userId: newUser.id,
+          roleId,
+          status: 'active',
+          createdBy: 'system',
+          updatedBy: 'system',
+        }, tx);
+
+        return newUser;
+      });
 
       logger.info('✅ [AuthController.register] User registered successfully:', email);
 
@@ -252,9 +267,13 @@ class AuthControllerClass {
         success: true,
         message: 'Registration successful',
         data: {
-          id: newUser.id,
-          email: newUser.email,
-          displayName: newUser.displayName,
+          id: result.id,
+          email: result.email,
+          displayName: result.displayName,
+          role: {
+            roleId: role.roleId,
+            roleName: role.roleName,
+          },
         },
       });
     } catch (error) {
@@ -271,13 +290,12 @@ class AuthControllerClass {
    * Get Current User Profile
    * GET /auth/profile
    * 
-   * @description Returns the authenticated user's profile.
+   * @description Returns the authenticated user's profile with roles and permissions.
    */
   async getProfile(req: Request, res: Response) {
     try {
       logger.info('ℹ️ [AuthController.getProfile] Fetching user profile...');
       
-      // Extract token from Authorization header
       const token = req.headers.authorization?.startsWith('Bearer ')
         ? req.headers.authorization.split(' ')[1]
         : null;
@@ -291,7 +309,6 @@ class AuthControllerClass {
         });
       }
 
-      // Get user from token
       const user = await this.authRepository.getUserDataByToken(token);
 
       if (!user) {
@@ -303,11 +320,11 @@ class AuthControllerClass {
         });
       }
 
-      // Get user's permissions via role
-      const permissions = await this.authRepository.getPermissionsByRoleId(user.roleId);
+      // Get user's roles via UserRole junction table
+      const roles = await this.authRepository.getUserRoles(user.id);
 
-      // Get role details
-      const role = await this.authRepository.getRoleById(user.roleId);
+      // Get user's permissions via roles
+      const permissions = await this.authRepository.getUserPermissions(user.id);
 
       logger.info('✅ [AuthController.getProfile] Profile fetched successfully for:', user.email);
 
@@ -320,11 +337,15 @@ class AuthControllerClass {
           displayName: user.displayName,
           contactNo: user.contactNo,
           isActive: user.isActive,
-          role: role ? {
-            id: role.roleId,
-            name: role.roleName,
-          } : null,
-          permissions,
+          roles: roles.map(r => ({
+            roleId: r.roleId,
+            roleName: r.roleName,
+          })),
+          permissions: permissions.map(p => ({
+            permissionId: p.permissionId,
+            permissionType: p.permissionType,
+            moduleName: p.moduleName,
+          })),
         },
       });
     } catch (error) {
@@ -344,8 +365,6 @@ class AuthControllerClass {
   /**
    * Get All Roles
    * GET /auth/roles
-   * 
-   * @description Returns all roles in the system.
    */
   async getRoles(req: Request, res: Response) {
     try {
@@ -358,6 +377,7 @@ class AuthControllerClass {
       return res.status(200).json({
         success: true,
         message: 'Roles fetched successfully',
+        count: roles.length,
         data: roles,
       });
     } catch (error) {
@@ -374,13 +394,12 @@ class AuthControllerClass {
    * Create Role
    * POST /auth/roles
    * 
-   * @description Creates a new role.
+   * @description Creates a new role with optional permissions.
    */
   async createRole(req: Request, res: Response) {
     try {
       logger.info('ℹ️ [AuthController.createRole] Creating new role...');
       
-      // Validate request body with Zod
       const parseResult = CreateRoleSchema.safeParse(req.body);
       
       if (!parseResult.success) {
@@ -396,10 +415,9 @@ class AuthControllerClass {
         });
       }
 
-      const { roleName, permissionId, status } = parseResult.data;
+      const { roleName, status, permissionIds } = parseResult.data;
       logger.debug('🔍 [AuthController.createRole] Role name:', roleName);
 
-      // Check if role already exists
       const existingRole = await this.authRepository.getRoleByName(roleName);
       
       if (existingRole) {
@@ -411,23 +429,43 @@ class AuthControllerClass {
         });
       }
 
-      // Create role
-      const roleData: Omit<RoleType, 'roleId' | 'createdAt' | 'updatedAt'> = {
-        roleName,
-        permissionId: permissionId || null,
-        status,
-        createdBy: 'system', // TODO: Get from authenticated user
-        updatedBy: 'system',
-      };
+      // Use transaction to create role and assign permissions
+      const result = await db.transaction(async (tx) => {
+        const roleData: Omit<RoleInsertType, 'roleId' | 'createdAt' | 'updatedAt'> = {
+          roleName,
+          status,
+          createdBy: 'system', // TODO: Get from authenticated user
+          updatedBy: 'system',
+        };
 
-      const newRole = await this.authRepository.createRole(roleData);
+        const newRole = await this.authRepository.createRole(roleData, tx);
+
+        // Assign permissions if provided
+        if (permissionIds && permissionIds.length > 0) {
+          await this.authRepository.updateRolePermissions(
+            newRole.roleId,
+            permissionIds,
+            'system',
+            'system',
+            tx
+          );
+        }
+
+        return newRole;
+      });
+
+      // Get permissions for response
+      const permissions = await this.authRepository.getRolePermissions(result.roleId);
 
       logger.info('✅ [AuthController.createRole] Role created successfully:', roleName);
 
       return res.status(201).json({
         success: true,
         message: 'Role created successfully',
-        data: newRole,
+        data: {
+          ...result,
+          permissionIds: permissions.map(p => p.permissionId),
+        },
       });
     } catch (error) {
       logger.error('❌ [AuthController.createRole] Error:', error);
@@ -443,13 +481,12 @@ class AuthControllerClass {
    * Update Role
    * PUT /auth/roles/:id
    * 
-   * @description Updates an existing role.
+   * @description Updates an existing role and its permissions.
    */
   async updateRole(req: Request, res: Response) {
     try {
       logger.info('ℹ️ [AuthController.updateRole] Updating role...');
       
-      // Validate request body with Zod
       const parseResult = UpdateRoleSchema.safeParse({
         ...req.body,
         roleId: req.params.id || req.body.roleId,
@@ -468,10 +505,9 @@ class AuthControllerClass {
         });
       }
 
-      const { roleId, roleName, permissionId, status } = parseResult.data;
+      const { roleId, roleName, status, permissionIds } = parseResult.data;
       logger.debug('🔍 [AuthController.updateRole] Role ID:', roleId);
 
-      // Check if role exists
       const existingRole = await this.authRepository.getRoleById(roleId);
       
       if (!existingRole) {
@@ -483,7 +519,6 @@ class AuthControllerClass {
         });
       }
 
-      // Check for name conflict if renaming
       if (roleName && roleName !== existingRole.roleName) {
         const conflictingRole = await this.authRepository.getRoleByName(roleName);
         if (conflictingRole) {
@@ -496,25 +531,115 @@ class AuthControllerClass {
         }
       }
 
-      // Update role
-      const updateData: Partial<RoleType> = {
-        ...(roleName && { roleName }),
-        ...(permissionId !== undefined && { permissionId }),
-        ...(status && { status }),
-        updatedBy: 'system', // TODO: Get from authenticated user
-      };
+      // Use transaction to update role and permissions
+      const result = await db.transaction(async (tx) => {
+        const updateData: Partial<RoleInsertType> = {
+          ...(roleName && { roleName }),
+          ...(status && { status }),
+          updatedBy: 'system', // TODO: Get from authenticated user
+        };
 
-      const updatedRole = await this.authRepository.updateRole(roleId, updateData);
+        const updatedRole = await this.authRepository.updateRole(roleId, updateData, tx);
+
+        // Update permissions if provided
+        if (permissionIds !== undefined) {
+          await this.authRepository.updateRolePermissions(
+            roleId,
+            permissionIds,
+            'system',
+            'system',
+            tx
+          );
+        }
+
+        return updatedRole;
+      });
+
+      // Get permissions for response
+      const permissions = await this.authRepository.getRolePermissions(roleId);
 
       logger.info('✅ [AuthController.updateRole] Role updated successfully:', roleId);
 
       return res.status(200).json({
         success: true,
         message: 'Role updated successfully',
-        data: updatedRole,
+        data: {
+          ...result,
+          permissionIds: permissions.map(p => p.permissionId),
+        },
       });
     } catch (error) {
       logger.error('❌ [AuthController.updateRole] Error:', error);
+      return res.status(500).json({
+        success: false,
+        message: Error.INTERNAL_SERVER_ERROR,
+        data: null,
+      });
+    }
+  }
+
+  // ============================================
+  // MODULE ENDPOINTS
+  // ============================================
+
+  /**
+   * Get All Modules with Permissions
+   * GET /auth/modules
+   */
+  async getModules(req: Request, res: Response) {
+    try {
+      logger.info('ℹ️ [AuthController.getModules] Fetching all modules...');
+      
+      const modules = await this.authRepository.getModulesWithPermissions();
+
+      // Group by moduleName
+      const groupedModules = modules.reduce((acc, curr) => {
+        const existingModule = acc.find(item => item.moduleName === curr.moduleName);
+        
+        if (existingModule && curr.permissionId) {
+          existingModule.permissions.push({
+            permissionId: curr.permissionId,
+            permissionType: curr.permissionType,
+            description: curr.description || '',
+          });
+        } else if (curr.moduleName) {
+          acc.push({
+            moduleId: curr.moduleId,
+            moduleName: curr.moduleName,
+            permissions: curr.permissionId ? [{
+              permissionId: curr.permissionId,
+              permissionType: curr.permissionType,
+              description: curr.description || '',
+            }] : [],
+            status: curr.status,
+            createdAt: curr.createdAt.toISOString(),
+            updatedAt: curr.updatedAt.toISOString(),
+            createdBy: curr.createdBy,
+            updatedBy: curr.updatedBy,
+          });
+        }
+        return acc;
+      }, [] as Array<{
+        moduleId: string;
+        moduleName: string;
+        permissions: Array<{ permissionId: string; permissionType: string; description: string }>;
+        status: string;
+        createdAt: string;
+        updatedAt: string;
+        createdBy: string;
+        updatedBy: string;
+      }>);
+
+      logger.info('✅ [AuthController.getModules] Modules fetched successfully, count:', groupedModules.length);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Modules fetched successfully',
+        count: groupedModules.length,
+        data: groupedModules,
+      });
+    } catch (error) {
+      logger.error('❌ [AuthController.getModules] Error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,
@@ -530,8 +655,6 @@ class AuthControllerClass {
   /**
    * Get All Permissions
    * GET /auth/permissions
-   * 
-   * @description Returns all permissions in the system.
    */
   async getPermissions(req: Request, res: Response) {
     try {
@@ -544,6 +667,7 @@ class AuthControllerClass {
       return res.status(200).json({
         success: true,
         message: 'Permissions fetched successfully',
+        count: permissions.length,
         data: permissions,
       });
     } catch (error) {
@@ -559,14 +683,11 @@ class AuthControllerClass {
   /**
    * Create Permission
    * POST /auth/permissions
-   * 
-   * @description Creates a new permission.
    */
   async createPermission(req: Request, res: Response) {
     try {
       logger.info('ℹ️ [AuthController.createPermission] Creating new permission...');
       
-      // Validate request body with Zod
       const parseResult = CreatePermissionSchema.safeParse(req.body);
       
       if (!parseResult.success) {
@@ -582,24 +703,13 @@ class AuthControllerClass {
         });
       }
 
-      const { permissionName, status } = parseResult.data;
-      logger.debug('🔍 [AuthController.createPermission] Permission name:', permissionName);
+      const { moduleId, permissionType, description, status } = parseResult.data;
+      logger.debug('🔍 [AuthController.createPermission] Permission type:', permissionType);
 
-      // Check if permission already exists
-      const existingPermission = await this.authRepository.getPermissionByName(permissionName);
-      
-      if (existingPermission) {
-        logger.warn('⚠️ [AuthController.createPermission] Permission already exists:', permissionName);
-        return res.status(409).json({
-          success: false,
-          message: Error.ROLE_PERMISSION_ALREADY_EXISTS,
-          data: null,
-        });
-      }
-
-      // Create permission
-      const permissionData: Omit<PermissionType, 'permissionId' | 'createdAt' | 'updatedAt'> = {
-        permissionName,
+      const permissionData: Omit<PermissionInsertType, 'permissionId' | 'createdAt' | 'updatedAt'> = {
+        moduleId,
+        permissionType,
+        description,
         status,
         createdBy: 'system', // TODO: Get from authenticated user
         updatedBy: 'system',
@@ -607,7 +717,7 @@ class AuthControllerClass {
 
       const newPermission = await this.authRepository.createPermission(permissionData);
 
-      logger.info('✅ [AuthController.createPermission] Permission created successfully:', permissionName);
+      logger.info('✅ [AuthController.createPermission] Permission created successfully');
 
       return res.status(201).json({
         success: true,
@@ -627,14 +737,11 @@ class AuthControllerClass {
   /**
    * Update Permission
    * PUT /auth/permissions/:id
-   * 
-   * @description Updates an existing permission.
    */
   async updatePermission(req: Request, res: Response) {
     try {
       logger.info('ℹ️ [AuthController.updatePermission] Updating permission...');
       
-      // Validate request body with Zod
       const parseResult = UpdatePermissionSchema.safeParse({
         ...req.body,
         permissionId: req.params.id || req.body.permissionId,
@@ -653,10 +760,9 @@ class AuthControllerClass {
         });
       }
 
-      const { permissionId, permissionName, status } = parseResult.data;
+      const { permissionId, permissionType, description, status } = parseResult.data;
       logger.debug('🔍 [AuthController.updatePermission] Permission ID:', permissionId);
 
-      // Check if permission exists
       const existingPermission = await this.authRepository.getPermissionById(permissionId);
       
       if (!existingPermission) {
@@ -668,22 +774,9 @@ class AuthControllerClass {
         });
       }
 
-      // Check for name conflict if renaming
-      if (permissionName && permissionName !== existingPermission.permissionName) {
-        const conflictingPermission = await this.authRepository.getPermissionByName(permissionName);
-        if (conflictingPermission) {
-          logger.warn('⚠️ [AuthController.updatePermission] Permission name conflict:', permissionName);
-          return res.status(409).json({
-            success: false,
-            message: Error.ROLE_PERMISSION_ALREADY_EXISTS,
-            data: null,
-          });
-        }
-      }
-
-      // Update permission
-      const updateData: Partial<PermissionType> = {
-        ...(permissionName && { permissionName }),
+      const updateData: Partial<PermissionInsertType> = {
+        ...(permissionType && { permissionType }),
+        ...(description !== undefined && { description }),
         ...(status && { status }),
         updatedBy: 'system', // TODO: Get from authenticated user
       };
@@ -706,8 +799,82 @@ class AuthControllerClass {
       });
     }
   }
+
+  // ============================================
+  // ROLE PERMISSION ENDPOINTS
+  // ============================================
+
+  /**
+   * Get Role Permissions
+   * GET /auth/roles/:id/permissions
+   */
+  async getRolePermissions(req: Request, res: Response) {
+    try {
+      const roleId = req.params.id;
+      logger.info('ℹ️ [AuthController.getRolePermissions] Fetching permissions for role:', roleId);
+      
+      const role = await this.authRepository.getRoleById(roleId);
+      
+      if (!role) {
+        return res.status(404).json({
+          success: false,
+          message: 'Role not found',
+          data: null,
+        });
+      }
+
+      const permissions = await this.authRepository.getRolePermissions(roleId);
+      const modules = await this.authRepository.getModulesWithPermissions();
+
+      // Create a map of existing role permissions
+      const existingPermissions = new Set(permissions.map(p => p.permissionId));
+
+      // Group by module and mark which permissions are assigned
+      const modulePermissions = modules.reduce((acc, curr) => {
+        if (!curr.moduleName || !curr.permissionId) return acc;
+
+        const existing = acc.find(m => m.moduleName === curr.moduleName);
+        const permissionData = {
+          permissionId: curr.permissionId,
+          permissionType: curr.permissionType,
+          hasPermission: existingPermissions.has(curr.permissionId),
+        };
+
+        if (existing) {
+          existing.permissions.push(permissionData);
+        } else {
+          acc.push({
+            moduleName: curr.moduleName,
+            permissions: [permissionData],
+          });
+        }
+        return acc;
+      }, [] as Array<{
+        moduleName: string;
+        permissions: Array<{ permissionId: string; permissionType: string; hasPermission: boolean }>;
+      }>);
+
+      logger.info('✅ [AuthController.getRolePermissions] Role permissions fetched successfully');
+
+      return res.status(200).json({
+        success: true,
+        message: 'Role permissions fetched successfully',
+        data: {
+          roleId: role.roleId,
+          roleName: role.roleName,
+          modules: modulePermissions,
+        },
+      });
+    } catch (error) {
+      logger.error('❌ [AuthController.getRolePermissions] Error:', error);
+      return res.status(500).json({
+        success: false,
+        message: Error.INTERNAL_SERVER_ERROR,
+        data: null,
+      });
+    }
+  }
 }
 
-// Export singleton instance
+// Export class for DI
 export { AuthControllerClass };
-

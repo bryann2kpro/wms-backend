@@ -2,47 +2,39 @@
  * Auth Repository
  * 
  * @description Data access layer for authentication-related operations.
- * Handles user, role, and permission CRUD operations.
+ * Handles user, role, permission, and junction table CRUD operations.
+ * 
+ * Uses normalized RBAC structure:
+ * - Users → UserRole (junction) → Role
+ * - Role → RolePermission (junction) → Permission → Module
  */
 
-import { UsersTable, UserType } from './auth.model.js';
-import { Role, Permission } from '@/features/rbac/rbac.model.js';
+import { UsersTable, UserType, UserInsertType } from './auth.model.js';
+import { 
+  Role, 
+  Module,
+  Permission, 
+  RolePermission, 
+  UserRole,
+  type RoleType,
+  type RoleInsertType,
+  type ModuleType,
+  type PermissionType,
+  type PermissionInsertType,
+  type RolePermissionType,
+  type RolePermissionInsertType,
+  type UserRoleType,
+  type UserRoleInsertType,
+  type RolePermissionGroupType,
+} from '@/features/rbac/rbac.model.js';
 import { db } from '@/db/index';
-import { eq } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import type { NodePgQueryResultHKT } from 'drizzle-orm/node-postgres';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import type { ExtractTablesWithRelations } from 'drizzle-orm';
 import { JwtControllerClass } from '@/features/jwt/jwt.controller.js';
 import { logger } from '@/util/logger.js';
-
-/**
- * Role Type
- * @description TypeScript type for Role entity
- */
-export type RoleType = {
-  roleId?: string;
-  roleName: string;
-  permissionId: string[] | null;
-  status: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-  createdBy: string;
-  updatedBy: string;
-};
-
-/**
- * Permission Type
- * @description TypeScript type for Permission entity
- */
-export type PermissionType = {
-  permissionId?: string;
-  permissionName: string;
-  status: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-  createdBy: string;
-  updatedBy: string;
-};
+import { DbTransaction } from '@/types/db-transaction.js';
 
 export class AuthRepositoryClass {
   constructor(private jwtController: JwtControllerClass) {}
@@ -64,40 +56,34 @@ export class AuthRepositoryClass {
         throw new Error('(getUserByToken) Invalid token: username not found');
       }
 
-      // Get user by email (primary login method)
       const user = await this.getUserByEmail(decodedToken.username);
       return user;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.getUserDataByToken] Error getting user from token:', error);
+      logger.error('❌ [AuthRepository.getUserDataByToken] Error:', error);
       return null;
     }
   }
 
   /**
    * Get user by email
-   * @param email - User email address
-   * @returns User data or null if not found
    */
   async getUserByEmail(email: string): Promise<UserType | null> {
     try {
-      
-    const users = await db
+      const users = await db
         .select()
         .from(UsersTable)
         .where(eq(UsersTable.email, email))
         .limit(1);
       
-      return users.length > 0 ? users[0] as unknown as UserType : null;
+      return users.length > 0 ? users[0] : null;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.getUserByEmail] Error getting user by email:', error);
+      logger.error('❌ [AuthRepository.getUserByEmail] Error:', error);
       return null;
     }
   }
 
   /**
    * Get user by ID
-   * @param id - User UUID
-   * @returns User data or null if not found
    */
   async getUserById(id: string): Promise<UserType | null> {
     try {
@@ -107,55 +93,46 @@ export class AuthRepositoryClass {
         .where(eq(UsersTable.id, id))
         .limit(1);
       
-      return users.length > 0 ? users[0] as unknown as UserType : null;
+      return users.length > 0 ? users[0] : null;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.getUserById] Error getting user by ID:', error);
+      logger.error('❌ [AuthRepository.getUserById] Error:', error);
       return null;
     }
   }
 
   /**
    * Create a new user
-   * @param userData - User data to insert
-   * @param tx - Optional transaction
-   * @returns Created user
    */
   async createUser(
-    userData: Omit<UserType, 'id' | 'createdAt' | 'updatedAt'>,
-    tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>
+    userData: Omit<UserInsertType, 'id' | 'createdAt' | 'updatedAt'>,
+    tx?: DbTransaction
   ): Promise<UserType> {
     try {
       const dbClient = tx || db;
       
-      logger.info('ℹ️ [AuthRepositoryClass.createUser] Creating user...');
+      logger.info('ℹ️ [AuthRepository.createUser] Creating user...');
       
       const [user] = await dbClient
         .insert(UsersTable)
         .values(userData)
         .returning();
       
-      logger.info('✅ [AuthRepositoryClass.createUser] User created successfully');
-      logger.debug('✅ [AuthRepositoryClass.createUser] User data:', user);
-      
-      return user as unknown as UserType;
+      logger.info('✅ [AuthRepository.createUser] User created successfully');
+      return user;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.createUser] Error creating user:', error);
+      logger.error('❌ [AuthRepository.createUser] Error:', error);
       throw error;
     }
   }
 
   /**
    * Update user by ID
-   * @param id - User UUID
-   * @param userData - Partial user data to update
-   * @returns Updated user
    */
-  async updateUser(id: string, userData: Partial<UserType>, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<UserType | null> {
+  async updateUser(id: string, userData: Partial<UserInsertType>, tx?: DbTransaction): Promise<UserType | null> {
     try {
-      
       const dbClient = tx || db;
-
-      logger.info('ℹ️ [AuthRepositoryClass.updateUser] Updating user...');
+      
+      logger.info('ℹ️ [AuthRepository.updateUser] Updating user...');
       
       const [user] = await dbClient
         .update(UsersTable)
@@ -163,12 +140,94 @@ export class AuthRepositoryClass {
         .where(eq(UsersTable.id, id))
         .returning();
       
-      logger.info('✅ [AuthRepositoryClass.updateUser] User updated successfully');
-      
-      return user ? user as unknown as UserType : null;
+      logger.info('✅ [AuthRepository.updateUser] User updated successfully');
+      return user || null;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.updateUser] Error updating user:', error);
+      logger.error('❌ [AuthRepository.updateUser] Error:', error);
       return null;
+    }
+  }
+
+  // ============================================
+  // USER ROLE OPERATIONS (Junction Table)
+  // ============================================
+
+  /**
+   * Get user's roles
+   */
+  async getUserRoles(userId: string): Promise<Array<RoleType & { userRoleId: string }>> {
+    try {
+      const results = await db
+        .select({
+          userRoleId: UserRole.id,
+          roleId: Role.roleId,
+          roleName: Role.roleName,
+          status: Role.status,
+          createdAt: Role.createdAt,
+          updatedAt: Role.updatedAt,
+          createdBy: Role.createdBy,
+          updatedBy: Role.updatedBy,
+        })
+        .from(UserRole)
+        .innerJoin(Role, eq(UserRole.roleId, Role.roleId))
+        .where(and(
+          eq(UserRole.userId, userId),
+          eq(UserRole.status, 'active')
+        ));
+      
+      return results;
+    } catch (error) {
+      logger.error('❌ [AuthRepository.getUserRoles] Error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Assign role to user
+   */
+  async assignRoleToUser(
+    data: Omit<UserRoleInsertType, 'id' | 'createdAt' | 'updatedAt'>,
+    tx?: DbTransaction
+  ): Promise<UserRoleType> {
+    try {
+      const dbClient = tx || db;
+      
+      logger.info('ℹ️ [AuthRepository.assignRoleToUser] Assigning role to user...');
+      
+      const [userRole] = await dbClient
+        .insert(UserRole)
+        .values(data)
+        .returning();
+      
+      logger.info('✅ [AuthRepository.assignRoleToUser] Role assigned successfully');
+      return userRole;
+    } catch (error) {
+      logger.error('❌ [AuthRepository.assignRoleToUser] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove role from user
+   */
+  async removeRoleFromUser(userId: string, roleId: string, tx?: DbTransaction): Promise<boolean> {
+    try {
+      const dbClient = tx || db;
+      
+      logger.info('ℹ️ [AuthRepository.removeRoleFromUser] Removing role from user...');
+      
+      await dbClient
+        .delete(UserRole)
+        .where(and(
+          eq(UserRole.userId, userId),
+          eq(UserRole.roleId, roleId)
+        ));
+      
+      logger.info('✅ [AuthRepository.removeRoleFromUser] Role removed successfully');
+      return true;
+    } catch (error) {
+      logger.error('❌ [AuthRepository.removeRoleFromUser] Error:', error);
+      return false;
     }
   }
 
@@ -178,29 +237,24 @@ export class AuthRepositoryClass {
 
   /**
    * Get role by ID
-   * @param roleId - Role UUID
-   * @returns Role data or null if not found
    */
   async getRoleById(roleId: string): Promise<RoleType | null> {
     try {
-      
       const roles = await db
         .select()
         .from(Role)
         .where(eq(Role.roleId, roleId))
         .limit(1);
       
-      return roles.length > 0 ? roles[0] as unknown as RoleType : null;
+      return roles.length > 0 ? roles[0] : null;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.getRoleById] Error getting role by ID:', error);
+      logger.error('❌ [AuthRepository.getRoleById] Error:', error);
       return null;
     }
   }
 
   /**
    * Get role by name
-   * @param roleName - Role name
-   * @returns Role data or null if not found
    */
   async getRoleByName(roleName: string): Promise<RoleType | null> {
     try {
@@ -210,66 +264,59 @@ export class AuthRepositoryClass {
         .where(eq(Role.roleName, roleName))
         .limit(1);
       
-      return roles.length > 0 ? roles[0] as unknown as RoleType : null;
+      return roles.length > 0 ? roles[0] : null;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.getRoleByName] Error getting role by name:', error);
+      logger.error('❌ [AuthRepository.getRoleByName] Error:', error);
       return null;
     }
   }
 
   /**
    * Get all roles
-   * @returns Array of all roles
    */
   async getAllRoles(): Promise<RoleType[]> {
     try {
       const roles = await db.select().from(Role);
-      return roles as unknown as RoleType[];
+      return roles;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.getAllRoles] Error getting all roles:', error);
+      logger.error('❌ [AuthRepository.getAllRoles] Error:', error);
       return [];
     }
   }
 
   /**
    * Create a new role
-   * @param roleData - Role data to insert
-   * @returns Created role
    */
-  async createRole(roleData: Omit<RoleType, 'roleId' | 'createdAt' | 'updatedAt'>, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<RoleType> {
+  async createRole(
+    roleData: Omit<RoleInsertType, 'roleId' | 'createdAt' | 'updatedAt'>,
+    tx?: DbTransaction
+  ): Promise<RoleType> {
     try {
-      
       const dbClient = tx || db;
-
-      logger.info('ℹ️ [AuthRepositoryClass.createRole] Creating role...');
-
+      
+      logger.info('ℹ️ [AuthRepository.createRole] Creating role...');
+      
       const [role] = await dbClient
         .insert(Role)
         .values(roleData)
         .returning();
       
-      logger.info('✅ [AuthRepositoryClass.createRole] Role created successfully');
-      logger.debug('✅ [AuthRepositoryClass.createRole] Role data:', role);
-      
-      return role as unknown as RoleType;
+      logger.info('✅ [AuthRepository.createRole] Role created successfully');
+      return role;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.createRole] Error creating role:', error);
+      logger.error('❌ [AuthRepository.createRole] Error:', error);
       throw error;
     }
   }
 
   /**
    * Update role by ID
-   * @param roleId - Role UUID
-   * @param roleData - Partial role data to update
-   * @returns Updated role
    */
-  async updateRole(roleId: string, roleData: Partial<RoleType>, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<RoleType | null> {
+  async updateRole(roleId: string, roleData: Partial<RoleInsertType>, tx?: DbTransaction): Promise<RoleType | null> {
     try {
-      
       const dbClient = tx || db;
       
-      logger.info('ℹ️ [AuthRepositoryClass.updateRole] Updating role...');
+      logger.info('ℹ️ [AuthRepository.updateRole] Updating role...');
       
       const [role] = await dbClient
         .update(Role)
@@ -277,11 +324,71 @@ export class AuthRepositoryClass {
         .where(eq(Role.roleId, roleId))
         .returning();
       
-      logger.info('✅ [AuthRepositoryClass.updateRole] Role updated successfully');
-      return role ? role as unknown as RoleType : null;
+      logger.info('✅ [AuthRepository.updateRole] Role updated successfully');
+      return role || null;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.updateRole] Error updating role:', error);
+      logger.error('❌ [AuthRepository.updateRole] Error:', error);
       return null;
+    }
+  }
+
+  // ============================================
+  // MODULE OPERATIONS
+  // ============================================
+
+  /**
+   * Get all modules
+   */
+  async getAllModules(): Promise<ModuleType[]> {
+    try {
+      const modules = await db.select().from(Module);
+      return modules;
+    } catch (error) {
+      logger.error('❌ [AuthRepository.getAllModules] Error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get modules with permissions (grouped)
+   */
+  async getModulesWithPermissions(): Promise<Array<{
+    moduleId: string;
+    moduleName: string;
+    permissionId: string;
+    permissionType: string;
+    description: string | null;
+    status: string;
+    createdAt: Date;
+    updatedAt: Date;
+    createdBy: string;
+    updatedBy: string;
+  }>> {
+    try {
+      const results = await db
+        .select({
+          moduleId: Module.moduleId,
+          moduleName: Module.moduleName,
+          permissionId: Permission.permissionId,
+          permissionType: Permission.permissionType,
+          description: Permission.description,
+          status: Module.status,
+          createdAt: Module.createdAt,
+          updatedAt: Module.updatedAt,
+          createdBy: Module.createdBy,
+          updatedBy: Module.updatedBy,
+        })
+        .from(Module)
+        .leftJoin(Permission, eq(Module.moduleId, Permission.moduleId));
+      
+      return results.map(r => ({
+        ...r,
+        permissionId: r.permissionId || '',
+        permissionType: r.permissionType || '',
+      }));
+    } catch (error) {
+      logger.error('❌ [AuthRepository.getModulesWithPermissions] Error:', error);
+      return [];
     }
   }
 
@@ -291,148 +398,248 @@ export class AuthRepositoryClass {
 
   /**
    * Get permission by ID
-   * @param permissionId - Permission UUID
-   * @returns Permission data or null if not found
    */
   async getPermissionById(permissionId: string): Promise<PermissionType | null> {
     try {
-
       const permissions = await db
         .select()
         .from(Permission)
         .where(eq(Permission.permissionId, permissionId))
         .limit(1);
       
-      return permissions.length > 0 ? permissions[0] as unknown as PermissionType : null;
+      return permissions.length > 0 ? permissions[0] : null;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.getPermissionById] Error getting permission by ID:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Get permission by name
-   * @param permissionName - Permission name
-   * @returns Permission data or null if not found
-   */
-  async getPermissionByName(permissionName: string): Promise<PermissionType | null> {
-    try {
-      const permissions = await db
-        .select()
-        .from(Permission)
-        .where(eq(Permission.permissionName, permissionName))
-        .limit(1);
-      
-      return permissions.length > 0 ? permissions[0] as unknown as PermissionType : null;
-    } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.getPermissionByName] Error getting permission by name:', error);
+      logger.error('❌ [AuthRepository.getPermissionById] Error:', error);
       return null;
     }
   }
 
   /**
    * Get all permissions
-   * @returns Array of all permissions
    */
   async getAllPermissions(): Promise<PermissionType[]> {
     try {
       const permissions = await db.select().from(Permission);
-      return permissions as unknown as PermissionType[];
+      return permissions;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.getAllPermissions] Error getting all permissions:', error);
+      logger.error('❌ [AuthRepository.getAllPermissions] Error:', error);
       return [];
     }
   }
 
   /**
    * Create a new permission
-   * @param permissionData - Permission data to insert
-   * @returns Created permission
    */
-  async createPermission(permissionData: Omit<PermissionType, 'permissionId' | 'createdAt' | 'updatedAt'>, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<PermissionType> {
+  async createPermission(
+    permissionData: Omit<PermissionInsertType, 'permissionId' | 'createdAt' | 'updatedAt'>,
+    tx?: DbTransaction
+  ): Promise<PermissionType> {
     try {
-      
       const dbClient = tx || db;
       
-      logger.info('ℹ️ [AuthRepositoryClass.createPermission] Creating permission...');
+      logger.info('ℹ️ [AuthRepository.createPermission] Creating permission...');
       
       const [permission] = await dbClient
         .insert(Permission)
         .values(permissionData)
         .returning();
-        
-      logger.info('✅ [AuthRepositoryClass.createPermission] Permission created successfully');
-      logger.debug('✅ [AuthRepositoryClass.createPermission] Permission data:', permission);
       
-      return permission as unknown as PermissionType;
+      logger.info('✅ [AuthRepository.createPermission] Permission created successfully');
+      return permission;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.createPermission] Error creating permission:', error);
+      logger.error('❌ [AuthRepository.createPermission] Error:', error);
       throw error;
     }
   }
 
   /**
    * Update permission by ID
-   * @param permissionId - Permission UUID
-   * @param permissionData - Partial permission data to update
-   * @returns Updated permission
    */
-  async updatePermission(permissionId: string, permissionData: Partial<PermissionType>, tx?: PgTransaction<NodePgQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>): Promise<PermissionType | null> {
+  async updatePermission(
+    permissionId: string, 
+    permissionData: Partial<PermissionInsertType>, 
+    tx?: DbTransaction
+  ): Promise<PermissionType | null> {
     try {
-      
       const dbClient = tx || db;
       
-      logger.info('ℹ️ [AuthRepositoryClass.updatePermission] Updating permission...');
+      logger.info('ℹ️ [AuthRepository.updatePermission] Updating permission...');
       
       const [permission] = await dbClient
         .update(Permission)
         .set({ ...permissionData, updatedAt: new Date() })
         .where(eq(Permission.permissionId, permissionId))
         .returning();
-
-      logger.info('✅ [AuthRepositoryClass.updatePermission] Permission updated successfully');
-      logger.debug('✅ [AuthRepositoryClass.updatePermission] Permission data:', permission);
-
-      return permission ? permission as unknown as PermissionType : null;
+      
+      logger.info('✅ [AuthRepository.updatePermission] Permission updated successfully');
+      return permission || null;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.updatePermission] Error updating permission:', error);
+      logger.error('❌ [AuthRepository.updatePermission] Error:', error);
       return null;
+    }
+  }
+
+  // ============================================
+  // ROLE PERMISSION OPERATIONS (Junction Table)
+  // ============================================
+
+  /**
+   * Get role's permissions
+   */
+  async getRolePermissions(roleId: string): Promise<RolePermissionGroupType[]> {
+    try {
+      const results = await db
+        .select({
+          id: RolePermission.id,
+          roleId: RolePermission.roleId,
+          permissionId: RolePermission.permissionId,
+          permissionType: Permission.permissionType,
+          moduleId: Permission.moduleId,
+          moduleName: Module.moduleName,
+        })
+        .from(RolePermission)
+        .innerJoin(Permission, eq(RolePermission.permissionId, Permission.permissionId))
+        .innerJoin(Module, eq(Permission.moduleId, Module.moduleId))
+        .where(eq(RolePermission.roleId, roleId));
+      
+      return results;
+    } catch (error) {
+      logger.error('❌ [AuthRepository.getRolePermissions] Error:', error);
+      return [];
     }
   }
 
   /**
-   * Get user's permissions via their role
-   * @param roleId - Role UUID
-   * @returns Array of permission IDs or null
+   * Assign permission to role
    */
-  async getPermissionsByRoleId(roleId: string): Promise<string[] | null> {
+  async assignPermissionToRole(
+    data: Omit<RolePermissionInsertType, 'id' | 'createdAt' | 'updatedAt'>,
+    tx?: DbTransaction
+  ): Promise<RolePermissionType> {
     try {
-      const role = await this.getRoleById(roleId);
-      return role?.permissionId || null;
+      const dbClient = tx || db;
+      
+      logger.info('ℹ️ [AuthRepository.assignPermissionToRole] Assigning permission to role...');
+      
+      const [rolePermission] = await dbClient
+        .insert(RolePermission)
+        .values(data)
+        .returning();
+      
+      logger.info('✅ [AuthRepository.assignPermissionToRole] Permission assigned successfully');
+      return rolePermission;
     } catch (error) {
-      logger.error('❌ [AuthRepositoryClass.getPermissionsByRoleId] Error getting permissions by role ID:', error);
-      return null;
+      logger.error('❌ [AuthRepository.assignPermissionToRole] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove all permissions from role
+   */
+  async removeAllPermissionsFromRole(roleId: string, tx?: DbTransaction): Promise<boolean> {
+    try {
+      const dbClient = tx || db;
+      
+      logger.info('ℹ️ [AuthRepository.removeAllPermissionsFromRole] Removing all permissions from role...');
+      
+      await dbClient
+        .delete(RolePermission)
+        .where(eq(RolePermission.roleId, roleId));
+      
+      logger.info('✅ [AuthRepository.removeAllPermissionsFromRole] Permissions removed successfully');
+      return true;
+    } catch (error) {
+      logger.error('❌ [AuthRepository.removeAllPermissionsFromRole] Error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Update role permissions (replace all)
+   */
+  async updateRolePermissions(
+    roleId: string,
+    permissionIds: string[],
+    createdBy: string,
+    updatedBy: string,
+    tx?: DbTransaction
+  ): Promise<RolePermissionType[]> {
+    try {
+      const dbClient = tx || db;
+      
+      logger.info('ℹ️ [AuthRepository.updateRolePermissions] Updating role permissions...');
+      
+      // Delete existing permissions
+      await dbClient
+        .delete(RolePermission)
+        .where(eq(RolePermission.roleId, roleId));
+      
+      // Insert new permissions
+      if (permissionIds.length > 0) {
+        const newPermissions = await dbClient
+          .insert(RolePermission)
+          .values(permissionIds.map(permissionId => ({
+            roleId,
+            permissionId,
+            createdBy,
+            updatedBy,
+          })))
+          .returning();
+        
+        logger.info('✅ [AuthRepository.updateRolePermissions] Role permissions updated successfully');
+        return newPermissions;
+      }
+      
+      return [];
+    } catch (error) {
+      logger.error('❌ [AuthRepository.updateRolePermissions] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's permissions via their roles
+   * Returns all permissions for all roles assigned to the user
+   */
+  async getUserPermissions(userId: string): Promise<RolePermissionGroupType[]> {
+    try {
+      const results = await db
+        .select({
+          id: RolePermission.id,
+          roleId: RolePermission.roleId,
+          permissionId: RolePermission.permissionId,
+          permissionType: Permission.permissionType,
+          moduleId: Permission.moduleId,
+          moduleName: Module.moduleName,
+        })
+        .from(UserRole)
+        .innerJoin(RolePermission, eq(UserRole.roleId, RolePermission.roleId))
+        .innerJoin(Permission, eq(RolePermission.permissionId, Permission.permissionId))
+        .innerJoin(Module, eq(Permission.moduleId, Module.moduleId))
+        .where(and(
+          eq(UserRole.userId, userId),
+          eq(UserRole.status, 'active')
+        ));
+      
+      return results;
+    } catch (error) {
+      logger.error('❌ [AuthRepository.getUserPermissions] Error:', error);
+      return [];
     }
   }
 }
 
-// Export singleton instance
-// export const authRepository = new AuthRepositoryClass();
-
-// Export individual methods for convenience
-// export const getUserDataByToken = authRepository.getUserDataByToken.bind(authRepository);
-// export const getUserByEmail = authRepository.getUserByEmail.bind(authRepository);
-// export const getUserById = authRepository.getUserById.bind(authRepository);
-// export const createUser = authRepository.createUser.bind(authRepository);
-// export const updateUser = authRepository.updateUser.bind(authRepository);
-// export const getRoleById = authRepository.getRoleById.bind(authRepository);
-// export const getRoleByName = authRepository.getRoleByName.bind(authRepository);
-// export const getAllRoles = authRepository.getAllRoles.bind(authRepository);
-// export const createRole = authRepository.createRole.bind(authRepository);
-// export const updateRole = authRepository.updateRole.bind(authRepository);
-// export const getPermissionById = authRepository.getPermissionById.bind(authRepository);
-// export const getPermissionByName = authRepository.getPermissionByName.bind(authRepository);
-// export const getAllPermissions = authRepository.getAllPermissions.bind(authRepository);
-// export const createPermission = authRepository.createPermission.bind(authRepository);
-// export const updatePermission = authRepository.updatePermission.bind(authRepository);
-// export const getPermissionsByRoleId = authRepository.getPermissionsByRoleId.bind(authRepository);
+// Re-export types for convenience
+export type { 
+  RoleType, 
+  RoleInsertType,
+  ModuleType,
+  PermissionType, 
+  PermissionInsertType,
+  RolePermissionType,
+  RolePermissionInsertType,
+  UserRoleType,
+  UserRoleInsertType,
+  RolePermissionGroupType,
+};

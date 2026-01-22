@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken } from '../features/jwt/index.js';
+import { jwtController } from '@/composition-root.js';
 import { Error } from '../error/index.js';
 
-const authenticateJWT = (req: Request, res: Response, next: NextFunction) => {
+const authenticateJWT = async (req: Request, res: Response, next: NextFunction) => {
   const token = req.header('Authorization')?.split(' ')[1];
 
   if (!token) {
@@ -11,7 +11,7 @@ const authenticateJWT = (req: Request, res: Response, next: NextFunction) => {
   }
 
   try {
-    const user = verifyToken(token);
+    const user = await jwtController.verifyToken(token);
     if (user.statusCode === 401) {
       return res.status(401).json({ message: Error.UNAUTHORIZED });
     }

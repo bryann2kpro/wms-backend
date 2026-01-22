@@ -1,5 +1,4 @@
-import { getUserRoleWithPermission } from '../features/rbac/rbac.repository.js';
-import { getAdminDataByToken } from '../features/admin/admin.repository.js';
+import { authRepository } from '@/composition-root.js';
 import { Request, Response, NextFunction } from 'express';
 import { Error } from '../error/index.js';
 
@@ -20,15 +19,15 @@ export const hasPermission = async (req: Request, moduleName: string, permission
     return false;
   }
 
-  const user = await getAdminDataByToken(token);
+  const user = await authRepository.getUserDataByToken(token);
 
   if (!user) {
     return false;
   }
 
-  const userRoleWithPermission = await getUserRoleWithPermission(user.adminId);
+  const userRoleWithPermission = await authRepository.getUserRoles(user.id);
 
-  return userRoleWithPermission.some((role) => 
+  return userRoleWithPermission.some((role: any) => 
     role.moduleName === moduleName && role.permissionType === permission
   );
 }

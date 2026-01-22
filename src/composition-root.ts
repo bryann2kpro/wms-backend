@@ -19,16 +19,16 @@ import { RbacControllerClass } from '@/features/rbac/rbac.controller.js';
 import { HealthControllerClass } from '@/features/health/health.controller.js';
 
 // ============================================
-// REPOSITORIES (Data Access Layer)
-// ============================================
-
-export const authRepository = new AuthRepositoryClass();
-
-// ============================================
-// SERVICES / UTILITIES
+// SERVICES / UTILITIES (create first - no dependencies)
 // ============================================
 
 export const jwtController = new JwtControllerClass();
+
+// ============================================
+// REPOSITORIES (Data Access Layer)
+// ============================================
+
+export const authRepository = new AuthRepositoryClass(jwtController);
 
 // ============================================
 // CONTROLLERS (Presentation Layer)

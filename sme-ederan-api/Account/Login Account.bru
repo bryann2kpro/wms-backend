@@ -12,11 +12,21 @@ post {
 
 body:json {
   {
-    "email": "admin@mail.com",
+    "email": "admin@smee.com.my",
     "password": "admin123"
   }
 }
 
 settings {
   encodeUrl: true
+}
+
+vars:post-response {
+  bearerToken: res.body.data.accessToken
+}
+
+tests {
+  const body = res.body;
+  bru.setVar("access_token", body.data.accessToken);
+  
 }

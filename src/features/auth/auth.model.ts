@@ -5,20 +5,15 @@ import { MainSchema } from '@/db/db.schema';
  * Users Table
  * 
  * @description Single source of truth for all WMS users.
- * Each user has a role that determines their permissions and access levels.
+ * User roles are managed via the UserRole junction table in rbac.model.ts.
  * 
  * @field email - Unique email address for login
  * @field displayName - User's display name
  * @field passwordHash - Hashed password (bcrypt)
  * @field contactNo - Optional contact number
- * @field roleId - Reference to the user's role in the roles table
  * @field isActive - Whether the user account is active
  * 
- * @roles
- * - STOREKEEPER: Warehouse staff (picking, packing, stock management)
- * - LOGISTIC: Driver/Runner (delivery execution)
- * - ADMIN: Company Admin (approval, stock in-out, invoices, operation support)
- * - MANAGEMENT: Management (approval optional, access to overall reports)
+ * @note Roles are assigned via UserRole junction table (supports multi-role)
  */
 export const UsersTable = MainSchema.table('users', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
@@ -26,7 +21,6 @@ export const UsersTable = MainSchema.table('users', {
   displayName: varchar('display_name', { length: 100 }).notNull(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   contactNo: varchar('contact_no', { length: 20 }),
-  roleId: uuid('role_id').notNull(),
   isActive: boolean('is_active').notNull().default(true),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -46,18 +40,18 @@ export type UserLoginDto = {
 
 /**
  * User Type
- * @description TypeScript type for User entity
+ * @description TypeScript type for User entity (using Drizzle inference)
  */
-export type UserType = {
-  id?: string;
-  email: string;
-  displayName: string;
-  passwordHash: string;
-  contactNo?: string;
-  roleId: string;
-  isActive: boolean;
-  createdAt?: Date;
-  updatedAt?: Date;
-  createdBy?: string;
-  updatedBy?: string;
+export type UserType = typeof UsersTable.$inferSelect;
+export type UserInsertType = typeof UsersTable.$inferInsert;
+
+/**
+ * User with Roles Type
+ * @description User entity with roles attached (for API responses)
+ */
+export type UserWithRolesType = UserType & {
+  roles?: Array<{
+    roleId: string;
+    roleName: string;
+  }>;
 };

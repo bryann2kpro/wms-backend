@@ -5,12 +5,17 @@
  */
 
 import { Request, Response } from 'express';
-import { AuthRepositoryClass } from '@/features/auth/auth.repository.js';
+import { AuthRepositoryClass, RoleInsertType } from '@/features/auth/auth.repository.js';
 import { Error } from '@/error/index.js';
 import { logger } from '@/util/logger.js';
-
+import z, { prettifyError } from 'zod';
+import { db } from '@/db';
+import { RbacRepositoryClass } from './rbac.repository';
 class RbacControllerClass {
-  constructor(private authRepository: AuthRepositoryClass) {}
+  constructor(
+    private authRepository: AuthRepositoryClass,
+    private rbacRepository: RbacRepositoryClass
+  ) {}
 
   /**
    * Get All User Access
@@ -99,7 +104,81 @@ class RbacControllerClass {
       });
     }
   }
+
+
+  /**
+   * Create Role
+   * POST /rbac/roles/create
+   * 
+   * @description Creates a new role in the system.
+   */
+  async createRole(req: Request, res: Response): Promise<void> {
+    try {
+      logger.info('ℹ️ [RbacController.createRole] Request received for creating new role..., validating request body...');
+      logger.debug('🔍 [RbacController.createRole] Request body:', req.body);
+      const roleCreateSchema = z.object({
+        roleName: z.string().min(1, 'Role name is required').max(50),
+        status: z.string().max(20).default('active'),
+        permissionIds: z.array(z.uuid()).default([]),
+      });
+
+      const { success, data, error } = roleCreateSchema.safeParse(req.body);
+
+      if (!success) {
+        logger.warn('⚠️ [RbacController.createRole] Validation failed:', prettifyError(error));
+        logger.debug('🔍 [RbacController.createRole] Validation error:', error);
+        res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+        });
+
+        return;
+      }
+
+      logger.info('ℹ️ [RbacController.createRole] Request body validated successfully, creating new role...');
+
+      const result = await db.transaction(async (tx) => {
+        const roleData: RoleInsertType = {
+          roleName: data.roleName,
+          status: data.status,
+          createdBy: 'system',
+          updatedBy: 'system',
+        }
+        
+        const role = await this.rbacRepository.createRole(roleData, tx);
+
+        if (data.permissionIds.length > 0) {
+          await this.rbacRepository.createRolePermissions(
+            data.permissionIds.map((permissionId) => ({
+              roleId: role.roleId,
+              permissionId,
+              createdBy: 'system',
+              updatedBy: 'system',
+            })),
+            tx
+          );
+        }
+
+        return role;
+      });
+
+
+      logger.info('✅ [RbacController.createRole] New role created successfully...');
+
+      res.status(201).json({
+        success: true,
+        message: 'Role created successfully',
+        data: result
+      });
+    } catch (error) {
+      logger.error('❌ [RbacController.createRole] Error:', error);
+      res.status(500).json({
+        success: false,
+        message: Error.INTERNAL_SERVER_ERROR,
+        data: null
+      });
+    }
+  }
 }
 
-// Export the class for DI wiring in composition root
 export { RbacControllerClass };
