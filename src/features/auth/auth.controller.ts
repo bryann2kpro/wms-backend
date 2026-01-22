@@ -16,6 +16,7 @@ import { UserType } from './auth.model.js';
 import { JwtControllerClass } from '@/features/jwt/jwt.controller.js';
 import { Error } from '@/error/index.js';
 import { hashPassword, comparePassword } from '@/util/password.js';
+import { logger } from '@/util/logger.js';
 
 // ============================================
 // ZOD SCHEMAS
@@ -99,10 +100,13 @@ class AuthControllerClass {
    */
   async login(req: Request, res: Response) {
     try {
+      logger.info('ℹ️ [AuthController.login] Processing login request...');
+      
       // Validate request body with Zod
       const parseResult = LoginSchema.safeParse(req.body);
       
       if (!parseResult.success) {
+        logger.warn('⚠️ [AuthController.login] Validation failed: missing credentials');
         return res.status(400).json({
           status: false,
           message: 'Username and Password are required',
@@ -111,11 +115,13 @@ class AuthControllerClass {
       }
 
       const { email, password } = parseResult.data;
+      logger.debug('🔍 [AuthController.login] Attempting login for email:', email);
 
       // Find user by email
       const user = await this.authRepository.getUserByEmail(email);
 
       if (!user) {
+        logger.warn('⚠️ [AuthController.login] User not found:', email);
         return res.status(401).json({
           success: false,
           message: Error.INVALID_CREDENTIALS,
@@ -125,6 +131,7 @@ class AuthControllerClass {
 
       // Check if user is active
       if (!user.isActive) {
+        logger.warn('⚠️ [AuthController.login] Account deactivated:', email);
         return res.status(403).json({
           success: false,
           message: 'Account is deactivated',
@@ -136,6 +143,7 @@ class AuthControllerClass {
       const isPasswordValid = await comparePassword(password, user.passwordHash);
       
       if (!isPasswordValid) {
+        logger.warn('⚠️ [AuthController.login] Invalid password for:', email);
         return res.status(401).json({
           success: false,
           message: Error.INVALID_CREDENTIALS,
@@ -149,6 +157,8 @@ class AuthControllerClass {
       const refreshToken = this.jwtController.generateRefreshToken(tokenPayload);
       const decodedToken = this.jwtController.verifyToken(accessToken);
 
+      logger.info('✅ [AuthController.login] Login successful for:', email);
+
       return res.status(200).json({
         success: true,
         message: 'Login successful',
@@ -159,7 +169,7 @@ class AuthControllerClass {
         },
       });
     } catch (error) {
-      console.error('Login error:', error);
+      logger.error('❌ [AuthController.login] Error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,
@@ -176,10 +186,13 @@ class AuthControllerClass {
    */
   async register(req: Request, res: Response) {
     try {
+      logger.info('ℹ️ [AuthController.register] Processing registration request...');
+      
       // Validate request body with Zod
       const parseResult = RegisterUserSchema.safeParse(req.body);
       
       if (!parseResult.success) {
+        logger.warn('⚠️ [AuthController.register] Validation failed:', parseResult.error.issues);
         return res.status(400).json({
           success: false,
           message: 'Validation failed',
@@ -192,11 +205,13 @@ class AuthControllerClass {
       }
 
       const { email, displayName, password, contactNo, roleId } = parseResult.data;
+      logger.debug('🔍 [AuthController.register] Registering user:', email);
 
       // Check if user already exists
       const existingUser = await this.authRepository.getUserByEmail(email);
       
       if (existingUser) {
+        logger.warn('⚠️ [AuthController.register] User already exists:', email);
         return res.status(409).json({
           success: false,
           message: Error.USER_ALREADY_EXISTS,
@@ -208,6 +223,7 @@ class AuthControllerClass {
       const role = await this.authRepository.getRoleById(roleId);
       
       if (!role) {
+        logger.warn('⚠️ [AuthController.register] Invalid role ID:', roleId);
         return res.status(400).json({
           success: false,
           message: 'Invalid role ID',
@@ -230,6 +246,8 @@ class AuthControllerClass {
 
       const newUser = await this.authRepository.createUser(userData);
 
+      logger.info('✅ [AuthController.register] User registered successfully:', email);
+
       return res.status(201).json({
         success: true,
         message: 'Registration successful',
@@ -240,7 +258,7 @@ class AuthControllerClass {
         },
       });
     } catch (error) {
-      console.error('Registration error:', error);
+      logger.error('❌ [AuthController.register] Error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,
@@ -257,12 +275,15 @@ class AuthControllerClass {
    */
   async getProfile(req: Request, res: Response) {
     try {
+      logger.info('ℹ️ [AuthController.getProfile] Fetching user profile...');
+      
       // Extract token from Authorization header
       const token = req.headers.authorization?.startsWith('Bearer ')
         ? req.headers.authorization.split(' ')[1]
         : null;
 
       if (!token) {
+        logger.warn('⚠️ [AuthController.getProfile] Token is required');
         return res.status(401).json({
           success: false,
           message: Error.TOKEN_IS_REQUIRED,
@@ -274,6 +295,7 @@ class AuthControllerClass {
       const user = await this.authRepository.getUserDataByToken(token);
 
       if (!user) {
+        logger.warn('⚠️ [AuthController.getProfile] User not found from token');
         return res.status(404).json({
           success: false,
           message: Error.USER_NOT_FOUND,
@@ -286,6 +308,8 @@ class AuthControllerClass {
 
       // Get role details
       const role = await this.authRepository.getRoleById(user.roleId);
+
+      logger.info('✅ [AuthController.getProfile] Profile fetched successfully for:', user.email);
 
       return res.status(200).json({
         success: true,
@@ -304,7 +328,7 @@ class AuthControllerClass {
         },
       });
     } catch (error) {
-      console.error('Get profile error:', error);
+      logger.error('❌ [AuthController.getProfile] Error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,
@@ -325,7 +349,11 @@ class AuthControllerClass {
    */
   async getRoles(req: Request, res: Response) {
     try {
+      logger.info('ℹ️ [AuthController.getRoles] Fetching all roles...');
+      
       const roles = await this.authRepository.getAllRoles();
+
+      logger.info('✅ [AuthController.getRoles] Roles fetched successfully, count:', roles.length);
 
       return res.status(200).json({
         success: true,
@@ -333,7 +361,7 @@ class AuthControllerClass {
         data: roles,
       });
     } catch (error) {
-      console.error('Get roles error:', error);
+      logger.error('❌ [AuthController.getRoles] Error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,
@@ -350,10 +378,13 @@ class AuthControllerClass {
    */
   async createRole(req: Request, res: Response) {
     try {
+      logger.info('ℹ️ [AuthController.createRole] Creating new role...');
+      
       // Validate request body with Zod
       const parseResult = CreateRoleSchema.safeParse(req.body);
       
       if (!parseResult.success) {
+        logger.warn('⚠️ [AuthController.createRole] Validation failed:', parseResult.error.issues);
         return res.status(400).json({
           success: false,
           message: 'Validation failed',
@@ -366,11 +397,13 @@ class AuthControllerClass {
       }
 
       const { roleName, permissionId, status } = parseResult.data;
+      logger.debug('🔍 [AuthController.createRole] Role name:', roleName);
 
       // Check if role already exists
       const existingRole = await this.authRepository.getRoleByName(roleName);
       
       if (existingRole) {
+        logger.warn('⚠️ [AuthController.createRole] Role already exists:', roleName);
         return res.status(409).json({
           success: false,
           message: Error.USER_ROLE_ALREADY_EXISTS,
@@ -389,13 +422,15 @@ class AuthControllerClass {
 
       const newRole = await this.authRepository.createRole(roleData);
 
+      logger.info('✅ [AuthController.createRole] Role created successfully:', roleName);
+
       return res.status(201).json({
         success: true,
         message: 'Role created successfully',
         data: newRole,
       });
     } catch (error) {
-      console.error('Create role error:', error);
+      logger.error('❌ [AuthController.createRole] Error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,
@@ -412,6 +447,8 @@ class AuthControllerClass {
    */
   async updateRole(req: Request, res: Response) {
     try {
+      logger.info('ℹ️ [AuthController.updateRole] Updating role...');
+      
       // Validate request body with Zod
       const parseResult = UpdateRoleSchema.safeParse({
         ...req.body,
@@ -419,6 +456,7 @@ class AuthControllerClass {
       });
       
       if (!parseResult.success) {
+        logger.warn('⚠️ [AuthController.updateRole] Validation failed:', parseResult.error.issues);
         return res.status(400).json({
           success: false,
           message: 'Validation failed',
@@ -431,11 +469,13 @@ class AuthControllerClass {
       }
 
       const { roleId, roleName, permissionId, status } = parseResult.data;
+      logger.debug('🔍 [AuthController.updateRole] Role ID:', roleId);
 
       // Check if role exists
       const existingRole = await this.authRepository.getRoleById(roleId);
       
       if (!existingRole) {
+        logger.warn('⚠️ [AuthController.updateRole] Role not found:', roleId);
         return res.status(404).json({
           success: false,
           message: 'Role not found',
@@ -447,6 +487,7 @@ class AuthControllerClass {
       if (roleName && roleName !== existingRole.roleName) {
         const conflictingRole = await this.authRepository.getRoleByName(roleName);
         if (conflictingRole) {
+          logger.warn('⚠️ [AuthController.updateRole] Role name conflict:', roleName);
           return res.status(409).json({
             success: false,
             message: Error.USER_ROLE_ALREADY_EXISTS,
@@ -465,13 +506,15 @@ class AuthControllerClass {
 
       const updatedRole = await this.authRepository.updateRole(roleId, updateData);
 
+      logger.info('✅ [AuthController.updateRole] Role updated successfully:', roleId);
+
       return res.status(200).json({
         success: true,
         message: 'Role updated successfully',
         data: updatedRole,
       });
     } catch (error) {
-      console.error('Update role error:', error);
+      logger.error('❌ [AuthController.updateRole] Error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,
@@ -492,7 +535,11 @@ class AuthControllerClass {
    */
   async getPermissions(req: Request, res: Response) {
     try {
+      logger.info('ℹ️ [AuthController.getPermissions] Fetching all permissions...');
+      
       const permissions = await this.authRepository.getAllPermissions();
+
+      logger.info('✅ [AuthController.getPermissions] Permissions fetched successfully, count:', permissions.length);
 
       return res.status(200).json({
         success: true,
@@ -500,7 +547,7 @@ class AuthControllerClass {
         data: permissions,
       });
     } catch (error) {
-      console.error('Get permissions error:', error);
+      logger.error('❌ [AuthController.getPermissions] Error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,
@@ -517,10 +564,13 @@ class AuthControllerClass {
    */
   async createPermission(req: Request, res: Response) {
     try {
+      logger.info('ℹ️ [AuthController.createPermission] Creating new permission...');
+      
       // Validate request body with Zod
       const parseResult = CreatePermissionSchema.safeParse(req.body);
       
       if (!parseResult.success) {
+        logger.warn('⚠️ [AuthController.createPermission] Validation failed:', parseResult.error.issues);
         return res.status(400).json({
           success: false,
           message: 'Validation failed',
@@ -533,11 +583,13 @@ class AuthControllerClass {
       }
 
       const { permissionName, status } = parseResult.data;
+      logger.debug('🔍 [AuthController.createPermission] Permission name:', permissionName);
 
       // Check if permission already exists
       const existingPermission = await this.authRepository.getPermissionByName(permissionName);
       
       if (existingPermission) {
+        logger.warn('⚠️ [AuthController.createPermission] Permission already exists:', permissionName);
         return res.status(409).json({
           success: false,
           message: Error.ROLE_PERMISSION_ALREADY_EXISTS,
@@ -555,13 +607,15 @@ class AuthControllerClass {
 
       const newPermission = await this.authRepository.createPermission(permissionData);
 
+      logger.info('✅ [AuthController.createPermission] Permission created successfully:', permissionName);
+
       return res.status(201).json({
         success: true,
         message: 'Permission created successfully',
         data: newPermission,
       });
     } catch (error) {
-      console.error('Create permission error:', error);
+      logger.error('❌ [AuthController.createPermission] Error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,
@@ -578,6 +632,8 @@ class AuthControllerClass {
    */
   async updatePermission(req: Request, res: Response) {
     try {
+      logger.info('ℹ️ [AuthController.updatePermission] Updating permission...');
+      
       // Validate request body with Zod
       const parseResult = UpdatePermissionSchema.safeParse({
         ...req.body,
@@ -585,6 +641,7 @@ class AuthControllerClass {
       });
       
       if (!parseResult.success) {
+        logger.warn('⚠️ [AuthController.updatePermission] Validation failed:', parseResult.error.issues);
         return res.status(400).json({
           success: false,
           message: 'Validation failed',
@@ -597,11 +654,13 @@ class AuthControllerClass {
       }
 
       const { permissionId, permissionName, status } = parseResult.data;
+      logger.debug('🔍 [AuthController.updatePermission] Permission ID:', permissionId);
 
       // Check if permission exists
       const existingPermission = await this.authRepository.getPermissionById(permissionId);
       
       if (!existingPermission) {
+        logger.warn('⚠️ [AuthController.updatePermission] Permission not found:', permissionId);
         return res.status(404).json({
           success: false,
           message: 'Permission not found',
@@ -613,6 +672,7 @@ class AuthControllerClass {
       if (permissionName && permissionName !== existingPermission.permissionName) {
         const conflictingPermission = await this.authRepository.getPermissionByName(permissionName);
         if (conflictingPermission) {
+          logger.warn('⚠️ [AuthController.updatePermission] Permission name conflict:', permissionName);
           return res.status(409).json({
             success: false,
             message: Error.ROLE_PERMISSION_ALREADY_EXISTS,
@@ -630,13 +690,15 @@ class AuthControllerClass {
 
       const updatedPermission = await this.authRepository.updatePermission(permissionId, updateData);
 
+      logger.info('✅ [AuthController.updatePermission] Permission updated successfully:', permissionId);
+
       return res.status(200).json({
         success: true,
         message: 'Permission updated successfully',
         data: updatedPermission,
       });
     } catch (error) {
-      console.error('Update permission error:', error);
+      logger.error('❌ [AuthController.updatePermission] Error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,

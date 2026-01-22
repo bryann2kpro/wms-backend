@@ -9,6 +9,7 @@ import { Request, Response } from 'express';
 import { db } from '@/db/index';
 import { test } from '@/db/db.model';
 import { Error } from '@/error/index.js';
+import { logger } from '@/util/logger.js';
 
 class HealthControllerClass {
   /**
@@ -19,6 +20,8 @@ class HealthControllerClass {
    * Used by load balancers and monitoring tools.
    */
   healthCheck(req: Request, res: Response): void {
+    logger.debug('🔍 [HealthController.healthCheck] Health check requested');
+    
     res.status(200).json({
       success: true,
       message: 'OK',
@@ -37,9 +40,13 @@ class HealthControllerClass {
    */
   async dbHealthCheck(req: Request, res: Response): Promise<void> {
     try {
+      logger.info('ℹ️ [HealthController.dbHealthCheck] Checking database connectivity...');
+      
       const startTime = Date.now();
       const result = await db.select().from(test);
       const responseTime = Date.now() - startTime;
+
+      logger.info('✅ [HealthController.dbHealthCheck] Database healthy, response time:', responseTime, 'ms');
 
       res.status(200).json({
         success: true,
@@ -52,7 +59,7 @@ class HealthControllerClass {
         }
       });
     } catch (error) {
-      console.error('DB Health Check error:', error);
+      logger.error('❌ [HealthController.dbHealthCheck] Database connection error:', error);
       res.status(500).json({
         success: false,
         message: Error.DATABASE_CONNECTION_ERROR,

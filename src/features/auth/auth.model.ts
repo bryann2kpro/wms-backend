@@ -31,8 +31,8 @@ export const UsersTable = MainSchema.table('users', {
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  createdBy: uuid('created_by'),
-  updatedBy: uuid('updated_by'),
+  createdBy: varchar('created_by', { length: 40 }),
+  updatedBy: varchar('updated_by', { length: 40 }),
 });
 
 /**
