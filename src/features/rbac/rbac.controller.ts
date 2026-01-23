@@ -852,11 +852,12 @@ class RbacControllerClass {
       }
 
       const updateSchema = z.object({
-        moduleId: z.uuid('Invalid module ID format').optional(),
-        permissionType: z.string().max(50).optional(),
+        moduleId: z.uuid('Invalid module ID format'),
+        permissionType: z.string().max(50),
         description: z.string().max(255).optional(),
         status: z.string().max(20).optional(),
         updatedBy: z.string().max(40).default('system'),
+        createdBy: z.string().max(40).default('system'),
       });
 
       const { success, data, error } = updateSchema.safeParse(req.body);
@@ -1114,7 +1115,7 @@ class RbacControllerClass {
 
       const updateSchema = z.object({
         permissionIds: z.array(z.uuid()),
-        updatedBy: z.string().max(40).default('system'),
+        updatedBy: z.string().max(40),
       });
 
       const { success, data, error } = updateSchema.safeParse(req.body);
@@ -1131,11 +1132,12 @@ class RbacControllerClass {
 
       const { roleId } = paramsResult.data;
 
-      const rolePermissions = await this.rbacRepository.syncRolePermissions(
-        roleId,
-        data.permissionIds,
-        data.updatedBy,
-        data.updatedBy
+      const rolePermissions = await this.rbacRepository.updateRolePermission(
+        {
+          permissionIds: data.permissionIds,
+          updatedBy: data.updatedBy,
+        },
+        roleId
       );
 
       logger.info('✅ [RbacController.updateRolePermission] Role permissions updated successfully');

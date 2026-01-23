@@ -5,6 +5,7 @@ import { UserType } from '@/features/auth/auth.model';
 import { RoleCode, ModuleName, PermissionTypeCode, ModuleType, PermissionType } from '@/features/rbac/rbac.model';
 import { logger } from '@/util/logger';
 import { authRepository, rbacRepository } from '@/composition-root';
+import { db } from '@/db';
 
 type CreateUserData = Omit<UserType, 'id' | 'createdAt' | 'updatedAt'>;
 
@@ -46,11 +47,11 @@ async function getOrCreatePermission(
   const existingPermissions = await rbacRepository.getPermission({
     moduleId,
     permissionType,
-  });
+  }, {});
   
-  if (existingPermissions.length > 0) {
+  if (existingPermissions.pagination.totalCount > 0) {
     logger.info(`✓ Permission "${permissionType}" already exists for module`);
-    return existingPermissions[0];
+    return existingPermissions.query[0];
   }
 
   const newPermission = await rbacRepository.createPermission({
@@ -117,16 +118,16 @@ async function initRbacModule(): Promise<void> {
   }
 
   // Get the Admin role and assign all RBAC permissions to it
-  const adminRole = await authRepository.getRoleByName(RoleCode.ADMIN);
+  const adminRole = await authRepository.getRoleByName(RoleCode.SUPER_ADMIN);
   
   if (adminRole) {
-    logger.info('🔐 Assigning RBAC permissions to Admin role...');
+    logger.info('🔐 Assigning RBAC permissions to Super Admin role...');
     for (const permission of createdPermissions) {
       await assignPermissionToRoleIfNeeded(adminRole.roleId, permission.permissionId);
     }
-    logger.info('✅ Admin role now has full RBAC permissions');
+    logger.info('✅ Super Admin role now has full RBAC permissions');
   } else {
-    logger.warn('⚠️ Admin role not found - please run initAdminUser first');
+    logger.warn('⚠️ Super Admin role not found - please run initAdminUser first');
   }
 
   // Also assign to Management role
@@ -364,6 +365,63 @@ async function initManagementUser(): Promise<void> {
   }
 }
 
+async function initSuperAdminUser(): Promise<void> {
+  const email = 'superadmin@smee.com.my';
+  const password = 'superadmin123';
+  
+  const existingUser = await authRepository.getUserByEmail(email);
+  
+  if (!existingUser) {
+    const roleId = await getOrCreateRole(RoleCode.SUPER_ADMIN);
+    const hashedPassword = await hashPassword(password);
+
+    const result = await db.transaction(async (tx) => {
+      let roleId = '';
+
+      // Check if SUPER ADMIN role exists
+      const superAdminRole = await authRepository.getRoleByName(RoleCode.SUPER_ADMIN);
+      if (!superAdminRole) {
+        const superAdminRole = await authRepository.createRole({
+          roleName: RoleCode.SUPER_ADMIN,
+          status: 'active',
+          createdBy: 'system',
+          updatedBy: 'system',
+        }, tx);
+        roleId = superAdminRole.roleId;
+      } else {
+        roleId = superAdminRole.roleId;
+      }
+
+      const user = await authRepository.createUser({
+        email,
+        displayName: 'Super Admin',
+        passwordHash: hashedPassword,
+        contactNo: '+60123567895',
+        isActive: true,
+      }, tx);
+
+      await authRepository.assignRoleToUser({
+        userId: user.id,
+        roleId,
+        status: 'active',
+        createdBy: 'system',
+        updatedBy: 'system',
+      }, tx);
+
+    });
+    
+    logger.info('✅ Super Admin user account created successfully!');
+    logger.info(`   Email: ${email}`);
+    logger.debug(`   Password: ${password}`);
+  } else {
+    logger.info('✓ Super Admin user account already exists');
+    
+    // Ensure role is assigned even if user exists
+    const roleId = await getOrCreateRole(RoleCode.SUPER_ADMIN);
+    await assignRoleToUserIfNeeded(existingUser.id, roleId);
+  }
+}
+
 /**
  * Main initialization function
  */
@@ -376,6 +434,8 @@ export async function initAccounts() {
     await initStorekeeperUser();
     await initLogisticUser();
     await initManagementUser();
+
+    await initSuperAdminUser();
     
     // Initialize RBAC modules and permissions
     await initRbacModule();

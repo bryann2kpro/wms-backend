@@ -1,5 +1,5 @@
 import { logger } from "@/util/logger";
-import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, UserRoleType, UserRoleFilter, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter, ModuleWithPermissionType, ModuleType, PaginationParams, PaginatedResponse, ModuleInsertType } from "./rbac.model";
+import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, UserRoleType, UserRoleFilter, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter, ModuleWithPermissionType, ModuleType, PaginationParams, PaginatedResponse, ModuleInsertType, RolePermissionUpdateType } from "./rbac.model";
 import { DbTransaction } from "@/types/db-transaction";
 import { db } from "@/db";
 import z from "zod";
@@ -559,19 +559,71 @@ class RbacRepositoryClass {
     }
 
     /**
-     * Updates an existing role permission in the database
-     * @param data - The role permission data to update
-     * @param id - The unique identifier of the role permission to update
+     * Syncs role permissions using diff approach - only deletes/inserts what's necessary
+     * @param data - Contains permissionIds array and updatedBy
+     * @param roleId - The role ID to update permissions for
      * @param tx - Optional transaction object for batch operations
-     * @returns The updated role permission object
+     * @returns Array of all current role permission records after sync
     */
-    async updateRolePermission(data: RolePermissionInsertType, id: string, tx?: DbTransaction): Promise<RolePermissionType> {
+    async updateRolePermission(data: RolePermissionUpdateType, roleId: string, tx?: DbTransaction): Promise<RolePermissionType[]> {
         try {
-            const dbClient = tx || db;
-            logger.info('ℹ️ [RbacRepository.updateRolePermission] Updating role permission...');
-            const [rolePermission] = await dbClient.update(RolePermission).set(data).where(eq(RolePermission.id, id)).returning();
-            logger.info('✅ [RbacRepository.updateRolePermission] Role permission updated successfully');
-            return rolePermission;
+            logger.info('ℹ️ [RbacRepository.updateRolePermission] Syncing role permissions...');
+            logger.debug('Data:', { roleId, permissionIds: data.permissionIds });
+
+            const result = await db.transaction(async (localTx) => {
+                const dbClient = tx || localTx;
+
+                // Step 1: Get existing permissions for this role
+                const existingPermissions = await dbClient
+                    .select({ permissionId: RolePermission.permissionId, id: RolePermission.id })
+                    .from(RolePermission)
+                    .where(eq(RolePermission.roleId, roleId));
+
+                const existingPermissionIds = existingPermissions.map(p => p.permissionId);
+                const newPermissionIds = data.permissionIds;
+
+                // Step 2: Find permissions to delete (exist in DB but not in new list)
+                const toDelete = existingPermissions
+                    .filter(p => !newPermissionIds.includes(p.permissionId))
+                    .map(p => p.id);
+
+                // Step 3: Find permissions to add (in new list but not in DB)
+                const toAdd = newPermissionIds.filter(id => !existingPermissionIds.includes(id));
+
+                logger.debug('Diff:', { existingCount: existingPermissionIds.length, toDelete: toDelete.length, toAdd: toAdd.length });
+
+                // Step 4: Delete removed permissions
+                if (toDelete.length > 0) {
+                    await dbClient
+                        .delete(RolePermission)
+                        .where(inArray(RolePermission.id, toDelete));
+                }
+
+                // Step 5: Insert new permissions
+                if (toAdd.length > 0) {
+                    await dbClient
+                        .insert(RolePermission)
+                        .values(
+                            toAdd.map((permissionId) => ({
+                                roleId,
+                                permissionId,
+                                createdBy: data.createdBy || data.updatedBy,
+                                updatedBy: data.updatedBy,
+                            }))
+                        );
+                }
+
+                // Step 6: Return all current permissions for this role
+                const currentPermissions = await dbClient
+                    .select()
+                    .from(RolePermission)
+                    .where(eq(RolePermission.roleId, roleId));
+
+                return currentPermissions;
+            });
+
+            logger.info('✅ [RbacRepository.updateRolePermission] Role permissions synced successfully, count:', result.length);
+            return result;
         } catch (error) {
             logger.error('❌ [RbacRepository.updateRolePermission] Error:', error);
             throw new Error("[RbacRepository.updateRolePermission] Error updating role permission");

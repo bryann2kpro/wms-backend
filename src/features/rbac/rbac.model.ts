@@ -190,7 +190,7 @@ export type RolePermissionType = typeof RolePermission.$inferSelect;
 export type RolePermissionInsertType = typeof RolePermission.$inferInsert;
 export type RolePermissionUpdateType = {
   permissionIds: string[];
-  createdBy: string;
+  createdBy?: string;
   updatedBy: string;
 };
 export type RolePermissionGroupType = {
@@ -251,6 +251,8 @@ export const RoleCode = {
   ADMIN: 'Admin',
   /** Management - approval (optional), access to overall reports */
   MANAGEMENT: 'Management',
+  /** Super Admin - full access to all modules and permissions */
+  SUPER_ADMIN: 'Super Admin',
 } as const;
 
 export type RoleCodeType = typeof RoleCode[keyof typeof RoleCode];
