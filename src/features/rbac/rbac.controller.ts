@@ -348,7 +348,7 @@ class RbacControllerClass {
         const role = await this.rbacRepository.createRole(roleData, tx);
 
         if (data.permissionIds.length > 0) {
-          await this.rbacRepository.createRolePermissions(
+          await this.rbacRepository.createRolePermission(
             data.permissionIds.map((permissionId) => ({
               roleId: role.roleId,
               permissionId,
@@ -444,11 +444,13 @@ class RbacControllerClass {
 
         // Sync role permissions if provided
         if (data.permissionIds !== undefined) {
-          await this.rbacRepository.syncRolePermissions(
-            roleId,
-            data.permissionIds,
-            data.updatedBy,
-            data.updatedBy,
+          await this.rbacRepository.createRolePermission(
+            data.permissionIds.map((permissionId) => ({
+              roleId: role.roleId,
+              permissionId,
+              createdBy: "system",
+              updatedBy: "system",
+            })),
             tx
           );
         }

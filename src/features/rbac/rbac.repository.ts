@@ -390,7 +390,7 @@ class RbacRepositoryClass {
             throw error;
         }
     }
-    
+
     // End of Module Operations
 
     // Start of Permission Operations
@@ -539,10 +539,14 @@ class RbacRepositoryClass {
      * @returns The created role permission object
     */
    
-    async createRolePermission(data: RolePermissionInsertType, tx?: DbTransaction): Promise<RolePermissionType> {
+    async createRolePermission(data: RolePermissionInsertType | RolePermissionInsertType[], tx?: DbTransaction): Promise<RolePermissionType> {
         try {
             const dbClient = tx || db;
             logger.info('ℹ️ [RbacRepository.createRolePermission] Creating role permission...');
+
+            if (!Array.isArray(data)) {
+                data = [data];
+            }
 
             const [rolePermission] = await dbClient.insert(RolePermission).values(data).returning();
 
