@@ -387,7 +387,6 @@ class RbacControllerClass {
    * @param roleId - The role ID to update
    * @body roleName - The new role name (optional)
    * @body status - The new status (optional)
-   * @body permissionIds - Array of permission IDs to assign (replaces existing)
    */
   async updateRole(req: Request, res: Response): Promise<void> {
     try {
@@ -412,7 +411,6 @@ class RbacControllerClass {
       const updateSchema = z.object({
         roleName: z.string().min(1).max(50).optional(),
         status: z.string().max(20).optional(),
-        permissionIds: z.array(z.uuid()).optional(),
         updatedBy: z.string().max(40).default('system'),
       });
 
@@ -443,17 +441,17 @@ class RbacControllerClass {
         );
 
         // Sync role permissions if provided
-        if (data.permissionIds !== undefined) {
-          await this.rbacRepository.createRolePermission(
-            data.permissionIds.map((permissionId) => ({
-              roleId: role.roleId,
-              permissionId,
-              createdBy: "system",
-              updatedBy: "system",
-            })),
-            tx
-          );
-        }
+        // if (data.permissionIds !== undefined) {
+        //   await this.rbacRepository.createRolePermission(
+        //     data.permissionIds.map((permissionId) => ({
+        //       roleId: role.roleId,
+        //       permissionId,
+        //       createdBy: "system",
+        //       updatedBy: "system",
+        //     })),
+        //     tx
+        //   );
+        // }
 
         return role;
       });
