@@ -4,6 +4,7 @@ import express from 'express';
 import { authRoutes } from '@/features/auth/index.js';
 import { healthRoutes } from '@/features/health/index.js';
 import { handleUpload } from '@/features/upload/index.js';
+import { rbacRoutes } from '@/features/rbac';
 
 const v1Router = express.Router();
 
@@ -11,6 +12,8 @@ const v1Router = express.Router();
 v1Router.use('/health', healthRoutes);
 
 v1Router.use('/auth', authRoutes);
+
+v1Router.use('/rbac', rbacRoutes);
 
 v1Router.use('/upload', handleUpload);
 

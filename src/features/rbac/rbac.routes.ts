@@ -61,7 +61,7 @@ router.get('/', rbacController.getAllUserAccess.bind(rbacController));
  * @query status - Filter by status
  * @returns Array of user roles
  */
-router.get('/user-role', requiredPermission(PermissionGroup.MANAGEMENT, 'read'), rbacController.getUserRole.bind(rbacController));
+router.get('/user-role', requiredPermission(PermissionGroup.ROLE, 'Read'), rbacController.getUserRole.bind(rbacController));
 
 /**
  * @route POST /rbac/user-role/create
@@ -71,7 +71,7 @@ router.get('/user-role', requiredPermission(PermissionGroup.MANAGEMENT, 'read'),
  * @body status - Status (default: 'active')
  * @returns Created user role object
  */
-router.post('/user-role/create', requiredPermission(PermissionGroup.MANAGEMENT, 'create'), auditTrailMiddleware(AuditTrailAction.CREATE), rbacController.createUserRole.bind(rbacController));
+router.post('/user-role/create', requiredPermission(PermissionGroup.ROLE, 'create'), auditTrailMiddleware(AuditTrailAction.CREATE), rbacController.createUserRole.bind(rbacController));
 
 /**
  * @route PUT /rbac/user-role/update/:userRoleId
@@ -81,7 +81,7 @@ router.post('/user-role/create', requiredPermission(PermissionGroup.MANAGEMENT, 
  * @body status - New status (optional)
  * @returns Updated user role object
  */
-router.put('/user-role/update/:userRoleId', requiredPermission(PermissionGroup.MANAGEMENT, 'update'), auditTrailMiddleware(AuditTrailAction.UPDATE), rbacController.updateUserRole.bind(rbacController));
+router.put('/user-role/update/:userRoleId', requiredPermission(PermissionGroup.ROLE, 'update'), auditTrailMiddleware(AuditTrailAction.UPDATE), rbacController.updateUserRole.bind(rbacController));
 
 // ============================================
 // ROLE ROUTES
@@ -95,7 +95,7 @@ router.put('/user-role/update/:userRoleId', requiredPermission(PermissionGroup.M
  * @query status - Filter by status
  * @returns Array of roles
  */
-router.get('/roles', requiredPermission(PermissionGroup.MANAGEMENT, 'read'), rbacController.getAllRoles.bind(rbacController));
+router.get('/roles', requiredPermission(PermissionGroup.ROLE, 'Read'), rbacController.getAllRoles.bind(rbacController));
 
 /**
  * @route POST /rbac/roles/create
@@ -105,7 +105,7 @@ router.get('/roles', requiredPermission(PermissionGroup.MANAGEMENT, 'read'), rba
  * @body permissionIds - Array of permission IDs (optional)
  * @returns Created role object
  */
-router.post('/roles/create', requiredPermission(PermissionGroup.MANAGEMENT, 'create'), auditTrailMiddleware(AuditTrailAction.CREATE), rbacController.createRole.bind(rbacController));
+router.post('/roles/create', requiredPermission(PermissionGroup.ROLE, 'create'), auditTrailMiddleware(AuditTrailAction.CREATE), rbacController.createRole.bind(rbacController));
 
 /**
  * @route PUT /rbac/roles/update/:roleId
@@ -116,7 +116,7 @@ router.post('/roles/create', requiredPermission(PermissionGroup.MANAGEMENT, 'cre
  * @body permissionIds - Array of permission IDs (optional, replaces existing)
  * @returns Updated role object with permission IDs
  */
-router.put('/roles/update/:roleId', requiredPermission(PermissionGroup.MANAGEMENT, 'update'), auditTrailMiddleware(AuditTrailAction.UPDATE), rbacController.updateRole.bind(rbacController));
+router.put('/roles/update/:roleId', requiredPermission(PermissionGroup.ROLE, 'update'), auditTrailMiddleware(AuditTrailAction.UPDATE), rbacController.updateRole.bind(rbacController));
 
 // ============================================
 // MODULE ROUTES
@@ -130,7 +130,7 @@ router.put('/roles/update/:roleId', requiredPermission(PermissionGroup.MANAGEMEN
  * @query status - Filter by status
  * @returns Array of modules with permissions
  */
-router.get('/modules', requiredPermission(PermissionGroup.MANAGEMENT, 'read'), rbacController.getModule.bind(rbacController));
+router.get('/modules', requiredPermission(PermissionGroup.ROLE, 'Read'), rbacController.getModule.bind(rbacController));
 
 // ============================================
 // PERMISSION ROUTES
@@ -145,7 +145,7 @@ router.get('/modules', requiredPermission(PermissionGroup.MANAGEMENT, 'read'), r
  * @query status - Filter by status
  * @returns Array of permissions
  */
-router.get('/permissions', requiredPermission(PermissionGroup.MANAGEMENT, 'read'), rbacController.getAllPermissions.bind(rbacController));
+router.get('/permissions', requiredPermission(PermissionGroup.ROLE, 'Read'), rbacController.getAllPermissions.bind(rbacController));
 
 /**
  * @route POST /rbac/permissions/create
@@ -156,7 +156,7 @@ router.get('/permissions', requiredPermission(PermissionGroup.MANAGEMENT, 'read'
  * @body status - Status (default: 'active')
  * @returns Created permission object
  */
-router.post('/permissions/create', requiredPermission(PermissionGroup.MANAGEMENT, 'create'), auditTrailMiddleware(AuditTrailAction.CREATE), rbacController.createPermission.bind(rbacController));
+router.post('/permissions/create', requiredPermission(PermissionGroup.ROLE, 'create'), auditTrailMiddleware(AuditTrailAction.CREATE), rbacController.createPermission.bind(rbacController));
 
 /**
  * @route PUT /rbac/permissions/update/:permissionId
@@ -168,7 +168,7 @@ router.post('/permissions/create', requiredPermission(PermissionGroup.MANAGEMENT
  * @body status - New status (optional)
  * @returns Updated permission object
  */
-router.put('/permissions/update/:permissionId', requiredPermission(PermissionGroup.MANAGEMENT, 'update'), auditTrailMiddleware(AuditTrailAction.UPDATE), rbacController.updatePermission.bind(rbacController));
+router.put('/permissions/update/:permissionId', requiredPermission(PermissionGroup.ROLE, 'update'), auditTrailMiddleware(AuditTrailAction.UPDATE), rbacController.updatePermission.bind(rbacController));
 
 // ============================================
 // ROLE PERMISSION ROUTES
@@ -181,7 +181,7 @@ router.put('/permissions/update/:permissionId', requiredPermission(PermissionGro
  * @query permissionId - Filter by permission ID
  * @returns Array of modules with permission status for the role
  */
-router.get('/role-permission', requiredPermission(PermissionGroup.MANAGEMENT, 'read'), rbacController.getRolePermission.bind(rbacController));
+router.get('/role-permission', requiredPermission(PermissionGroup.ROLE, 'Read'), rbacController.getRolePermission.bind(rbacController));
 
 /**
  * @route POST /rbac/role-permission/create
@@ -190,7 +190,7 @@ router.get('/role-permission', requiredPermission(PermissionGroup.MANAGEMENT, 'r
  * @body permissionId - Permission ID
  * @returns Created role permission object
  */
-router.post('/role-permission/create', requiredPermission(PermissionGroup.MANAGEMENT, 'create'), auditTrailMiddleware(AuditTrailAction.CREATE), rbacController.createRolePermission.bind(rbacController));
+router.post('/role-permission/create', requiredPermission(PermissionGroup.ROLE, 'create'), auditTrailMiddleware(AuditTrailAction.CREATE), rbacController.createRolePermission.bind(rbacController));
 
 /**
  * @route PUT /rbac/role-permission/update/:roleId
@@ -199,6 +199,6 @@ router.post('/role-permission/create', requiredPermission(PermissionGroup.MANAGE
  * @body permissionIds - Array of permission IDs to assign (replaces existing)
  * @returns Array of updated role permissions
  */
-router.put('/role-permission/update/:roleId', requiredPermission(PermissionGroup.MANAGEMENT, 'update'), auditTrailMiddleware(AuditTrailAction.UPDATE), rbacController.updateRolePermission.bind(rbacController));
+router.put('/role-permission/update/:roleId', requiredPermission(PermissionGroup.ROLE, 'update'), auditTrailMiddleware(AuditTrailAction.UPDATE), rbacController.updateRolePermission.bind(rbacController));
 
 export default router;

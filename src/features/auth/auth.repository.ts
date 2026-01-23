@@ -35,6 +35,7 @@ import type { ExtractTablesWithRelations } from 'drizzle-orm';
 import { JwtControllerClass } from '@/features/jwt/jwt.controller.js';
 import { logger } from '@/util/logger.js';
 import { DbTransaction } from '@/types/db-transaction.js';
+import { UserRoleWithPermissionType } from '../rbac/rbac.repository.js';
 
 export class AuthRepositoryClass {
   constructor(private jwtController: JwtControllerClass) {}
@@ -155,7 +156,7 @@ export class AuthRepositoryClass {
   /**
    * Get user's roles
    */
-  async getUserRoles(userId: string): Promise<Array<RoleType & { userRoleId: string }>> {
+  async getUserRoles(userId: string | string[]): Promise<Array<RoleType & { userRoleId: string }>> {
     try {
       const results = await db
         .select({
@@ -171,16 +172,51 @@ export class AuthRepositoryClass {
         .from(UserRole)
         .innerJoin(Role, eq(UserRole.roleId, Role.roleId))
         .where(and(
-          eq(UserRole.userId, userId),
+          Array.isArray(userId) ? inArray(UserRole.userId, userId as string[]) : eq(UserRole.userId, userId as string),
           eq(UserRole.status, 'active')
         ));
-
-      console.log("User ID", userId)
-      console.log("Results", results)
       
       return results;
     } catch (error) {
       logger.error('❌ [AuthRepository.getUserRoles] Error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get user role with permission
+   */
+  async getUserRoleWithPermission(userId: string): Promise<UserRoleWithPermissionType[]> {
+    try {
+      logger.info('ℹ️ [AuthRepository.getUserRoleWithPermission] Getting user role with permission...');
+      const results = await db
+        .select({
+          id: UserRole.id,
+          userId: UserRole.userId,
+          roleId: UserRole.roleId,
+          roleName: Role.roleName,
+          status: UserRole.status,
+          permissionId: RolePermission.permissionId,
+          permissionType: Permission.permissionType,
+          moduleId: Permission.moduleId,
+          moduleName: Module.moduleName,
+        })
+        .from(UserRole)
+        .innerJoin(Role, eq(UserRole.roleId, Role.roleId))
+        .innerJoin(RolePermission, eq(UserRole.roleId, RolePermission.roleId))
+        .innerJoin(Permission, eq(RolePermission.permissionId, Permission.permissionId))
+        .innerJoin(Module, eq(Permission.moduleId, Module.moduleId))
+        .where(and(
+          eq(UserRole.userId, userId),
+          eq(UserRole.status, 'active')
+        ))
+        .orderBy(Module.moduleName);
+      
+      logger.info('✅ [AuthRepository.getUserRoleWithPermission] User role with permission fetched successfully');
+
+      return results;
+    } catch (error) {
+      logger.error('❌ [AuthRepository.getUserRoleWithPermission] Error:', error);
       return [];
     }
   }
@@ -607,6 +643,7 @@ export class AuthRepositoryClass {
    */
   async getUserPermissions(userId: string): Promise<RolePermissionGroupType[]> {
     try {
+      logger.info('ℹ️ [AuthRepository.getUserPermissions] Getting user permissions...');
       const results = await db
         .select({
           id: RolePermission.id,
@@ -625,6 +662,7 @@ export class AuthRepositoryClass {
           eq(UserRole.status, 'active')
         ));
       
+      logger.info('✅ [AuthRepository.getUserPermissions] User permissions fetched successfully');
       return results;
     } catch (error) {
       logger.error('❌ [AuthRepository.getUserPermissions] Error:', error);

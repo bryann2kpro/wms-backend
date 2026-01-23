@@ -6,7 +6,11 @@ export const requiredPermission = (moduleName: string, permission: string) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     const permissionGranted = await hasPermission(req, moduleName, permission);
     if (!permissionGranted) {
-      return res.status(403).json({ message: Error.FORBIDDEN });
+      return res.status(403).json({
+        success: false,
+        message: Error.FORBIDDEN,
+        data: null,
+      });
     }
     next();
   }
@@ -25,9 +29,16 @@ export const hasPermission = async (req: Request, moduleName: string, permission
     return false;
   }
 
-  const userRoleWithPermission = await authRepository.getUserRoles(user.id);
+  const userRoleWithPermission = await authRepository.getUserRoleWithPermission(user.id);
 
-  return userRoleWithPermission.some((role: any) => 
-    role.moduleName === moduleName && role.permissionType === permission
+  return userRoleWithPermission.some((role) => {
+    console.log("--------------------------------");
+    console.log("Role Module Name:", role.moduleName);
+    console.log("Module Name:", moduleName);
+    console.log("Role Permission Type:", role.permissionType);
+    console.log("Permission Type:", permission);  
+    console.log("--------------------------------");
+    return role.moduleName === moduleName && role.permissionType === permission
+  }
   );
 }

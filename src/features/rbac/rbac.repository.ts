@@ -1,5 +1,5 @@
 import { logger } from "@/util/logger";
-import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, UserRoleType, UserRoleFilter, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter, ModuleWithPermissionType } from "./rbac.model";
+import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, UserRoleType, UserRoleFilter, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter, ModuleWithPermissionType, ModuleType } from "./rbac.model";
 import { DbTransaction } from "@/types/db-transaction";
 import { db } from "@/db";
 import z from "zod";
@@ -270,7 +270,7 @@ class RbacRepositoryClass {
      * @param tx - Optional transaction object for batch operations
      * @returns The updated role object
     */
-    async updateRole(data: RoleInsertType, id: string, tx?: DbTransaction): Promise<RoleType> {
+    async updateRole(data: Partial<RoleInsertType>, id: string, tx?: DbTransaction): Promise<RoleType> {
         try {
             const dbClient = tx || db;
             logger.info('ℹ️ [RbacRepository.updateRole] Updating role...');
@@ -514,6 +514,22 @@ class RbacRepositoryClass {
             throw new Error("[RbacRepository.updateRolePermission] Error updating role permission");
         }
     }
+
+
+    // End of Role Permission Operations
+
+    async getModuleByName(moduleName: string): Promise<ModuleType> {
+        try {
+            logger.info('ℹ️ [RbacRepository.getModuleByName] Getting module by name...');
+            const [module] = await db.select().from(Module).where(eq(Module.moduleName, moduleName));
+            logger.info('✅ [RbacRepository.getModuleByName] Module fetched successfully');
+            return module;
+        } catch (error) {
+            logger.error('❌ [RbacRepository.getModuleByName] Error:', error);
+            throw error;
+        }
+    }
+
 }
 
 export { RbacRepositoryClass };

@@ -2,11 +2,146 @@ import 'dotenv/config';
 
 import { hashPassword } from '@/util/password-checker';
 import { UserType } from '@/features/auth/auth.model';
-import { RoleCode } from '@/features/rbac/rbac.model';
+import { RoleCode, ModuleName, PermissionTypeCode, ModuleType, PermissionType } from '@/features/rbac/rbac.model';
 import { logger } from '@/util/logger';
-import { authRepository } from '@/composition-root';
+import { authRepository, rbacRepository } from '@/composition-root';
 
 type CreateUserData = Omit<UserType, 'id' | 'createdAt' | 'updatedAt'>;
+
+// ============================================
+// RBAC MODULE INITIALIZATION
+// ============================================
+
+/**
+ * Get or create a module by name, returns the module
+ */
+async function getOrCreateModule(moduleName: string): Promise<ModuleType> {
+  const existingModule = await rbacRepository.getModuleByName(moduleName);
+  
+  if (existingModule) {
+    logger.info(`✓ Module "${moduleName}" already exists`);
+    return existingModule;
+  }
+
+  const newModule = await rbacRepository.createModule({
+    moduleName,
+    status: 'active',
+    createdBy: 'system',
+    updatedBy: 'system'
+  });
+
+  logger.info(`✅ Module "${moduleName}" created successfully`);
+  return newModule;
+}
+
+/**
+ * Get or create a permission for a module
+ */
+async function getOrCreatePermission(
+  moduleId: string, 
+  permissionType: string, 
+  description: string
+): Promise<PermissionType> {
+  // Check if permission exists
+  const existingPermissions = await rbacRepository.getPermission({
+    moduleId,
+    permissionType,
+  });
+  
+  if (existingPermissions.length > 0) {
+    logger.info(`✓ Permission "${permissionType}" already exists for module`);
+    return existingPermissions[0];
+  }
+
+  const newPermission = await rbacRepository.createPermission({
+    moduleId,
+    permissionType,
+    description,
+    status: 'active',
+    createdBy: 'system',
+    updatedBy: 'system'
+  });
+
+  logger.info(`✅ Permission "${permissionType}" created successfully`);
+  return newPermission;
+}
+
+/**
+ * Assign permission to role if not already assigned
+ */
+async function assignPermissionToRoleIfNeeded(roleId: string, permissionId: string): Promise<void> {
+  try {
+    const existingRolePermissions = await rbacRepository.getRolePermission({ roleId, permissionId });
+    
+    if (existingRolePermissions.length > 0) {
+      logger.info(`✓ Permission already assigned to role`);
+      return;
+    }
+
+    await rbacRepository.createRolePermission({
+      roleId,
+      permissionId,
+      createdBy: 'system',
+      updatedBy: 'system',
+    });
+    
+    logger.info(`✅ Permission assigned to role successfully`);
+  } catch (error) {
+    logger.error('❌ Error assigning permission to role:', error);
+    throw error;
+  }
+}
+
+/**
+ * Initialize RBAC module with basic permissions
+ */
+async function initRbacModule(): Promise<void> {
+  logger.info('📦 Initializing RBAC module...');
+  
+  // Create RBAC module (for Role management)
+  const rbacModule = await getOrCreateModule(ModuleName.ROLE);
+  
+  // Create basic CRUD permissions for RBAC
+  const permissions = [
+    { type: PermissionTypeCode.VIEW, desc: 'View roles and permissions' },
+    { type: PermissionTypeCode.CREATE, desc: 'Create new roles' },
+    { type: PermissionTypeCode.UPDATE, desc: 'Update existing roles' },
+    { type: PermissionTypeCode.DELETE, desc: 'Delete roles' },
+  ];
+
+  const createdPermissions: PermissionType[] = [];
+  
+  for (const perm of permissions) {
+    const permission = await getOrCreatePermission(rbacModule.moduleId, perm.type, perm.desc);
+    createdPermissions.push(permission);
+  }
+
+  // Get the Admin role and assign all RBAC permissions to it
+  const adminRole = await authRepository.getRoleByName(RoleCode.ADMIN);
+  
+  if (adminRole) {
+    logger.info('🔐 Assigning RBAC permissions to Admin role...');
+    for (const permission of createdPermissions) {
+      await assignPermissionToRoleIfNeeded(adminRole.roleId, permission.permissionId);
+    }
+    logger.info('✅ Admin role now has full RBAC permissions');
+  } else {
+    logger.warn('⚠️ Admin role not found - please run initAdminUser first');
+  }
+
+  // Also assign to Management role
+  const managementRole = await authRepository.getRoleByName(RoleCode.MANAGEMENT);
+  
+  if (managementRole) {
+    logger.info('🔐 Assigning RBAC permissions to Management role...');
+    for (const permission of createdPermissions) {
+      await assignPermissionToRoleIfNeeded(managementRole.roleId, permission.permissionId);
+    }
+    logger.info('✅ Management role now has full RBAC permissions');
+  }
+
+  logger.info('✅ RBAC module initialization complete!');
+}
 
 /**
  * Create a user account
@@ -236,11 +371,14 @@ export async function initAccounts() {
   try {
     logger.info('🚀 Starting accounts initialization...');
     
+    // Initialize users and roles first
     await initAdminUser();
-    // Uncomment these to create additional test users:
     await initStorekeeperUser();
     await initLogisticUser();
     await initManagementUser();
+    
+    // Initialize RBAC modules and permissions
+    await initRbacModule();
     
     logger.info('✅ Accounts initialization complete!');
   } catch (error) {

@@ -298,9 +298,7 @@ export type PermissionTypeCodeType = typeof PermissionTypeCode[keyof typeof Perm
  * Permission Group Enum
  * @description Groups for categorizing permissions (for UI display)
  */
+
 export enum PermissionGroup {
-  STOREKEEPER = 'Storekeeper',
-  LOGISTIC = 'Logistic',
-  ADMIN = 'Admin',
-  MANAGEMENT = 'Management',
+  ROLE = 'Role',
 }

@@ -76,7 +76,7 @@ class RbacControllerClass {
         userId: z.uuid().optional(),
         roleId: z.uuid().optional(),
         status: z.string().max(20).optional(),
-      });
+      }).default({});
 
       const { success, data: filter, error } = filterSchema.safeParse(req.query);
 
