@@ -2,6 +2,7 @@ import 'dotenv/config';
 
 import { hashPassword } from '@/util/password-checker';
 import { UserType } from '@/features/auth/auth.model';
+import { RoleCode } from '@/features/rbac/rbac.model';
 import { logger } from '@/util/logger';
 import { authRepository } from '@/composition-root';
 
@@ -35,14 +36,43 @@ async function getOrCreateRole(roleName: string): Promise<string> {
   // Create the role if it doesn't exist
   const newRole = await authRepository.createRole({
     roleName,
-    permissionId: null,
-    status: 'ACTIVE',
+    status: 'active',
     createdBy: 'system',
     updatedBy: 'system'
   });
 
   logger.info(`✅ Role "${roleName}" created successfully`);
-  return newRole.roleId!;
+  return newRole.roleId;
+}
+
+/**
+ * Assign role to user if not already assigned
+ */
+async function assignRoleToUserIfNeeded(userId: string, roleId: string): Promise<void> {
+  try {
+    // Check if user already has this role
+    const userRoles = await authRepository.getUserRoles(userId);
+    const hasRole = userRoles.some(r => r.roleId === roleId);
+    
+    if (hasRole) {
+      logger.info(`✓ User already has the role assigned`);
+      return;
+    }
+
+    // Assign the role
+    await authRepository.assignRoleToUser({
+      userId,
+      roleId,
+      status: 'active',
+      createdBy: 'system',
+      updatedBy: 'system',
+    });
+    
+    logger.info(`✅ Role assigned to user successfully`);
+  } catch (error) {
+    logger.error('❌ Error assigning role to user:', error);
+    throw error;
+  }
 }
 
 /**
@@ -56,24 +86,32 @@ async function initAdminUser(): Promise<void> {
   
   if (!existingAdminUser) {
     // Get or create the ADMIN role first
-    const adminRoleId = await getOrCreateRole('ADMIN');
+    const adminRoleId = await getOrCreateRole(RoleCode.ADMIN);
     
     const hashedPassword = await hashPassword(password);
 
-    await createUser({
+    const user = await createUser({
       email,
       displayName: 'Admin',
       passwordHash: hashedPassword,
       contactNo: '+60123567891',
-      roleId: adminRoleId,
       isActive: true,
+      createdBy: 'system',
+      updatedBy: 'system',
     });
+
+    // Assign role to user via junction table
+    await assignRoleToUserIfNeeded(user.id, adminRoleId);
     
     logger.info('✅ Admin user account created successfully!');
     logger.info(`   Email: ${email}`);
     logger.debug(`   Password: ${password}`);
   } else {
     logger.info('✓ Admin user account already exists');
+    
+    // Ensure role is assigned even if user exists
+    const adminRoleId = await getOrCreateRole(RoleCode.ADMIN);
+    await assignRoleToUserIfNeeded(existingAdminUser.id, adminRoleId);
   }
 }
 
@@ -87,25 +125,31 @@ async function initStorekeeperUser(): Promise<void> {
   const existingUser = await authRepository.getUserByEmail(email);
   
   if (!existingUser) {
-    const roleId = await getOrCreateRole('STOREKEEPER');
+    const roleId = await getOrCreateRole(RoleCode.STOREKEEPER);
     const hashedPassword = await hashPassword(password);
 
-    await createUser({
+    const user = await createUser({
       email,
       displayName: 'Storekeeper',
       passwordHash: hashedPassword,
       contactNo: '+60123567892',
-      roleId,
       isActive: true,
       createdBy: 'system',
       updatedBy: 'system',
     });
+
+    // Assign role to user via junction table
+    await assignRoleToUserIfNeeded(user.id, roleId);
     
     logger.info('✅ Storekeeper user account created successfully!');
     logger.info(`   Email: ${email}`);
     logger.debug(`   Password: ${password}`);
   } else {
     logger.info('✓ Storekeeper user account already exists');
+    
+    // Ensure role is assigned even if user exists
+    const roleId = await getOrCreateRole(RoleCode.STOREKEEPER);
+    await assignRoleToUserIfNeeded(existingUser.id, roleId);
   }
 }
 
@@ -119,23 +163,31 @@ async function initLogisticUser(): Promise<void> {
   const existingUser = await authRepository.getUserByEmail(email);
   
   if (!existingUser) {
-    const roleId = await getOrCreateRole('LOGISTIC');
+    const roleId = await getOrCreateRole(RoleCode.LOGISTIC);
     const hashedPassword = await hashPassword(password);
 
-    await createUser({
+    const user = await createUser({
       email,
       displayName: 'Driver',
       passwordHash: hashedPassword,
       contactNo: '+60123567893',
-      roleId,
       isActive: true,
+      createdBy: 'system',
+      updatedBy: 'system',
     });
+
+    // Assign role to user via junction table
+    await assignRoleToUserIfNeeded(user.id, roleId);
     
     logger.info('✅ Logistic user account created successfully!');
     logger.info(`   Email: ${email}`);
     logger.debug(`   Password: ${password}`);
   } else {
     logger.info('✓ Logistic user account already exists');
+    
+    // Ensure role is assigned even if user exists
+    const roleId = await getOrCreateRole(RoleCode.LOGISTIC);
+    await assignRoleToUserIfNeeded(existingUser.id, roleId);
   }
 }
 
@@ -149,25 +201,31 @@ async function initManagementUser(): Promise<void> {
   const existingUser = await authRepository.getUserByEmail(email);
   
   if (!existingUser) {
-    const roleId = await getOrCreateRole('MANAGEMENT');
+    const roleId = await getOrCreateRole(RoleCode.MANAGEMENT);
     const hashedPassword = await hashPassword(password);
 
-    await createUser({
+    const user = await createUser({
       email,
       displayName: 'Management',
       passwordHash: hashedPassword,
       contactNo: '+60123567894',
-      roleId,
       isActive: true,
       createdBy: 'system',
       updatedBy: 'system',
     });
+
+    // Assign role to user via junction table
+    await assignRoleToUserIfNeeded(user.id, roleId);
     
     logger.info('✅ Management user account created successfully!');
     logger.info(`   Email: ${email}`);
     logger.debug(`   Password: ${password}`);
   } else {
     logger.info('✓ Management user account already exists');
+    
+    // Ensure role is assigned even if user exists
+    const roleId = await getOrCreateRole(RoleCode.MANAGEMENT);
+    await assignRoleToUserIfNeeded(existingUser.id, roleId);
   }
 }
 
@@ -190,4 +248,3 @@ export async function initAccounts() {
     throw error;
   }
 }
-

@@ -11,6 +11,9 @@
 
 import { Router } from 'express';
 import { rbacController } from '@/composition-root.js';
+import { requiredPermission } from '@/middlewares/permission';
+import { PermissionGroup } from './rbac.model';
+import { AuditTrailAction, auditTrailMiddleware } from '@/middlewares/audit-trail';
 
 const router = Router();
 
@@ -27,6 +30,8 @@ router.get('/', rbacController.getAllUserAccess.bind(rbacController));
  * @returns Array of roles
  */
 router.get('/roles', rbacController.getAllRoles.bind(rbacController));
+
+router.post('/roles/create', requiredPermission(PermissionGroup.MANAGEMENT, 'create'), auditTrailMiddleware(AuditTrailAction.UPDATE), rbacController.createRole.bind(rbacController));
 
 /**
  * @route GET /rbac/permissions

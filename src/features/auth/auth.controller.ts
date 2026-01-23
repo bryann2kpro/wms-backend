@@ -31,7 +31,7 @@ import { db } from '@/db/index.js';
  * Login request schema
  */
 const LoginSchema = z.object({
-  email: z.email('Invalid email format'),
+  username: z.email('Invalid email format'),
   password: z.string().min(1, 'Password is required'),
 });
 
@@ -122,7 +122,7 @@ class AuthControllerClass {
         });
       }
 
-      const { email, password } = parseResult.data;
+      const { username: email, password } = parseResult.data;
       logger.debug('🔍 [AuthController.login] Attempting login for:', email);
 
       const user = await this.authRepository.getUserByEmail(email);

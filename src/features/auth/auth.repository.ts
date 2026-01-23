@@ -174,6 +174,9 @@ export class AuthRepositoryClass {
           eq(UserRole.userId, userId),
           eq(UserRole.status, 'active')
         ));
+
+      console.log("User ID", userId)
+      console.log("Results", results)
       
       return results;
     } catch (error) {
