@@ -1,12 +1,188 @@
 import { logger } from "@/util/logger";
-import { Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType } from "./rbac.model";
+import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter } from "./rbac.model";
 import { DbTransaction } from "@/types/db-transaction";
 import { db } from "@/db";
+import z from "zod";
+import { eq, and, like, inArray } from "drizzle-orm";
+
+// Filter schema for RBAC
+export const rbacFilter = z.object({
+  roleId: z.string().optional(),
+  roleName: z.string().optional(),
+  memberId: z.string().optional(),
+  moduleId: z.string().optional(),
+  memberName: z.string().optional(),
+  status: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  excludeMemberId: z.string().optional(),
+  pageSize: z.string().optional(),
+  pageNumber: z.string().optional(),
+  sortBy: z.string().optional(),
+  sortOrder: z.string().optional(),
+  searchMemberName: z.string().optional(),
+  approvalStatus: z.string().optional()
+});
+
+export type RbacFilter = z.infer<typeof rbacFilter>;
+
+export type UserRoleWithPermissionType = {
+    id: string;
+    userId: string;
+    roleId: string;
+    roleName: string;
+    status: string;
+    permissionId: string;
+    permissionType: string;
+    moduleId: string;
+    moduleName: string;
+}
 
 class RbacRepositoryClass {
     constructor() {}
 
+    /* Get User Role is at auth  */
 
+    /* 
+        TODO: 
+        // User Role Operations
+(Done) getUserRoleWithPermission - get user role with permission 
+(Done) createUserRole - create user role
+(Done) updateUserRole - update user role
+        // Role Operations
+(Done) getRole - Get All data from role table
+(Done) createRole - create role
+(Done) updateRole - Updates an existing role in the database
+        // Module Operations
+(Done) getModule - Get All data from module table
+(Done) createModule - create module
+(Done) updateModule - update module
+        // Permission Operations
+(Done) getPermission - Get All data from permission table
+(Done) createPermission - create permission
+(Done) updatePermission - update permission
+        // Role Permission Operations
+(Done) getRolePermission - Get All data from role permission table
+(Done) createRolePermission - create role permission
+(Done) updateRolePermission - update role permission
+    */
+
+    async getUserRoleWithPermission(userId: string): Promise<UserRoleWithPermissionType[]> {
+        try {
+            logger.info('ℹ️ [RbacRepository.getUserRoleWithPermission] Getting user role with permission...');
+            const userRole = 
+                await db
+                    .select({
+                        id: UserRole.id,
+                        userId: UserRole.userId,
+                        roleId: UserRole.roleId,
+                        roleName: Role.roleName,
+                        status: UserRole.status,
+                        permissionId: RolePermission.permissionId,
+                        permissionType: Permission.permissionType,
+                        moduleId: Permission.moduleId,
+                        moduleName: Module.moduleName,
+                    })
+                    .from(UserRole)
+                    .innerJoin(Role, eq(UserRole.roleId, Role.roleId))
+                    .innerJoin(RolePermission, eq(UserRole.roleId, RolePermission.roleId))
+                    .innerJoin(Permission, eq(RolePermission.permissionId, Permission.permissionId))
+                    .innerJoin(Module, eq(Permission.moduleId, Module.moduleId))
+                    .where(
+                        and(
+                            eq(UserRole.status, 'active'),
+                            eq(UserRole.userId, userId)
+                        )
+                    )
+                    .orderBy(Module.moduleName);
+
+            logger.info('✅ [RbacRepository.getUserRoleWithPermission] User role with permission fetched successfully');
+            return userRole;
+        } catch (error) {
+            logger.error('❌ [RbacRepository.getUserRoleWithPermission] Error:', error);
+            throw error;
+        }
+    }
+
+    async createUserRole(data: UserRoleInsertType[], tx?: DbTransaction): Promise<any> {
+        try {
+            logger.info('ℹ️ [RbacRepository.createUserRole] Creating user role...');
+            const dbClient = tx || db;
+            const userRoles = await dbClient
+                .insert(UserRole)
+                .values(
+                    data.map(userRole => ({
+                        ...userRole,
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                    }))
+                )
+                .returning();
+
+            logger.info('✅ [RbacRepository.createUserRole] User role created successfully');
+            return userRoles;
+
+        } catch (error) {
+            logger.error('❌ [RbacRepository.createUserRole] Error:', error);
+            throw new Error("[RbacRepository.createUserRole] Error creating user role");
+        }
+    }
+
+    async updateUserRole(data: UserRoleInsertType[], id: string, tx?: DbTransaction): Promise<any> {
+        try {
+            const dbClient = tx || db;
+            logger.info('ℹ️ [RbacRepository.updateUserRole] Updating user role...');
+
+            const userRoles = await dbClient.update(UserRole).set({
+                ...data,
+                updatedAt: new Date(),
+            })
+            .where(eq(UserRole.id, id))
+            .returning();
+            return userRoles;
+        } catch (error) {
+            logger.error('❌ [RbacRepository.updateUserRole] Error:', error);
+            throw new Error("[RbacRepository.updateUserRole] Error updating user role");
+        }
+    }
+
+    // End of User Role  
+
+    // Start of Role Operations
+    async getRole(filter: RoleFilter): Promise<RoleType[]> {
+        try {
+
+            logger.info('ℹ️ [RbacRepository.getRole] Getting role...');
+
+            let whereCondition = [];
+
+            if (filter.roleId) {
+                whereCondition.push(eq(Role.roleId, filter.roleId));
+            }
+
+            if (filter.roleName) {
+                whereCondition.push(like(Role.roleName, `%${filter.roleName}%`));
+            }
+
+            if (filter.status) {
+                whereCondition.push(eq(Role.status, filter.status));
+            }
+
+
+            const roles = await db.select().from(Role);
+            return roles;
+        } catch (error) {
+            logger.error('❌ [RbacRepository.getRole] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Creates a new role in the database
+     * @param roleData - The role data to create
+     * @param tx - Optional transaction object for batch operations
+     * @returns The created role object
+    */
     async createRole(roleData: RoleInsertType, tx?: DbTransaction): Promise<RoleType> {
         try {
 
@@ -27,6 +203,223 @@ class RbacRepositoryClass {
         }
     }
 
+    /**
+     * Updates an existing role in the database
+     * @param data - The role data to update
+     * @param roleId - The unique identifier of the role to update
+     * @param tx - Optional transaction object for batch operations
+     * @returns The updated role object
+    */
+    async updateRole(data: RoleInsertType, id: string, tx?: DbTransaction): Promise<RoleType> {
+        try {
+            const dbClient = tx || db;
+            logger.info('ℹ️ [RbacRepository.updateRole] Updating role...');
+            const [role] = await dbClient.update(Role).set({
+                ...data,
+                updatedAt: new Date(),
+            }).where(eq(Role.roleId, id)).returning();
+            return role;
+        }
+        catch (error) {
+            logger.error('❌ [RbacRepository.updateRole] Error:', error);
+            throw new Error("[RbacRepository.updateRole] Error updating role");
+        }
+    }
+
+    // End of Role Operations
+
+    // Start of Module Operations
+    
+    /**
+     * Gets modules from the database
+     * @param filter - The filter object
+     * @returns The modules
+    */
+    async getModule(filter: ModuleFilter): Promise<any[]> {
+        try {
+            logger.info('ℹ️ [RbacRepository.getModule] Getting module...');
+            logger.debug('Filter:', filter);
+
+            let whereCondition = [];
+
+            if (filter.moduleId) {
+                whereCondition.push(eq(Module.moduleId, filter.moduleId));
+            }
+
+            if (filter.moduleName) {
+                whereCondition.push(like(Module.moduleName, `%${filter.moduleName}%`));
+            }
+
+            if (filter.status) {
+                whereCondition.push(eq(Module.status, filter.status));
+            }
+
+            const modules = 
+                await db
+                    .select({
+                        id: Module.moduleId,
+                        moduleName: Module.moduleName,
+                        permissionId: Permission.permissionId,
+                        permissionType: Permission.permissionType,
+                        description: Permission.description,
+                        status: Module.status,
+                        createdAt: Module.createdAt,
+                        updatedAt: Module.updatedAt,
+                        createdBy: Module.createdBy,
+                        updatedBy: Module.updatedBy,
+                    })
+                    .from(Module)
+                    .innerJoin(Permission, eq(Module.moduleId, Permission.moduleId))
+                    .where(and(...whereCondition))
+                    .orderBy(Module.moduleName);
+
+            logger.info('✅ [RbacRepository.getModule] Module fetched successfully');
+            return modules;
+        } catch (error) {
+            logger.error('❌ [RbacRepository.getModule] Error:', error);
+            throw error;
+        }
+    }
+
+    // End of Module Operations
+
+    // Start of Permission Operations
+    /**
+     * Gets permissions from the database
+     * @param filter - The filter object
+     * @returns The permissions
+    */
+    async getPermission(filter: PermissionFilter): Promise<any[]> {
+        try {
+            logger.info('ℹ️ [RbacRepository.getPermission] Getting permission...');
+            logger.debug('Filter:', filter);
+
+            let whereCondition = [];
+
+            if (Array.isArray(filter.permissionId)) {
+                whereCondition.push(inArray(Permission.permissionId, filter.permissionId));
+            } else if (filter.permissionId) {
+                whereCondition.push(eq(Permission.permissionId, filter.permissionId));
+            }
+
+            if (Array.isArray(filter.moduleId)) {
+                whereCondition.push(inArray(Permission.moduleId, filter.moduleId));
+            } else if (filter.moduleId) {
+                whereCondition.push(eq(Permission.moduleId, filter.moduleId));
+            }
+
+            if (filter.permissionType) {
+                whereCondition.push(eq(Permission.permissionType, filter.permissionType));
+            }
+
+            if (filter.status) {
+                whereCondition.push(eq(Permission.status, filter.status));
+            }
+
+            const permissions = await db.select().from(Permission).where(and(...whereCondition));
+            logger.info('✅ [RbacRepository.getPermission] Permission fetched successfully');
+            return permissions;
+        }
+        catch (error) {
+            logger.error('❌ [RbacRepository.getPermission] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Creates a new permission in the database
+     * @param data - The permission data to create
+     * @param tx - Optional transaction object for batch operations
+     * @returns The created permission object
+    */
+    async createPermission(data: PermissionInsertType, tx?: DbTransaction): Promise<PermissionType> {
+        try {
+            const dbClient = tx || db;
+            logger.info('ℹ️ [RbacRepository.createPermission] Creating permission...');
+            const [permission] = await dbClient.insert(Permission).values(data).returning();
+            logger.info('✅ [RbacRepository.createPermission] Permission created successfully');
+            return permission;
+        } catch (error) {
+            logger.error('❌ [RbacRepository.createPermission] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Updates an existing permission in the database
+     * @param data - The permission data to update
+     * @param id - The unique identifier of the permission to update
+     * @param tx - Optional transaction object for batch operations
+     * @returns The updated permission object
+    */
+    async updatePermission(data: PermissionInsertType, id: string, tx?: DbTransaction): Promise<PermissionType> {
+        try {
+            const dbClient = tx || db;
+            logger.info('ℹ️ [RbacRepository.updatePermission] Updating permission...');
+            const [permission] = await dbClient.update(Permission).set(data).where(eq(Permission.permissionId, id)).returning();
+            logger.info('✅ [RbacRepository.updatePermission] Permission updated successfully');
+            return permission;
+        }
+        catch (error) {
+            logger.error('❌ [RbacRepository.updatePermission] Error:', error);
+            throw new Error("[RbacRepository.updatePermission] Error updating permission");
+        }
+    }
+
+    // End of Permission Operations
+
+    
+    // Start of Role Permission Operations
+
+    /**
+     * Gets role permissions from the database
+     * @param filter - The filter object
+     * @returns The role permissions
+    */
+    async getRolePermission(filter: RolePermissionFilter): Promise<any[]> {
+        try {
+            logger.info('ℹ️ [RbacRepository.getRolePermission] Getting role permission...');
+            logger.debug('Filter:', filter);
+
+            let whereCondition = [];
+
+            if (filter.roleId) {
+                whereCondition.push(eq(RolePermission.roleId, filter.roleId));
+            }
+            
+            if (filter.permissionId) {
+                whereCondition.push(eq(RolePermission.permissionId, filter.permissionId));
+            }
+
+            const rolePermissions = await 
+                db.select({
+                    id: RolePermission.id,
+                    roleId: RolePermission.roleId,
+                    permissionId: RolePermission.permissionId,
+                    permissionType: Permission.permissionType,
+                    moduleId: Permission.moduleId,
+                    moduleName: Module.moduleName,
+                })
+                .from(RolePermission)
+                .innerJoin(Permission, eq(RolePermission.permissionId, Permission.permissionId))
+                .innerJoin(Module, eq(Permission.moduleId, Module.moduleId))
+                .where(and(...whereCondition));
+            logger.info('✅ [RbacRepository.getRolePermission] Role permission fetched successfully');
+            return rolePermissions;
+        }
+        catch (error) {
+            logger.error('❌ [RbacRepository.getRolePermission] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Creates a new role permission in the database
+     * @param data - The role permission data to create
+     * @param tx - Optional transaction object for batch operations
+     * @returns The created role permission object
+    */
+   
     async createRolePermission(data: RolePermissionInsertType, tx?: DbTransaction): Promise<RolePermissionType> {
         try {
             const dbClient = tx || db;
@@ -42,18 +435,23 @@ class RbacRepositoryClass {
         }
     }
 
-    async createRolePermissions(data: RolePermissionInsertType[], tx?: DbTransaction): Promise<RolePermissionType[]> {
+    /**
+     * Updates an existing role permission in the database
+     * @param data - The role permission data to update
+     * @param id - The unique identifier of the role permission to update
+     * @param tx - Optional transaction object for batch operations
+     * @returns The updated role permission object
+    */
+    async updateRolePermission(data: RolePermissionInsertType, id: string, tx?: DbTransaction): Promise<RolePermissionType> {
         try {
             const dbClient = tx || db;
-            logger.info('ℹ️ [RbacRepository.createRolePermissions] Creating role permissions...');
-
-            const rolePermissions = await dbClient.insert(RolePermission).values(data).returning();
-
-            logger.info('✅ [RbacRepository.createRolePermissions] Role permissions created successfully');
-            return rolePermissions;
+            logger.info('ℹ️ [RbacRepository.updateRolePermission] Updating role permission...');
+            const [rolePermission] = await dbClient.update(RolePermission).set(data).where(eq(RolePermission.id, id)).returning();
+            logger.info('✅ [RbacRepository.updateRolePermission] Role permission updated successfully');
+            return rolePermission;
         } catch (error) {
-            logger.error('❌ [RbacRepository.createRolePermissions] Error:', error);
-            throw error;
+            logger.error('❌ [RbacRepository.updateRolePermission] Error:', error);
+            throw new Error("[RbacRepository.updateRolePermission] Error updating role permission");
         }
     }
 }
