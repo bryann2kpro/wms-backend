@@ -280,7 +280,7 @@ export type ModuleNameType = typeof ModuleName[keyof typeof ModuleName];
  * @description Available permission types
  */
 export const PermissionTypeCode = {
-  VIEW: 'View',
+  READ: 'Read',
   CREATE: 'Create',
   UPDATE: 'Update',
   DELETE: 'Delete',

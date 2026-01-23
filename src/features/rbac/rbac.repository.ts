@@ -1,5 +1,5 @@
 import { logger } from "@/util/logger";
-import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, UserRoleType, UserRoleFilter, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter, ModuleWithPermissionType, ModuleType, PaginationParams, PaginatedResponse } from "./rbac.model";
+import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, UserRoleType, UserRoleFilter, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter, ModuleWithPermissionType, ModuleType, PaginationParams, PaginatedResponse, ModuleInsertType } from "./rbac.model";
 import { DbTransaction } from "@/types/db-transaction";
 import { db } from "@/db";
 import z from "zod";
@@ -361,6 +361,19 @@ class RbacRepositoryClass {
             return modules;
         } catch (error) {
             logger.error('❌ [RbacRepository.getModule] Error:', error);
+            throw error;
+        }
+    }
+
+    async createModule(data: ModuleInsertType, tx?: DbTransaction): Promise<ModuleType> {
+        try {
+            const dbClient = tx || db;
+            logger.info('ℹ️ [RbacRepository.createModule] Creating module...');
+            const [module] = await dbClient.insert(Module).values(data).returning();
+            logger.info('✅ [RbacRepository.createModule] Module created successfully');
+            return module;
+        } catch (error) {
+            logger.error('❌ [RbacRepository.createModule] Error:', error);
             throw error;
         }
     }
