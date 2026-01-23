@@ -378,6 +378,19 @@ class RbacRepositoryClass {
         }
     }
 
+    async updateModule(data: Partial<ModuleInsertType>, id: string, tx?: DbTransaction): Promise<ModuleType> {
+        try {
+            const dbClient = tx || db;
+            logger.info('ℹ️ [RbacRepository.updateModule] Updating module...');
+            const [module] = await dbClient.update(Module).set(data).where(eq(Module.moduleId, id)).returning();
+            logger.info('✅ [RbacRepository.updateModule] Module updated successfully');
+            return module;
+        } catch (error) {
+            logger.error('❌ [RbacRepository.updateModule] Error:', error);
+            throw error;
+        }
+    }
+    
     // End of Module Operations
 
     // Start of Permission Operations

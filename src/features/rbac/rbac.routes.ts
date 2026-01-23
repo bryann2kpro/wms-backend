@@ -100,6 +100,28 @@ router.put('/roles/update/:roleId', requiredPermission(PermissionGroup.ROLE, 'up
  */
 router.get('/modules', requiredPermission(PermissionGroup.ROLE, 'Read'), rbacController.getModule.bind(rbacController));
 
+/**
+ * @route POST /rbac/modules/create
+ * @description Create a new module
+ * @body moduleName - Module name (required)
+ * @body status - Status (default: 'active')
+ * @body createdBy - Created by (required)
+ * @body updatedBy - Updated by (required)
+ * @returns Created module object
+ */
+router.post('/modules/create', requiredPermission(PermissionGroup.ROLE, 'create'), auditTrailMiddleware(AuditTrailAction.CREATE), rbacController.createModule.bind(rbacController));
+
+/**
+ * @route PUT /rbac/modules/update/:moduleId
+ * @description Update an existing module
+ * @param moduleId - Module ID to update
+ * @body moduleName - New module name (optional)
+ * @body status - New status (optional)
+ * @body updatedBy - Updated by (required)
+ * @returns Updated module object
+ */
+router.put('/modules/update/:moduleId', requiredPermission(PermissionGroup.ROLE, 'update'), auditTrailMiddleware(AuditTrailAction.UPDATE), rbacController.updateModule.bind(rbacController));
+
 // ============================================
 // PERMISSION ROUTES
 // ============================================

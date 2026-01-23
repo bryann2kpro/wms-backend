@@ -239,6 +239,7 @@ class RbacControllerClass {
     }
   }
 
+
   // ============================================
   // ROLE OPERATIONS
   // ============================================
@@ -582,6 +583,95 @@ class RbacControllerClass {
       });
     } catch (error) {
       logger.error('❌ [RbacController.getModule] Error:', error);
+      res.status(500).json({
+        success: false,
+        message: Error.INTERNAL_SERVER_ERROR,
+        data: null
+      });
+    }
+  }
+
+  /**
+   * Create Module
+   * POST /rbac/modules/create
+   * 
+   * @description Creates a new module in the system.
+   * @body moduleName - The name of the module (required)
+   * @body status - The status of the module (default: 'active')
+   * @body createdBy - The user who created the module (required)
+   * @body updatedBy - The user who updated the module (required)
+   */
+  async createModule(req: Request, res: Response): Promise<void> {
+    try {
+      logger.info('ℹ️ [RbacController.createModule] Creating module...');
+      logger.debug('🔍 [RbacController.createModule] Request body:', req.body);
+
+      const createSchema = z.object({
+        moduleName: z.string().min(1, 'Module name is required').max(100),
+        status: z.string().max(20).default('active'),
+        createdBy: z.string().max(40),
+        updatedBy: z.string().max(40),
+      });
+
+      const { success, data, error } = createSchema.safeParse(req.body);
+      
+      if (!success) {
+        logger.warn('⚠️ [RbacController.createModule] Validation failed:', prettifyError(error));
+        res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: prettifyError(error),
+        });
+        return;
+      }
+
+      const module = await this.rbacRepository.createModule(data);
+
+      logger.info('✅ [RbacController.createModule] Module created successfully');
+
+      res.status(201).json({
+        success: true,
+        message: 'Module created successfully',
+        data: module
+      });
+    } catch (error) {
+      logger.error('❌ [RbacController.createModule] Error:', error);
+      res.status(500).json({
+        success: false,
+        message: Error.INTERNAL_SERVER_ERROR,
+        data: null
+      });
+    }
+  }
+
+  async updateModule(req: Request, res: Response): Promise<void> {
+    try {
+      logger.info('ℹ️ [RbacController.updateModule] Updating module...');
+      logger.debug('🔍 [RbacController.updateModule] Request body:', req.body);
+      const updateSchema = z.object({
+        moduleName: z.string().min(1, 'Module name is required').max(100).optional(),
+        status: z.string().max(20).optional(),
+        updatedBy: z.string().max(40),
+      });
+      const { success, data, error } = updateSchema.safeParse(req.body);
+      if (!success) {
+        logger.warn('⚠️ [RbacController.updateModule] Validation failed:', prettifyError(error));
+        res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: prettifyError(error),
+        });
+        return;
+      }
+      const module = await this.rbacRepository.updateModule(data, req.params.moduleId);
+      logger.info('✅ [RbacController.updateModule] Module updated successfully');
+      res.status(200).json({
+        success: true,
+        message: 'Module updated successfully',
+        data: module
+      });
+    } catch (error) {
+      logger.error('❌ [RbacController.updateModule] Error:', error);
       res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,
