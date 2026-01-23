@@ -103,7 +103,7 @@ async function initRbacModule(): Promise<void> {
   
   // Create basic CRUD permissions for RBAC
   const permissions = [
-    { type: PermissionTypeCode.VIEW, desc: 'View roles and permissions' },
+    { type: PermissionTypeCode.READ, desc: 'View roles and permissions' },
     { type: PermissionTypeCode.CREATE, desc: 'Create new roles' },
     { type: PermissionTypeCode.UPDATE, desc: 'Update existing roles' },
     { type: PermissionTypeCode.DELETE, desc: 'Delete roles' },
