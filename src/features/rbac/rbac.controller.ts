@@ -66,6 +66,8 @@ class RbacControllerClass {
    * @query userId - Filter by user ID
    * @query roleId - Filter by role ID
    * @query status - Filter by status
+   * @query pageSize - Number of items per page (default: 10)
+   * @query pageNumber - Page number (default: 1)
    */
   async getUserRole(req: Request, res: Response): Promise<void> {
     try {
@@ -76,7 +78,9 @@ class RbacControllerClass {
         userId: z.uuid().optional(),
         roleId: z.uuid().optional(),
         status: z.string().max(20).optional(),
-      }).default({});
+        pageSize: z.coerce.number().min(1).default(10),
+        pageNumber: z.coerce.number().min(1).default(1),
+      });
 
       const { success, data: filter, error } = filterSchema.safeParse(req.query);
 
@@ -90,14 +94,17 @@ class RbacControllerClass {
         return;
       }
 
-      const userRoles = await this.rbacRepository.getUserRole(filter);
+      const { pageSize, pageNumber, ...filterParams } = filter;
+      const result = await this.rbacRepository.getUserRole(filterParams, { pageSize, pageNumber });
+      const data = result.query;
 
-      logger.info('✅ [RbacController.getUserRole] User roles fetched successfully, count:', userRoles.length);
+      logger.info('✅ [RbacController.getUserRole] User roles fetched successfully, count:', data.length);
 
       res.status(200).json({
         success: true,
         message: 'User role fetched successfully',
-        data: userRoles
+        pagination: result.pagination,
+        data
       });
     } catch (error) {
       logger.error('❌ [RbacController.getUserRole] Error:', error);
@@ -244,6 +251,8 @@ class RbacControllerClass {
    * @query roleId - Filter by role ID
    * @query roleName - Filter by role name (partial match)
    * @query status - Filter by status
+   * @query pageSize - Number of items per page (default: 10)
+   * @query pageNumber - Page number (default: 1)
    */
   async getAllRoles(req: Request, res: Response): Promise<void> {
     try {
@@ -253,6 +262,8 @@ class RbacControllerClass {
         roleId: z.uuid().optional(),
         roleName: z.string().max(50).optional(),
         status: z.string().max(20).optional(),
+        pageSize: z.coerce.number().min(1).default(10),
+        pageNumber: z.coerce.number().min(1).default(1),
       });
 
       const { success, data: filter, error } = filterSchema.safeParse(req.query);
@@ -267,15 +278,17 @@ class RbacControllerClass {
         return;
       }
 
-      const roles = await this.rbacRepository.getRole(filter);
+      const { pageSize, pageNumber, ...filterParams } = filter;
+      const result = await this.rbacRepository.getRole(filterParams, { pageSize, pageNumber });
+      const data = result.query;
 
-      logger.info('✅ [RbacController.getAllRoles] Roles fetched successfully, count:', roles.length);
+      logger.info('✅ [RbacController.getAllRoles] Roles fetched successfully, count:', data.length);
 
       res.status(200).json({
         success: true,
         message: 'Role fetched successfully',
-        count: roles.length,
-        data: roles
+        pagination: result.pagination,
+        data
       });
     } catch (error) {
       logger.error('❌ [RbacController.getAllRoles] Error:', error);
@@ -444,7 +457,7 @@ class RbacControllerClass {
 
       // Fetch updated role permissions
       const rolePermissions = await this.rbacRepository.getRolePermission({ roleId });
-      const permissionIds = rolePermissions.map(item => item.permissionId);
+      const permissionIds = rolePermissions.map((item: any) => item.permissionId);
 
       logger.info('✅ [RbacController.updateRole] Role updated successfully');
 
@@ -484,6 +497,8 @@ class RbacControllerClass {
    * @query moduleId - Filter by module ID
    * @query moduleName - Filter by module name (partial match)
    * @query status - Filter by status
+   * @query pageSize - Number of items per page (default: 10)
+   * @query pageNumber - Page number (default: 1)
    */
   async getModule(req: Request, res: Response): Promise<void> {
     try {
@@ -493,6 +508,8 @@ class RbacControllerClass {
         moduleId: z.uuid().optional(),
         moduleName: z.string().max(50).optional(),
         status: z.string().max(20).optional(),
+        pageSize: z.coerce.number().min(1).default(10),
+        pageNumber: z.coerce.number().min(1).default(1),
       });
 
       const { success, data: filter, error } = filterSchema.safeParse(req.query);
@@ -507,7 +524,10 @@ class RbacControllerClass {
         return;
       }
 
-      const modules = await this.rbacRepository.getModule(filter);
+      const { pageSize, pageNumber, ...filterParams } = filter;
+      
+      // Fetch all modules first to group them properly, then paginate the grouped result
+      const modules = await this.rbacRepository.getModule(filterParams);
 
       // Group by moduleName and transform the data
       const groupedModule = modules.reduce((acc, curr) => {
@@ -539,13 +559,26 @@ class RbacControllerClass {
         return acc;
       }, [] as Array<ModuleGroupType>);
 
-      logger.info('✅ [RbacController.getModule] Modules fetched successfully, count:', groupedModule.length);
+      // Apply pagination to grouped modules
+      const totalCount = groupedModule.length;
+      const totalPages = Math.ceil(totalCount / pageSize);
+      const offset = (pageNumber - 1) * pageSize;
+      const paginatedModules = groupedModule.slice(offset, offset + pageSize);
+
+      logger.info('✅ [RbacController.getModule] Modules fetched successfully, count:', paginatedModules.length);
 
       res.status(200).json({
         success: true,
         message: 'Module fetched successfully',
-        count: groupedModule.length,
-        data: groupedModule
+        pagination: {
+          count: paginatedModules.length,
+          totalCount,
+          currentPage: pageNumber,
+          totalPages,
+          hasNextPage: pageNumber < totalPages,
+          hasPrevPage: pageNumber > 1
+        },
+        data: paginatedModules
       });
     } catch (error) {
       logger.error('❌ [RbacController.getModule] Error:', error);
@@ -570,6 +603,8 @@ class RbacControllerClass {
    * @query moduleId - Filter by module ID
    * @query permissionType - Filter by permission type
    * @query status - Filter by status
+   * @query pageSize - Number of items per page (default: 10)
+   * @query pageNumber - Page number (default: 1)
    */
   async getAllPermissions(req: Request, res: Response): Promise<void> {
     try {
@@ -580,6 +615,8 @@ class RbacControllerClass {
         moduleId: z.uuid().optional(),
         permissionType: z.string().max(50).optional(),
         status: z.string().max(20).optional(),
+        pageSize: z.coerce.number().min(1).default(10),
+        pageNumber: z.coerce.number().min(1).default(1),
       });
 
       const { success, data: filter, error } = filterSchema.safeParse(req.query);
@@ -594,15 +631,17 @@ class RbacControllerClass {
         return;
       }
 
-      const permissions = await this.rbacRepository.getPermission(filter);
+      const { pageSize, pageNumber, ...filterParams } = filter;
+      const result = await this.rbacRepository.getPermission(filterParams, { pageSize, pageNumber });
+      const data = result.query;
 
-      logger.info('✅ [RbacController.getAllPermissions] Permissions fetched successfully, count:', permissions.length);
+      logger.info('✅ [RbacController.getAllPermissions] Permissions fetched successfully, count:', data.length);
 
       res.status(200).json({
         success: true,
         message: 'Permission fetched successfully',
-        count: permissions.length,
-        data: permissions
+        pagination: result.pagination,
+        data
       });
     } catch (error) {
       logger.error('❌ [RbacController.getAllPermissions] Error:', error);
@@ -771,6 +810,8 @@ class RbacControllerClass {
    * For a given role, shows all available modules and whether the role has each permission.
    * @query roleId - Filter by role ID (required for full permission matrix)
    * @query permissionId - Filter by permission ID
+   * @query pageSize - Number of items per page (default: 10)
+   * @query pageNumber - Page number (default: 1)
    */
   async getRolePermission(req: Request, res: Response): Promise<void> {
     try {
@@ -779,6 +820,8 @@ class RbacControllerClass {
       const filterSchema = z.object({
         roleId: z.uuid().optional(),
         permissionId: z.uuid().optional(),
+        pageSize: z.coerce.number().min(1).default(10),
+        pageNumber: z.coerce.number().min(1).default(1),
       });
 
       const { success, data: filter, error } = filterSchema.safeParse(req.query);
@@ -793,7 +836,10 @@ class RbacControllerClass {
         return;
       }
 
-      const rolePermissions = await this.rbacRepository.getRolePermission(filter);
+      const { pageSize, pageNumber, ...filterParams } = filter;
+
+      // Fetch all data to transform, then apply pagination to the result
+      const rolePermissions = await this.rbacRepository.getRolePermission(filterParams);
       const modules = await this.rbacRepository.getModule({});
 
       // Create a map of existing role permissions
@@ -826,7 +872,7 @@ class RbacControllerClass {
           } else {
             return {
               id: '',
-              roleId: rolePermissions[0]?.roleId || filter.roleId || '',
+              roleId: rolePermissions[0]?.roleId || filterParams.roleId || '',
               permissionId: mp.permissionId,
               permissionType: mp.permissionType,
               moduleId: mp.id,
@@ -842,13 +888,26 @@ class RbacControllerClass {
         };
       });
 
+      // Apply pagination to transformed data
+      const totalCount = transformedData.length;
+      const totalPages = Math.ceil(totalCount / pageSize);
+      const offset = (pageNumber - 1) * pageSize;
+      const paginatedData = transformedData.slice(offset, offset + pageSize);
+
       logger.info('✅ [RbacController.getRolePermission] Role permissions fetched successfully');
 
       res.status(200).json({
         success: true,
         message: 'Role permission fetched successfully',
-        count: transformedData.length,
-        data: transformedData
+        pagination: {
+          count: paginatedData.length,
+          totalCount,
+          currentPage: pageNumber,
+          totalPages,
+          hasNextPage: pageNumber < totalPages,
+          hasPrevPage: pageNumber > 1
+        },
+        data: paginatedData
       });
     } catch (error) {
       logger.error('❌ [RbacController.getRolePermission] Error:', error);

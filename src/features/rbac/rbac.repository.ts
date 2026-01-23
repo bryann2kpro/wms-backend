@@ -1,9 +1,11 @@
 import { logger } from "@/util/logger";
-import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, UserRoleType, UserRoleFilter, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter, ModuleWithPermissionType, ModuleType } from "./rbac.model";
+import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, UserRoleType, UserRoleFilter, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter, ModuleWithPermissionType, ModuleType, PaginationParams, PaginatedResponse } from "./rbac.model";
 import { DbTransaction } from "@/types/db-transaction";
 import { db } from "@/db";
 import z from "zod";
 import { eq, and, like, inArray } from "drizzle-orm";
+import { pagination, PgQueryType } from "@/util/pagination";
+import { UsersTable } from "../auth/auth.model";
 
 // Filter schema for RBAC
 export const rbacFilter = z.object({
@@ -107,9 +109,10 @@ class RbacRepositoryClass {
     /**
      * Gets user roles from the database with optional filtering
      * @param filter - The filter object
-     * @returns Array of user roles with role details
+     * @param paginationParams - Pagination parameters
+     * @returns Paginated array of user roles with role details
      */
-    async getUserRole(filter: UserRoleFilter): Promise<any[]> {
+    async getUserRole(filter: UserRoleFilter, paginationParams: PaginationParams): Promise<PaginatedResponse<any>> {
         try {
             logger.info('ℹ️ [RbacRepository.getUserRole] Getting user roles...');
             logger.debug('Filter:', filter);
@@ -138,10 +141,11 @@ class RbacRepositoryClass {
                 whereCondition.push(eq(UserRole.status, filter.status));
             }
 
-            const userRoles = await db
+            const baseQuery = db
                 .select({
                     id: UserRole.id,
                     userId: UserRole.userId,
+                    userName: UsersTable.displayName,
                     roleId: UserRole.roleId,
                     roleName: Role.roleName,
                     status: UserRole.status,
@@ -152,10 +156,17 @@ class RbacRepositoryClass {
                 })
                 .from(UserRole)
                 .innerJoin(Role, eq(UserRole.roleId, Role.roleId))
+                .innerJoin(UsersTable, eq(UserRole.userId, UsersTable.id))
                 .where(and(...whereCondition));
 
+            const pageSize = paginationParams.pageSize || 10;
+            const pageNumber = paginationParams.pageNumber || 1;
+            const totalCount = (await baseQuery).length;
+            const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
+            const data = await paginatedQuery.query;
+
             logger.info('✅ [RbacRepository.getUserRole] User roles fetched successfully');
-            return userRoles;
+            return { query: data, pagination: paginatedQuery.pagination };
         } catch (error) {
             logger.error('❌ [RbacRepository.getUserRole] Error:', error);
             throw error;
@@ -209,7 +220,13 @@ class RbacRepositoryClass {
     // End of User Role  
 
     // Start of Role Operations
-    async getRole(filter: RoleFilter): Promise<RoleType[]> {
+    /**
+     * Gets roles from the database with optional filtering
+     * @param filter - The filter object
+     * @param paginationParams - Pagination parameters
+     * @returns Paginated array of roles
+     */
+    async getRole(filter: RoleFilter, paginationParams: PaginationParams): Promise<PaginatedResponse<any>> {
         try {
 
             logger.info('ℹ️ [RbacRepository.getRole] Getting role...');
@@ -228,9 +245,16 @@ class RbacRepositoryClass {
                 whereCondition.push(eq(Role.status, filter.status));
             }
 
+            const baseQuery = db.select().from(Role).where(and(...whereCondition));
+            
+            const pageSize = paginationParams.pageSize || 10;
+            const pageNumber = paginationParams.pageNumber || 1;
+            const totalCount = (await baseQuery).length;
+            const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
+            const data = await paginatedQuery.query;
 
-            const roles = await db.select().from(Role);
-            return roles;
+            logger.info('✅ [RbacRepository.getRole] Roles fetched successfully');
+            return { query: data, pagination: paginatedQuery.pagination };
         } catch (error) {
             logger.error('❌ [RbacRepository.getRole] Error:', error);
             throw error;
@@ -347,9 +371,10 @@ class RbacRepositoryClass {
     /**
      * Gets permissions from the database
      * @param filter - The filter object
-     * @returns The permissions
+     * @param paginationParams - Pagination parameters
+     * @returns Paginated permissions
     */
-    async getPermission(filter: PermissionFilter): Promise<any[]> {
+    async getPermission(filter: PermissionFilter, paginationParams: PaginationParams): Promise<PaginatedResponse<any>> {
         try {
             logger.info('ℹ️ [RbacRepository.getPermission] Getting permission...');
             logger.debug('Filter:', filter);
@@ -376,9 +401,16 @@ class RbacRepositoryClass {
                 whereCondition.push(eq(Permission.status, filter.status));
             }
 
-            const permissions = await db.select().from(Permission).where(and(...whereCondition));
+            const baseQuery = db.select().from(Permission).where(and(...whereCondition));
+            
+            const pageSize = paginationParams.pageSize || 10;
+            const pageNumber = paginationParams.pageNumber || 1;
+            const totalCount = (await baseQuery).length;
+            const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
+            const data = await paginatedQuery.query;
+
             logger.info('✅ [RbacRepository.getPermission] Permission fetched successfully');
-            return permissions;
+            return { query: data, pagination: paginatedQuery.pagination };
         }
         catch (error) {
             logger.error('❌ [RbacRepository.getPermission] Error:', error);
@@ -464,6 +496,7 @@ class RbacRepositoryClass {
                 .innerJoin(Permission, eq(RolePermission.permissionId, Permission.permissionId))
                 .innerJoin(Module, eq(Permission.moduleId, Module.moduleId))
                 .where(and(...whereCondition));
+            
             logger.info('✅ [RbacRepository.getRolePermission] Role permission fetched successfully');
             return rolePermissions;
         }

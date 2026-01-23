@@ -302,3 +302,38 @@ export type PermissionTypeCodeType = typeof PermissionTypeCode[keyof typeof Perm
 export enum PermissionGroup {
   ROLE = 'Role',
 }
+
+// ============================================
+// PAGINATION TYPES
+// ============================================
+
+/**
+ * Pagination Parameters
+ * @description Common pagination parameters for GET endpoints
+ */
+export type PaginationParams = {
+  pageSize?: number;
+  pageNumber?: number;
+};
+
+/**
+ * Pagination Metadata
+ * @description Pagination information returned in API responses
+ */
+export type PaginationMeta = {
+  count: number;
+  totalCount: number;
+  currentPage: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+};
+
+/**
+ * Paginated Response
+ * @description Generic paginated response structure
+ */
+export type PaginatedResponse<T> = {
+  query: T[];
+  pagination: PaginationMeta;
+};

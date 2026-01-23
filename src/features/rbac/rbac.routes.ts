@@ -1,35 +1,3 @@
-/**
- * RBAC Routes
- * 
- * @description Role-Based Access Control routes.
- * 
- * Endpoints:
- * - GET /rbac                              - Get all user access
- * 
- * User Role:
- * - GET /rbac/user-role                    - Get all user roles
- * - POST /rbac/user-role/create            - Create user role
- * - PUT /rbac/user-role/update/:userRoleId - Update user role
- * 
- * Role:
- * - GET /rbac/roles                        - Get all roles
- * - POST /rbac/roles/create                - Create role
- * - PUT /rbac/roles/update/:roleId         - Update role
- * 
- * Module:
- * - GET /rbac/modules                      - Get all modules
- * 
- * Permission:
- * - GET /rbac/permissions                  - Get all permissions
- * - POST /rbac/permissions/create          - Create permission
- * - PUT /rbac/permissions/update/:permissionId - Update permission
- * 
- * Role Permission:
- * - GET /rbac/role-permission              - Get role permissions
- * - POST /rbac/role-permission/create      - Create role permission
- * - PUT /rbac/role-permission/update/:roleId - Update role permissions
- */
-
 import { Router } from 'express';
 import { rbacController } from '@/composition-root.js';
 import { requiredPermission } from '@/middlewares/permission';
