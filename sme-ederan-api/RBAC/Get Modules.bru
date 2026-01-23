@@ -1,0 +1,25 @@
+meta {
+  name: Get Modules
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{local_path}}/rbac/modules
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+params:query {
+  ~moduleId: 
+  ~moduleName: 
+  ~status: active
+}
+
+settings {
+  encodeUrl: true
+}

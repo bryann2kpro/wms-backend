@@ -1,0 +1,25 @@
+meta {
+  name: Get User Roles
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{local_path}}/rbac/user-role
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+params:query {
+  ~userId: 
+  ~roleId: 
+  ~status: active
+}
+
+settings {
+  encodeUrl: true
+}

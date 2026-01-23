@@ -1,0 +1,29 @@
+meta {
+  name: Create User Role
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{local_path}}/rbac/user-role/create
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "userId": "your-user-uuid-here",
+    "roleId": "your-role-uuid-here",
+    "status": "active",
+    "createdBy": "system",
+    "updatedBy": "system"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

@@ -1,5 +1,5 @@
 import { logger } from "@/util/logger";
-import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter } from "./rbac.model";
+import { Permission, Module, Role, RoleInsertType, RolePermission, RolePermissionInsertType, RolePermissionType, RoleType, UserRole, UserRoleInsertType, UserRoleType, UserRoleFilter, RoleFilter, ModuleFilter, PermissionFilter, PermissionInsertType, PermissionType, RolePermissionFilter, ModuleWithPermissionType } from "./rbac.model";
 import { DbTransaction } from "@/types/db-transaction";
 import { db } from "@/db";
 import z from "zod";
@@ -104,7 +104,65 @@ class RbacRepositoryClass {
         }
     }
 
-    async createUserRole(data: UserRoleInsertType[], tx?: DbTransaction): Promise<any> {
+    /**
+     * Gets user roles from the database with optional filtering
+     * @param filter - The filter object
+     * @returns Array of user roles with role details
+     */
+    async getUserRole(filter: UserRoleFilter): Promise<any[]> {
+        try {
+            logger.info('ℹ️ [RbacRepository.getUserRole] Getting user roles...');
+            logger.debug('Filter:', filter);
+
+            let whereCondition = [];
+
+            if (Array.isArray(filter.id)) {
+                whereCondition.push(inArray(UserRole.id, filter.id));
+            } else if (filter.id) {
+                whereCondition.push(eq(UserRole.id, filter.id));
+            }
+
+            if (Array.isArray(filter.userId)) {
+                whereCondition.push(inArray(UserRole.userId, filter.userId));
+            } else if (filter.userId) {
+                whereCondition.push(eq(UserRole.userId, filter.userId));
+            }
+
+            if (Array.isArray(filter.roleId)) {
+                whereCondition.push(inArray(UserRole.roleId, filter.roleId));
+            } else if (filter.roleId) {
+                whereCondition.push(eq(UserRole.roleId, filter.roleId));
+            }
+
+            if (filter.status) {
+                whereCondition.push(eq(UserRole.status, filter.status));
+            }
+
+            const userRoles = await db
+                .select({
+                    id: UserRole.id,
+                    userId: UserRole.userId,
+                    roleId: UserRole.roleId,
+                    roleName: Role.roleName,
+                    status: UserRole.status,
+                    createdAt: UserRole.createdAt,
+                    updatedAt: UserRole.updatedAt,
+                    createdBy: UserRole.createdBy,
+                    updatedBy: UserRole.updatedBy,
+                })
+                .from(UserRole)
+                .innerJoin(Role, eq(UserRole.roleId, Role.roleId))
+                .where(and(...whereCondition));
+
+            logger.info('✅ [RbacRepository.getUserRole] User roles fetched successfully');
+            return userRoles;
+        } catch (error) {
+            logger.error('❌ [RbacRepository.getUserRole] Error:', error);
+            throw error;
+        }
+    }
+
+    async createUserRole(data: UserRoleInsertType[], tx?: DbTransaction): Promise<UserRoleType[]> {
         try {
             logger.info('ℹ️ [RbacRepository.createUserRole] Creating user role...');
             const dbClient = tx || db;
@@ -128,21 +186,23 @@ class RbacRepositoryClass {
         }
     }
 
-    async updateUserRole(data: UserRoleInsertType[], id: string, tx?: DbTransaction): Promise<any> {
+    async updateUserRole(data: Partial<UserRoleInsertType>, id: string, tx?: DbTransaction): Promise<UserRoleType> {
         try {
             const dbClient = tx || db;
             logger.info('ℹ️ [RbacRepository.updateUserRole] Updating user role...');
 
-            const userRoles = await dbClient.update(UserRole).set({
+            const [userRole] = await dbClient.update(UserRole).set({
                 ...data,
                 updatedAt: new Date(),
             })
             .where(eq(UserRole.id, id))
             .returning();
-            return userRoles;
+
+            logger.info('✅ [RbacRepository.updateUserRole] User role updated successfully');
+            return userRole;
         } catch (error) {
             logger.error('❌ [RbacRepository.updateUserRole] Error:', error);
-            throw new Error("[RbacRepository.updateUserRole] Error updating user role");
+            throw error;
         }
     }
 

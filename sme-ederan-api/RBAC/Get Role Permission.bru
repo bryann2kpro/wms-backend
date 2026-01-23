@@ -1,0 +1,24 @@
+meta {
+  name: Get Role Permission
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{local_path}}/rbac/role-permission
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+params:query {
+  ~roleId: your-role-uuid-here
+  ~permissionId: 
+}
+
+settings {
+  encodeUrl: true
+}

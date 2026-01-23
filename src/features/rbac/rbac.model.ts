@@ -103,6 +103,23 @@ export type ModuleGroupType = {
   updatedBy: string;
 };
 
+/**
+ * Module with Permission Type
+ * @description Type for module data with associated permission info (returned by getModule)
+ */
+export type ModuleWithPermissionType = {
+  id: string;
+  moduleName: string;
+  permissionId: string;
+  permissionType: string;
+  description: string | null;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  updatedBy: string;
+};
+
 // ============================================
 // PERMISSION TABLE
 // ============================================

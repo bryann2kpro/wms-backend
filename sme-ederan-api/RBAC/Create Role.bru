@@ -1,0 +1,29 @@
+meta {
+  name: Create Role
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{local_path}}/rbac/roles/create
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "roleName": "SUPERVISOR",
+    "status": "active",
+    "permissionIds": [],
+    "createdBy": "system",
+    "updatedBy": "system"
+  }
+}
+
+settings {
+  encodeUrl: true
+}
