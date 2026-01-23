@@ -32,7 +32,7 @@ export const hasPermission = async (req: Request, moduleName: string, permission
   const userRoleWithPermission = await authRepository.getUserRoleWithPermission(user.id);
 
   // Straight Allow Access for Super Admin
-  if (userRoleWithPermission[0].roleName === "Super Admin") {
+  if (userRoleWithPermission[0]?.roleName === "Super Admin") {
     return true;
   }
 

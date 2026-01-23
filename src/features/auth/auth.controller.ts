@@ -20,6 +20,7 @@ import { Error } from '@/error/index.js';
 import { hashPassword, comparePassword } from '@/util/password.js';
 import { logger } from '@/util/logger.js';
 import { db } from '@/db/index.js';
+import { RbacRepositoryClass } from '@/features/rbac/rbac.repository.js';
 
 // ============================================
 // ZOD SCHEMAS
@@ -52,7 +53,8 @@ class AuthControllerClass {
 
   constructor(
     private authRepository: AuthRepositoryClass, 
-    private jwtController: JwtControllerClass
+    private jwtController: JwtControllerClass,
+    private rbacRepository: RbacRepositoryClass
   ) {}
   
   // ============================================
@@ -280,10 +282,21 @@ class AuthControllerClass {
       }
 
       // Get user's roles via UserRole junction table
-      const roles = await this.authRepository.getUserRoles(user.id);
+      // const roles = await this.authRepository.getUserRoles(user.id);
 
-      // Get user's permissions via roles
-      const permissions = await this.authRepository.getUserPermissions(user.id);
+      // // Get user's permissions via roles
+      // const permissions = await this.authRepository.getUserPermissions(user.id);
+
+      const userRoleWithPermission = await this.rbacRepository.getUserRoleWithPermission(user.id);
+      const readPermission = userRoleWithPermission.filter(r => r.permissionType === "Read").map(r => r.moduleName);
+      const createPermission = userRoleWithPermission.filter(r => r.permissionType === "Create").map(r => r.moduleName);
+      const updatePermission = userRoleWithPermission.filter(r => r.permissionType === "Update").map(r => r.moduleName);
+      // const deletePermission = userRoleWithPermission.filter(r => r.permissionType === "Delete").map(r => r.moduleName);
+      // const approvePermission = userRoleWithPermission.filter(r => r.permissionType === "Approve").map(r => r.moduleName);
+      // const exportPermission = userRoleWithPermission.filter(r => r.permissionType === "Export").map(r => r.moduleName);
+      // const confirmPermission = userRoleWithPermission.filter(r => r.permissionType === "Confirm").map(r => r.moduleName);
+      // const pickPermission = userRoleWithPermission.filter(r => r.permissionType === "Pick").map(r => r.moduleName);
+      // const packPermission = userRoleWithPermission.filter(r => r.permissionType === "Pack").map(r => r.moduleName);
 
       logger.info('✅ [AuthController.getProfile] Profile fetched successfully for:', user.email);
 
@@ -296,15 +309,10 @@ class AuthControllerClass {
           displayName: user.displayName,
           contactNo: user.contactNo,
           isActive: user.isActive,
-          roles: roles.map(r => ({
-            roleId: r.roleId,
-            roleName: r.roleName,
-          })),
-          permissions: permissions.map(p => ({
-            permissionId: p.permissionId,
-            permissionType: p.permissionType,
-            moduleName: p.moduleName,
-          })),
+          roles: userRoleWithPermission[0]?.roleName ?[userRoleWithPermission[0]?.roleName]: [] , // Assuming 1 role for now
+          readPermission: readPermission,
+          createPermission: createPermission,
+          updatePermission: updatePermission,
         },
       });
     } catch (error) {

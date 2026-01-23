@@ -36,6 +36,6 @@ export const rbacRepository = new RbacRepositoryClass();
 // CONTROLLERS (Presentation Layer)
 // ============================================
 
-export const authController = new AuthControllerClass(authRepository, jwtController);
+export const authController = new AuthControllerClass(authRepository, jwtController, rbacRepository);
 export const rbacController = new RbacControllerClass(authRepository, rbacRepository);
 export const healthController = new HealthControllerClass();
