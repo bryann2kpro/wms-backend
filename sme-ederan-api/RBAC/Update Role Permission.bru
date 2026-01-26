@@ -1,0 +1,34 @@
+meta {
+  name: Update Role Permission
+  type: http
+  seq: 13
+}
+
+put {
+  url: {{local_path}}/rbac/role-permission/update/:roleId
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+params:path {
+  roleId: your-role-uuid-here
+}
+
+body:json {
+  {
+    "permissionIds": [
+      "permission-uuid-1",
+      "permission-uuid-2",
+      "permission-uuid-3"
+    ],
+    "updatedBy": "system"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

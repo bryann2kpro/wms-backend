@@ -1,0 +1,32 @@
+meta {
+  name: Update Permission
+  type: http
+  seq: 10
+}
+
+put {
+  url: {{local_path}}/rbac/permissions/update/:permissionId
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+params:path {
+  permissionId: your-permission-uuid-here
+}
+
+body:json {
+  {
+    "permissionType": "Update",
+    "description": "Updated permission description",
+    "status": "active",
+    "updatedBy": "system"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

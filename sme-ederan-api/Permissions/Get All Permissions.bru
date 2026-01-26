@@ -1,0 +1,21 @@
+meta {
+  name: Get All Permissions
+  type: http
+  seq: 1
+}
+
+# Get All Permissions
+# Returns all permissions in the system.
+#
+# Response:
+# - Array of permissions with { permissionId, permissionName, status, createdAt, updatedAt }
+
+get {
+  url: {{local_path}}/auth/permissions
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}

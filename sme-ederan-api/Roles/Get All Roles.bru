@@ -1,0 +1,21 @@
+meta {
+  name: Get All Roles
+  type: http
+  seq: 1
+}
+
+# Get All Roles
+# Returns all roles in the system.
+#
+# Response:
+# - Array of roles with { roleId, roleName, permissionId, status, createdAt, updatedAt }
+
+get {
+  url: {{local_path}}/auth/roles
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}

@@ -1,0 +1,19 @@
+meta {
+  name: Get User Profile
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{local_path}}/auth/profile
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+settings {
+  encodeUrl: true
+}

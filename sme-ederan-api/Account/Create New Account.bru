@@ -1,0 +1,25 @@
+meta {
+  name: Create New Account
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{local_path}}/auth/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "newuser@mail.com",
+    "displayName": "New User",
+    "password": "password123",
+    "contactNo": "+60123456789",
+    "roleId": "{{role_id}}"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

@@ -1,0 +1,19 @@
+meta {
+  name: Roles
+}
+
+# Roles API
+#
+# Manage roles in the WMS system.
+# Roles determine user permissions and access levels.
+#
+# Available role codes:
+# - STOREKEEPER: Warehouse staff (picking, packing, stock management)
+# - LOGISTIC: Driver/Runner (delivery execution)
+# - ADMIN: Company Admin (approval, stock in-out, invoices, operation support)
+# - MANAGEMENT: Management (approval optional, access to overall reports)
+#
+# Endpoints:
+# - GET /auth/roles - Get all roles
+# - POST /auth/roles - Create a new role
+# - PUT /auth/roles/:id - Update a role

@@ -1,0 +1,32 @@
+meta {
+  name: Update Role
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{local_path}}/rbac/roles/update/:roleId
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+params:path {
+  roleId: your-role-uuid-here
+}
+
+body:json {
+  {
+    "roleName": "SUPERVISOR",
+    "status": "active",
+    "permissionIds": [],
+    "updatedBy": "system"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

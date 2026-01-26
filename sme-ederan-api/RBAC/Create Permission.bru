@@ -1,0 +1,30 @@
+meta {
+  name: Create Permission
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{local_path}}/rbac/permissions/create
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "moduleId": "your-module-uuid-here",
+    "permissionType": "View",
+    "description": "View permission for the module",
+    "status": "active",
+    "createdBy": "system",
+    "updatedBy": "system"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

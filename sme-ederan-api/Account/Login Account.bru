@@ -1,0 +1,33 @@
+meta {
+  name: Login Account
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{local_path}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "management@smee.com.my",
+    "password": "management123"
+  }
+}
+
+vars:post-response {
+  bearerToken: res.body.data.accessToken
+}
+
+tests {
+  const body = res.body;
+  bru.setVar("access_token", body.data.accessToken);
+  
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

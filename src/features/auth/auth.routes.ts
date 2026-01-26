@@ -1,17 +1,65 @@
+/**
+ * Auth Routes
+ * 
+ * @description Authentication and authorization routes.
+ * 
+ * Uses normalized RBAC structure:
+ * - Users → UserRole (junction) → Role
+ * - Role → RolePermission (junction) → Permission → Module
+ * 
+ * Endpoints:
+ * - POST /auth/login              - User login
+ * - POST /auth/register           - User registration
+ * - GET  /auth/profile            - Get current user profile
+ * 
+ * - GET  /auth/roles              - Get all roles
+ * - POST /auth/roles              - Create a new role
+ * - PUT  /auth/roles/:id          - Update a role
+ * - GET  /auth/roles/:id/permissions - Get role permissions matrix
+ * 
+ * - GET  /auth/modules            - Get all modules with permissions
+ * 
+ * - GET  /auth/permissions        - Get all permissions
+ * - POST /auth/permissions        - Create a new permission
+ * - PUT  /auth/permissions/:id    - Update a permission
+ */
+
 import { Router } from 'express';
-import { authController } from '@/features/auth/auth.controller.js';
+import { authController } from '@/composition-root.js';
+import authenticateJWT from '@/middlewares/authenticate-jwt';
 
 const router = Router();
 
-// Define routes
-router.post('/login', authController.userLogin.bind(authController));
-router.post('/admin/login', authController.adminLogin.bind(authController));
-router.post('/register', authController.registerUser.bind(authController));
-router.post('/role/create', authController.roleCreate.bind(authController));
-router.put('/role/update', authController.roleUpdate.bind(authController));
-router.post('/permission/create', authController.permissionCreate.bind(authController));
-router.put('/permission/update', authController.permissionUpdate.bind(authController));
-router.post('/admin/register', authController.registerCompanyAdmin.bind(authController));
-router.get('/user/profile', authController.getUserByToken.bind(authController));
+// ============================================
+// AUTH ROUTES (Public)
+// ============================================
+
+/**
+ * @route POST /auth/login
+ * @description Authenticate user with email and password
+ * @body { email: string, password: string }
+ * @returns { accessToken, refreshToken, expiredAt }
+ */
+router.post('/login', authController.login.bind(authController));
+
+/**
+ * @route POST /auth/register
+ * @description Register a new user with role assignment
+ * @body { email: string, displayName: string, password: string, contactNo?: string, roleId: string }
+ * @returns { id, email, displayName, role }
+ */
+router.post('/register', authController.register.bind(authController));
+
+// ============================================
+// USER ROUTES (Protected)
+// ============================================
+
+/**
+ * @route GET /auth/profile
+ * @description Get current authenticated user's profile with roles and permissions
+ * @headers Authorization: Bearer <token>
+ * @returns { id, email, displayName, contactNo, isActive, roles, permissions }
+ */
+router.get('/profile', authenticateJWT, authController.getProfile.bind(authController));
 
 export default router;

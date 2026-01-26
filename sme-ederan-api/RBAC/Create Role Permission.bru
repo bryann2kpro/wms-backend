@@ -1,0 +1,28 @@
+meta {
+  name: Create Role Permission
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{local_path}}/rbac/role-permission/create
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "roleId": "your-role-uuid-here",
+    "permissionId": "your-permission-uuid-here",
+    "createdBy": "system",
+    "updatedBy": "system"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

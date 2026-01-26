@@ -1,0 +1,37 @@
+meta {
+  name: Update Role
+  type: http
+  seq: 3
+}
+
+# Update Role
+# Updates an existing role.
+#
+# URL params:
+# - id: string (required) - Role UUID
+#
+# Request body (all optional):
+# - roleName: string - New role name
+# - permissionId: string[] - Updated permission IDs
+# - status: string - New status
+#
+# Response:
+# - Updated role object
+
+put {
+  url: {{local_path}}/auth/roles/{{role_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "roleName": "STOREKEEPER",
+    "permissionId": ["permission_id_1", "permission_id_2"],
+    "status": "ACTIVE"
+  }
+}

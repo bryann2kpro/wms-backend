@@ -1,0 +1,30 @@
+meta {
+  name: Update User Role
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{local_path}}/rbac/user-role/update/:userRoleId
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+params:path {
+  userRoleId: your-user-role-uuid-here
+}
+
+body:json {
+  {
+    "status": "inactive",
+    "updatedBy": "system"
+  }
+}
+
+settings {
+  encodeUrl: true
+}
