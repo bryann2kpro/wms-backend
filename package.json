@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/main.ts src/**/*.ts",
-    "start": "tsc && node dist/main.js",
-    "build": "NODE_ENV=production tsc",
+    "start": "node dist/main.js",
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node18 --minify --format=esm --outfile=dist/main.js --packages=external",
     "migrate": "drizzle-kit generate && drizzle-kit migrate",
     "initialize": "node init.js",
     "test": "vitest"

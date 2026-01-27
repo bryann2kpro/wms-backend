@@ -1,24 +1,81 @@
-FROM node:22-alpine AS base
+# ─── Stage 1: Builder ───────────────────────────────
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install pnpm globally
+RUN corepack enable
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+# Copy lock file if it exists, otherwise install without it
+COPY package.json .
 
-# Install dependencies
-RUN pnpm install
+# Copy source and build
+COPY ./src ./src
+COPY ./postgres ./postgres
+COPY ./drizzle.config.ts ./drizzle.config.ts
 
-# Copy the rest of the application
-COPY . .
+# Copy agent directory for Python gold evaluator
+# COPY agent ./agent
 
-# Build the Next.js application for production
+# Note: Don't generate migrations during build - run them at container startup
+# CMD ["./start.sh"]
+# RUN sh ./start.sh
+
+RUN pnpm i
+# RUN pnpm run migrate
+
+# Build the application
 RUN pnpm build
 
-# Expose the port
-EXPOSE 3000
 
-# Start the Next.js production server
-CMD ["pnpm", "run", "start"]
+# ─── Stage 2: Runtime with Chromium for puppeteer-core ────────
+FROM node:22-slim AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Install pnpm, netcat (nc), wget, and Python for health checks and gold evaluator agent
+# RUN apt-get update && apt-get install -y \
+#     netcat-openbsd \
+#     wget \
+#     python3 \
+#     python3-venv \
+#     python3-pip \
+#     && rm -rf /var/lib/apt/lists/*
+# RUN npm install -g pnpm
+RUN corepack enable
+
+# Copy only necessary files
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/postgres ./postgres
+COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
+
+# Copy agent directory for Python gold evaluator
+# COPY --from=builder /app/agent ./agent
+
+# Create public and uploads directories for file uploads
+# RUN mkdir -p /app/public/uploads
+
+# Create and use a dedicated virtual environment for Python packages (PEP 668 compliant)
+# ENV PYTHON_VENV_PATH=/opt/pyenv
+# RUN python3 -m venv "$PYTHON_VENV_PATH" && \
+#     "$PYTHON_VENV_PATH/bin/pip" install --upgrade pip
+
+# Install Python dependencies for gold evaluator agent into the venv
+# RUN if [ -f "./agent/requirements.txt" ]; then \
+#         "$PYTHON_VENV_PATH/bin/pip" install --no-cache-dir -r ./agent/requirements.txt; \
+#     fi
+
+# Make the app use the venv's python
+# ENV PYTHON_EXECUTABLE="$PYTHON_VENV_PATH/bin/python"
+
+EXPOSE 7777
+
+# CMD ["pnpm", "run", "dev"]
+
+CMD ["node", "dist/main.js"]
+
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+  CMD wget --quiet --spider http://localhost:7777/api/v1/health || exit 1
