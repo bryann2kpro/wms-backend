@@ -7,10 +7,15 @@ import helmet from 'helmet';
 import cors from 'cors';
 import { promisify } from "util";
 import { logger } from "./util/logger";
-// import { requestLoggerMiddleware } from "./middleware/request-logger";
 
-// Import Middleware
-// import { responseFormatter } from "./middlewares/responseFormatter/index.js";
+// Apollo Server
+import { ApolloServer } from '@apollo/server';
+import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default';
+import { expressMiddleware } from '@as-integrations/express5';
+import { makeExecutableSchema } from '@graphql-tools/schema';
+import { typeDefs, resolvers } from '@/graphql';
+import { createContext, GraphQLContext } from '@/graphql/context';
+import { applyDirectives } from '@/graphql/directives';
 
 // Router
 import v1Router from "@/router/v1.js";
@@ -24,7 +29,11 @@ const app = express();
 
 // CORS configuration
 const corsOptions = {
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'], // Allow frontend origins
+  origin: [
+    'http://localhost:3000', 
+    'http://127.0.0.1:3000',
+    'https://studio.apollographql.com', // Apollo Sandbox
+  ],
   credentials: true, // Allow cookies and authorization headers
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'], // Allow all common HTTP methods
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'], // Allow common headers
@@ -33,7 +42,37 @@ const corsOptions = {
 
 // Global middlewares
 app.use(cors(corsOptions)); // Enable CORS with configuration
-app.use(helmet()); // For security headers
+// Helmet with relaxed CSP for GraphQL Sandbox
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://apollo-server-landing-page.cdn.apollographql.com",
+          "https://embeddable-sandbox.cdn.apollographql.com",
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://fonts.googleapis.com",
+          "https://apollo-server-landing-page.cdn.apollographql.com",
+        ],
+        imgSrc: ["'self'", "data:", "https://apollo-server-landing-page.cdn.apollographql.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        frameSrc: [
+          "'self'",
+          "https://sandbox.embed.apollographql.com",
+          "https://explorer.embed.apollographql.com",
+        ],
+        connectSrc: ["'self'", "https://*.apollographql.com"],
+      },
+    },
+    crossOriginEmbedderPolicy: false, // Required for Apollo Sandbox
+  })
+);
 app.use(requestLoggerMiddleware); // For logging requests (URL, method, IP, user agent, response time)
 app.use(express.json()); // For parsing JSON request bodies
 app.use(express.urlencoded({ extended: true })); // For parsing URL-encoded request bodies
@@ -62,6 +101,75 @@ async function runMigrations(): Promise<void> {
   }
 }
 
+// ============================================
+// APOLLO SERVER SETUP
+// ============================================
+
+/**
+ * Initialize Apollo Server with Express integration.
+ * - Creates executable schema with directives
+ * - Mounts GraphQL endpoint at /graphql
+ */
+async function startApolloServer(): Promise<void> {
+  // Create executable schema
+  let schema = makeExecutableSchema({ typeDefs, resolvers });
+  
+  // Apply custom directives (@auth, @requirePermission)
+  schema = applyDirectives(schema);
+
+  // Create Apollo Server
+  const apolloServer = new ApolloServer<GraphQLContext>({
+    schema,
+    introspection: true, // Enable introspection for Apollo Sandbox
+    plugins: [
+      // Enable embedded Apollo Sandbox (works offline/locally)
+      ApolloServerPluginLandingPageLocalDefault({
+        embed: true,
+        includeCookies: true,
+      }),
+    ],
+    formatError: (formattedError, error) => {
+      // Log errors for debugging
+      logger.error('[GraphQL Error]', {
+        message: formattedError.message,
+        code: formattedError.extensions?.code,
+        path: formattedError.path,
+      });
+      
+      // Return formatted error to client
+      return {
+        message: formattedError.message,
+        extensions: {
+          code: formattedError.extensions?.code,
+        },
+      };
+    },
+  });
+
+  // Start Apollo Server
+  await apolloServer.start();
+  logger.info('🚀 Apollo Server started');
+
+  // Mount GraphQL endpoint with Express middleware
+  app.use(
+    '/graphql',
+    cors<cors.CorsRequest>(corsOptions),
+    express.json(),
+    expressMiddleware(apolloServer, {
+      context: createContext,
+    })
+  );
+
+  logger.info('📡 GraphQL endpoint available at /graphql');
+}
+
+// ============================================
+// SERVER STARTUP
+// ============================================
+
+// Start Apollo Server before Express
+await startApolloServer();
+
 ViteExpress.listen(app, Number(PORT), async () => {
   console.log(`Server is listening on port ${PORT}...`);
 
@@ -76,5 +184,4 @@ ViteExpress.listen(app, Number(PORT), async () => {
   } catch (error) {
     console.error('❌ Error running migrations:', error);
   }
-
 });
