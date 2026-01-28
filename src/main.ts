@@ -24,6 +24,7 @@ import { fileURLToPath } from "url";
 import { env } from "./env";
 import { exec } from "child_process";
 import { initAccounts } from "./scripts/init-accounts";
+import { initMasterData } from "./scripts/init-master-data";
 
 const app = express();
 
@@ -181,7 +182,11 @@ ViteExpress.listen(app, Number(PORT), async () => {
     logger.info('🚀 Initializing accounts...');
     await initAccounts();
     logger.info('✅ Accounts initialized successfully');
+
+    logger.info('🚀 Initializing master data...');
+    await initMasterData();
+    logger.info('✅ Master data initialized successfully');
   } catch (error) {
-    console.error('❌ Error running migrations:', error);
+    console.error('❌ Error during initialization:', error);
   }
 });
