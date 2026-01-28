@@ -12,23 +12,8 @@ import { logger } from "./util/logger";
 // Import Middleware
 // import { responseFormatter } from "./middlewares/responseFormatter/index.js";
 
-// Appollo Server
-import { ApolloServer } from '@apollo/server';
-import { startStandaloneServer } from '@apollo/server/standalone';
-
-const server = new ApolloServer({
-  typeDefs,
-  resolvers,
-});
-
-const { url } = await startStandaloneServer(server, {
-  listen: { port: 4000 },
-});
-
-console.log(`Appollo Server is running at ${url}`);
-
 // Router
-// import v1Router from "@/router/v1.js";
+import v1Router from "@/router/v1.js";
 import { requestLoggerMiddleware } from "./middlewares/request-logger";
 import { fileURLToPath } from "url";
 import { env } from "./env";
@@ -61,7 +46,7 @@ const __dirname = path.dirname(__filename);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Router
-// app.use('/api/v1', v1Router);
+app.use('/api/v1', v1Router);
 
 const PORT = env.PORT || 3000;
 
