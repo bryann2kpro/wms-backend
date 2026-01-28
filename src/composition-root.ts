@@ -18,6 +18,7 @@ import { JwtControllerClass } from '@/features/jwt/jwt.controller.js';
 import { RbacControllerClass } from '@/features/rbac/rbac.controller.js';
 import { RbacRepositoryClass } from '@/features/rbac/rbac.repository.js';
 import { HealthControllerClass } from '@/features/health/health.controller.js';
+import { SkuRepositoryClass } from '@/features/master-data/sku.repository.js';
 
 // ============================================
 // SERVICES / UTILITIES (create first - no dependencies)
@@ -31,6 +32,7 @@ export const jwtController = new JwtControllerClass();
 
 export const authRepository = new AuthRepositoryClass(jwtController);
 export const rbacRepository = new RbacRepositoryClass();
+export const skuRepository = new SkuRepositoryClass();
 
 // ============================================
 // CONTROLLERS (Presentation Layer)
