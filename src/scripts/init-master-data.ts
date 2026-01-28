@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { logger } from '@/util/logger';
 import { RegionTable, RegionCode } from '@/features/master-data/region.model';
 import { RegionDeliveryScheduleTable, DayOfWeek } from '@/features/master-data/delivery-date.model';
+import { StockUnitTable, StockUnitCode } from '@/features/master-data/stock-unit.model';
 import { eq } from 'drizzle-orm';
 
 // ============================================
@@ -163,6 +164,64 @@ async function initDeliverySchedules(regionMap: Map<string, string>): Promise<vo
   logger.info('✅ Delivery schedules initialization complete!');
 }
 
+// ============================================
+// STOCK UNIT INITIALIZATION
+// ============================================
+
+/**
+ * Default stock units for the system
+ */
+const DEFAULT_STOCK_UNITS = [
+  { unitName: 'Carton', unitCode: StockUnitCode.CARTON },
+  // Add more units here as needed:
+  // { unitName: 'Piece', unitCode: StockUnitCode.PIECE },
+  // { unitName: 'Box', unitCode: StockUnitCode.BOX },
+  // { unitName: 'Pack', unitCode: StockUnitCode.PACK },
+];
+
+/**
+ * Get or create a stock unit by code
+ */
+async function getOrCreateStockUnit(unitName: string, unitCode: string): Promise<string> {
+  const existing = await db
+    .select()
+    .from(StockUnitTable)
+    .where(eq(StockUnitTable.unitCode, unitCode))
+    .limit(1);
+
+  if (existing.length > 0) {
+    logger.info(`✓ Stock unit "${unitName}" (${unitCode}) already exists`);
+    return existing[0].stockUnitId;
+  }
+
+  const [newUnit] = await db
+    .insert(StockUnitTable)
+    .values({
+      unitName,
+      unitCode,
+      isActive: true,
+      createdBy: 'system',
+      updatedBy: 'system',
+    })
+    .returning();
+
+  logger.info(`✅ Stock unit "${unitName}" (${unitCode}) created successfully`);
+  return newUnit.stockUnitId;
+}
+
+/**
+ * Initialize all stock units
+ */
+async function initStockUnits(): Promise<void> {
+  logger.info('📦 Initializing stock units...');
+
+  for (const unit of DEFAULT_STOCK_UNITS) {
+    await getOrCreateStockUnit(unit.unitName, unit.unitCode);
+  }
+
+  logger.info('✅ Stock units initialization complete!');
+}
+
 /**
  * Main initialization function for master data
  */
@@ -175,6 +234,9 @@ export async function initMasterData(): Promise<void> {
     
     // Initialize delivery schedules
     await initDeliverySchedules(regionMap);
+    
+    // Initialize stock units
+    await initStockUnits();
     
     logger.info('✅ Master data initialization complete!');
   } catch (error) {
