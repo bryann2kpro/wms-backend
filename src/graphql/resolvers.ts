@@ -12,6 +12,13 @@ import { resolvers as skuResolvers } from '@/features/master-data/sku.resolvers'
 import { resolvers as authResolvers } from '@/features/auth/auth.resolvers';
 import { resolvers as rbacResolvers } from '@/features/rbac/rbac.resolvers';
 
+// Master Data resolvers
+import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
+import { resolvers as deliveryScheduleResolvers } from '@/features/master-data/delivery-schedule.resolvers';
+import { resolvers as outletsResolvers } from '@/features/master-data/outlets.resolvers';
+import { resolvers as suppliersResolvers } from '@/features/master-data/suppliers.resolvers';
+import { resolvers as stockUnitResolvers } from '@/features/master-data/stock-unit.resolvers';
+
 // ============================================
 // BASE RESOLVERS
 // ============================================
@@ -41,4 +48,10 @@ export const resolvers = mergeResolvers([
   skuResolvers,
   authResolvers,
   rbacResolvers,
+  // Master Data
+  regionResolvers,
+  deliveryScheduleResolvers,
+  outletsResolvers,
+  suppliersResolvers,
+  stockUnitResolvers,
 ]);

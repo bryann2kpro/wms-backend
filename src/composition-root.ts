@@ -18,7 +18,14 @@ import { JwtControllerClass } from '@/features/jwt/jwt.controller.js';
 import { RbacControllerClass } from '@/features/rbac/rbac.controller.js';
 import { RbacRepositoryClass } from '@/features/rbac/rbac.repository.js';
 import { HealthControllerClass } from '@/features/health/health.controller.js';
+
+// Master Data Repositories
 import { SkuRepositoryClass } from '@/features/master-data/sku.repository.js';
+import { RegionRepositoryClass } from '@/features/master-data/region.repository.js';
+import { DeliveryScheduleRepositoryClass } from '@/features/master-data/delivery-schedule.repository.js';
+import { OutletsRepositoryClass } from '@/features/master-data/outlets.repository.js';
+import { SuppliersRepositoryClass } from '@/features/master-data/suppliers.repository.js';
+import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repository.js';
 
 // ============================================
 // SERVICES / UTILITIES (create first - no dependencies)
@@ -32,7 +39,14 @@ export const jwtController = new JwtControllerClass();
 
 export const authRepository = new AuthRepositoryClass(jwtController);
 export const rbacRepository = new RbacRepositoryClass();
+
+// Master Data Repositories
 export const skuRepository = new SkuRepositoryClass();
+export const regionRepository = new RegionRepositoryClass();
+export const deliveryScheduleRepository = new DeliveryScheduleRepositoryClass();
+export const outletsRepository = new OutletsRepositoryClass();
+export const suppliersRepository = new SuppliersRepositoryClass();
+export const stockUnitRepository = new StockUnitRepositoryClass();
 
 // ============================================
 // CONTROLLERS (Presentation Layer)

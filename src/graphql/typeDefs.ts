@@ -10,6 +10,13 @@ import { typeDefs as skuTypeDefs } from '@/features/master-data/sku.typeDefs';
 import { typeDefs as authTypeDefs } from '@/features/auth/auth.typeDefs';
 import { typeDefs as rbacTypeDefs } from '@/features/rbac/rbac.typeDefs';
 
+// Master Data typeDefs
+import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
+import { typeDefs as deliveryScheduleTypeDefs } from '@/features/master-data/delivery-schedule.typeDefs';
+import { typeDefs as outletsTypeDefs } from '@/features/master-data/outlets.typeDefs';
+import { typeDefs as suppliersTypeDefs } from '@/features/master-data/suppliers.typeDefs';
+import { typeDefs as stockUnitTypeDefs } from '@/features/master-data/stock-unit.typeDefs';
+
 // Directive type definitions
 import { directiveTypeDefs } from './directives';
 
@@ -41,6 +48,18 @@ const baseTypeDefs = `#graphql
     """
     _health: String
   }
+
+  """
+  Common pagination info type
+  """
+  type Pagination {
+    count: Int!
+    totalCount: Int!
+    currentPage: Int!
+    totalPages: Int!
+    hasNextPage: Boolean!
+    hasPrevPage: Boolean!
+  }
 `;
 
 // ============================================
@@ -59,4 +78,10 @@ export const typeDefs = [
   skuTypeDefs,
   authTypeDefs,
   rbacTypeDefs,
+  // Master Data
+  regionTypeDefs,
+  deliveryScheduleTypeDefs,
+  outletsTypeDefs,
+  suppliersTypeDefs,
+  stockUnitTypeDefs,
 ];

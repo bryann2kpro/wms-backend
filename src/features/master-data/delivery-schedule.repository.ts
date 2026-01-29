@@ -1,0 +1,257 @@
+/**
+ * Delivery Schedule Repository
+ * 
+ * @description Data access layer for Region Delivery Schedule operations.
+ */
+
+import { db } from '@/db';
+import { 
+  RegionDeliveryScheduleTable, 
+  RegionDeliveryScheduleType, 
+  RegionDeliveryScheduleInsertType,
+  DayOfWeekLabel 
+} from './delivery-date.model';
+import { RegionTable } from './region.model';
+import { eq, and, inArray } from 'drizzle-orm';
+import { logger } from '@/util/logger';
+import { DbTransaction } from '@/types/db-transaction';
+import { pagination, PgQueryType } from '@/util/pagination';
+import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
+
+// ============================================
+// FILTER TYPES
+// ============================================
+
+export type DeliveryScheduleFilter = {
+  scheduleId?: string | string[];
+  regionId?: string | string[];
+  dayOfWeek?: number | number[];
+  isActive?: boolean;
+};
+
+export type DeliveryScheduleWithRegion = RegionDeliveryScheduleType & {
+  regionName: string;
+  regionCode: string;
+  dayName: string;
+};
+
+export class DeliveryScheduleRepositoryClass {
+  constructor() {}
+
+  /**
+   * Get delivery schedules with optional filtering and pagination
+   * @param filter - Filter options
+   * @param paginationParams - Pagination parameters
+   * @returns Paginated delivery schedules with region info
+   */
+  async getDeliverySchedule(filter: DeliveryScheduleFilter, paginationParams: PaginationParams): Promise<PaginatedResponse<any>> {
+    try {
+      logger.info('ℹ️ [DeliveryScheduleRepository.getDeliverySchedule] Getting schedules...');
+      logger.debug('Filter:', filter);
+
+      const whereCondition = [];
+
+      if (Array.isArray(filter.scheduleId)) {
+        whereCondition.push(inArray(RegionDeliveryScheduleTable.scheduleId, filter.scheduleId));
+      } else if (filter.scheduleId) {
+        whereCondition.push(eq(RegionDeliveryScheduleTable.scheduleId, filter.scheduleId));
+      }
+
+      if (Array.isArray(filter.regionId)) {
+        whereCondition.push(inArray(RegionDeliveryScheduleTable.regionId, filter.regionId));
+      } else if (filter.regionId) {
+        whereCondition.push(eq(RegionDeliveryScheduleTable.regionId, filter.regionId));
+      }
+
+      if (Array.isArray(filter.dayOfWeek)) {
+        whereCondition.push(inArray(RegionDeliveryScheduleTable.dayOfWeek, filter.dayOfWeek));
+      } else if (filter.dayOfWeek !== undefined) {
+        whereCondition.push(eq(RegionDeliveryScheduleTable.dayOfWeek, filter.dayOfWeek));
+      }
+
+      if (filter.isActive !== undefined) {
+        whereCondition.push(eq(RegionDeliveryScheduleTable.isActive, filter.isActive));
+      }
+
+      const baseQuery = db
+        .select({
+          scheduleId: RegionDeliveryScheduleTable.scheduleId,
+          regionId: RegionDeliveryScheduleTable.regionId,
+          dayOfWeek: RegionDeliveryScheduleTable.dayOfWeek,
+          cutoffDaysBefore: RegionDeliveryScheduleTable.cutoffDaysBefore,
+          cutoffTime: RegionDeliveryScheduleTable.cutoffTime,
+          isActive: RegionDeliveryScheduleTable.isActive,
+          createdAt: RegionDeliveryScheduleTable.createdAt,
+          updatedAt: RegionDeliveryScheduleTable.updatedAt,
+          createdBy: RegionDeliveryScheduleTable.createdBy,
+          updatedBy: RegionDeliveryScheduleTable.updatedBy,
+          regionName: RegionTable.regionName,
+          regionCode: RegionTable.regionCode,
+        })
+        .from(RegionDeliveryScheduleTable)
+        .innerJoin(RegionTable, eq(RegionDeliveryScheduleTable.regionId, RegionTable.regionId))
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+
+      const pageSize = paginationParams.pageSize || 10;
+      const pageNumber = paginationParams.pageNumber || 1;
+      const allData = await baseQuery;
+      const totalCount = allData.length;
+      const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
+      const data = await paginatedQuery.query;
+
+      // Add day name
+      const result = data.map((s: any) => ({
+        ...s,
+        dayName: DayOfWeekLabel[s.dayOfWeek] || 'Unknown',
+      }));
+
+      logger.info('✅ [DeliveryScheduleRepository.getDeliverySchedule] Schedules fetched successfully');
+      return { query: result, pagination: paginatedQuery.pagination };
+    } catch (error) {
+      logger.error('❌ [DeliveryScheduleRepository.getDeliverySchedule] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get schedule by ID
+   */
+  async getScheduleById(id: string): Promise<DeliveryScheduleWithRegion | null> {
+    try {
+      logger.info('ℹ️ [DeliveryScheduleRepository.getScheduleById] Getting schedule by ID...');
+      const [schedule] = await db
+        .select({
+          scheduleId: RegionDeliveryScheduleTable.scheduleId,
+          regionId: RegionDeliveryScheduleTable.regionId,
+          dayOfWeek: RegionDeliveryScheduleTable.dayOfWeek,
+          cutoffDaysBefore: RegionDeliveryScheduleTable.cutoffDaysBefore,
+          cutoffTime: RegionDeliveryScheduleTable.cutoffTime,
+          isActive: RegionDeliveryScheduleTable.isActive,
+          createdAt: RegionDeliveryScheduleTable.createdAt,
+          updatedAt: RegionDeliveryScheduleTable.updatedAt,
+          createdBy: RegionDeliveryScheduleTable.createdBy,
+          updatedBy: RegionDeliveryScheduleTable.updatedBy,
+          regionName: RegionTable.regionName,
+          regionCode: RegionTable.regionCode,
+        })
+        .from(RegionDeliveryScheduleTable)
+        .innerJoin(RegionTable, eq(RegionDeliveryScheduleTable.regionId, RegionTable.regionId))
+        .where(eq(RegionDeliveryScheduleTable.scheduleId, id))
+        .limit(1);
+      
+      if (!schedule) {
+        logger.info('✅ [DeliveryScheduleRepository.getScheduleById] Schedule not found');
+        return null;
+      }
+
+      logger.info('✅ [DeliveryScheduleRepository.getScheduleById] Schedule fetched successfully');
+      return {
+        ...schedule,
+        dayName: DayOfWeekLabel[schedule.dayOfWeek] || 'Unknown',
+      };
+    } catch (error) {
+      logger.error('❌ [DeliveryScheduleRepository.getScheduleById] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new delivery schedule
+   * @param data - Schedule data
+   * @param tx - Optional transaction
+   */
+  async createDeliverySchedule(data: Omit<RegionDeliveryScheduleInsertType, 'scheduleId' | 'createdAt' | 'updatedAt'>, tx?: DbTransaction): Promise<RegionDeliveryScheduleType> {
+    try {
+      const dbClient = tx || db;
+      logger.info('ℹ️ [DeliveryScheduleRepository.createDeliverySchedule] Creating schedule...');
+      
+      const [schedule] = await dbClient
+        .insert(RegionDeliveryScheduleTable)
+        .values({
+          ...data,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      
+      logger.info('✅ [DeliveryScheduleRepository.createDeliverySchedule] Schedule created successfully');
+      return schedule;
+    } catch (error) {
+      logger.error('❌ [DeliveryScheduleRepository.createDeliverySchedule] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing delivery schedule
+   * @param data - Partial schedule data
+   * @param id - Schedule ID
+   * @param tx - Optional transaction
+   */
+  async updateDeliverySchedule(data: Partial<RegionDeliveryScheduleInsertType>, id: string, tx?: DbTransaction): Promise<RegionDeliveryScheduleType> {
+    try {
+      const dbClient = tx || db;
+      logger.info('ℹ️ [DeliveryScheduleRepository.updateDeliverySchedule] Updating schedule...');
+      
+      const [schedule] = await dbClient
+        .update(RegionDeliveryScheduleTable)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(RegionDeliveryScheduleTable.scheduleId, id))
+        .returning();
+      
+      logger.info('✅ [DeliveryScheduleRepository.updateDeliverySchedule] Schedule updated successfully');
+      return schedule;
+    } catch (error) {
+      logger.error('❌ [DeliveryScheduleRepository.updateDeliverySchedule] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a delivery schedule
+   * @param id - Schedule ID
+   * @param tx - Optional transaction
+   */
+  async deleteDeliverySchedule(id: string, tx?: DbTransaction): Promise<boolean> {
+    try {
+      const dbClient = tx || db;
+      logger.info('ℹ️ [DeliveryScheduleRepository.deleteDeliverySchedule] Deleting schedule...');
+      
+      await dbClient
+        .delete(RegionDeliveryScheduleTable)
+        .where(eq(RegionDeliveryScheduleTable.scheduleId, id));
+      
+      logger.info('✅ [DeliveryScheduleRepository.deleteDeliverySchedule] Schedule deleted successfully');
+      return true;
+    } catch (error) {
+      logger.error('❌ [DeliveryScheduleRepository.deleteDeliverySchedule] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Toggle schedule active status
+   * @param id - Schedule ID
+   * @param isActive - New active status
+   * @param updatedBy - User who made the update
+   * @param tx - Optional transaction
+   */
+  async toggleScheduleActive(id: string, isActive: boolean, updatedBy: string, tx?: DbTransaction): Promise<RegionDeliveryScheduleType> {
+    try {
+      const dbClient = tx || db;
+      logger.info('ℹ️ [DeliveryScheduleRepository.toggleScheduleActive] Toggling schedule status...');
+      
+      const [schedule] = await dbClient
+        .update(RegionDeliveryScheduleTable)
+        .set({ isActive, updatedAt: new Date(), updatedBy })
+        .where(eq(RegionDeliveryScheduleTable.scheduleId, id))
+        .returning();
+      
+      logger.info('✅ [DeliveryScheduleRepository.toggleScheduleActive] Schedule status updated');
+      return schedule;
+    } catch (error) {
+      logger.error('❌ [DeliveryScheduleRepository.toggleScheduleActive] Error:', error);
+      throw error;
+    }
+  }
+}
