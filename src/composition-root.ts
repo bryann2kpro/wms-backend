@@ -26,6 +26,7 @@ import { DeliveryScheduleRepositoryClass } from '@/features/master-data/delivery
 import { OutletsRepositoryClass } from '@/features/master-data/outlets.repository.js';
 import { SuppliersRepositoryClass } from '@/features/master-data/suppliers.repository.js';
 import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repository.js';
+import { RacksRepositoryClass } from '@/features/master-data/racks.repository.js';
 
 // ============================================
 // SERVICES / UTILITIES (create first - no dependencies)
@@ -47,6 +48,7 @@ export const deliveryScheduleRepository = new DeliveryScheduleRepositoryClass();
 export const outletsRepository = new OutletsRepositoryClass();
 export const suppliersRepository = new SuppliersRepositoryClass();
 export const stockUnitRepository = new StockUnitRepositoryClass();
+export const racksRepository = new RacksRepositoryClass();
 
 // ============================================
 // CONTROLLERS (Presentation Layer)

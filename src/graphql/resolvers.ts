@@ -18,6 +18,7 @@ import { resolvers as deliveryScheduleResolvers } from '@/features/master-data/d
 import { resolvers as outletsResolvers } from '@/features/master-data/outlets.resolvers';
 import { resolvers as suppliersResolvers } from '@/features/master-data/suppliers.resolvers';
 import { resolvers as stockUnitResolvers } from '@/features/master-data/stock-unit.resolvers';
+import { resolvers as racksResolvers } from '@/features/master-data/racks.resolvers';
 
 // ============================================
 // BASE RESOLVERS
@@ -54,4 +55,5 @@ export const resolvers = mergeResolvers([
   outletsResolvers,
   suppliersResolvers,
   stockUnitResolvers,
+  racksResolvers,
 ]);

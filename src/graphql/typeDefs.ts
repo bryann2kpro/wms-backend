@@ -16,6 +16,7 @@ import { typeDefs as deliveryScheduleTypeDefs } from '@/features/master-data/del
 import { typeDefs as outletsTypeDefs } from '@/features/master-data/outlets.typeDefs';
 import { typeDefs as suppliersTypeDefs } from '@/features/master-data/suppliers.typeDefs';
 import { typeDefs as stockUnitTypeDefs } from '@/features/master-data/stock-unit.typeDefs';
+import { typeDefs as racksTypeDefs } from '@/features/master-data/racks.typeDefs';
 
 // Directive type definitions
 import { directiveTypeDefs } from './directives';
@@ -84,4 +85,5 @@ export const typeDefs = [
   outletsTypeDefs,
   suppliersTypeDefs,
   stockUnitTypeDefs,
+  racksTypeDefs,
 ];
