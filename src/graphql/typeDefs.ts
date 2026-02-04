@@ -17,6 +17,7 @@ import { typeDefs as outletsTypeDefs } from '@/features/master-data/outlets.type
 import { typeDefs as suppliersTypeDefs } from '@/features/master-data/suppliers.typeDefs';
 import { typeDefs as stockUnitTypeDefs } from '@/features/master-data/stock-unit.typeDefs';
 import { typeDefs as racksTypeDefs } from '@/features/master-data/racks.typeDefs';
+import { typeDefs as reportTypeDefs } from '@/features/report/report.typeDefs';
 
 // Directive type definitions
 import { directiveTypeDefs } from './directives';
@@ -86,4 +87,5 @@ export const typeDefs = [
   suppliersTypeDefs,
   stockUnitTypeDefs,
   racksTypeDefs,
+  reportTypeDefs,
 ];
