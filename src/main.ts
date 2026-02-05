@@ -34,6 +34,7 @@ const corsOptions = {
     'http://localhost:3000', 
     'http://127.0.0.1:3000',
     'https://studio.apollographql.com', // Apollo Sandbox
+    'http://210.187.49.109:8001'
   ],
   credentials: true, // Allow cookies and authorization headers
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'], // Allow all common HTTP methods
