@@ -50,6 +50,7 @@ export const typeDefs = `#graphql
   input CreateOutletInput {
     outletName: String!
     outletCode: String!
+    outletAddress: String
     regionId: ID
     createdBy: String!
     updatedBy: String!
