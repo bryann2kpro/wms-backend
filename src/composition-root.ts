@@ -27,6 +27,7 @@ import { OutletsRepositoryClass } from '@/features/master-data/outlets.repositor
 import { SuppliersRepositoryClass } from '@/features/master-data/suppliers.repository.js';
 import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repository.js';
 import { RacksRepositoryClass } from '@/features/master-data/racks.repository.js';
+import { AuditLogRepositoryClass } from './features/audit-log/audit.repository';
 
 // ============================================
 // SERVICES / UTILITIES (create first - no dependencies)
@@ -57,3 +58,4 @@ export const racksRepository = new RacksRepositoryClass();
 export const authController = new AuthControllerClass(authRepository, jwtController, rbacRepository);
 export const rbacController = new RbacControllerClass(authRepository, rbacRepository);
 export const healthController = new HealthControllerClass();
+export const auditLogRepository = new AuditLogRepositoryClass();

@@ -11,10 +11,12 @@ export const typeDefs = `#graphql
   """
   type Sku {
     skuId: ID!
-    skuName: String!
+    skuCode: String!
     skuDescription: String!
     skuPrice: Float!
     skuQuantity: Float!
+    skuExpiryDate: String!
+    skuSuppliers: [Supplier!]!
     skuUom: String!
     isActive: Boolean!
     createdAt: String!
@@ -27,10 +29,12 @@ export const typeDefs = `#graphql
   Input for creating a new SKU
   """
   input CreateSkuInput {
-    skuName: String!
+    skuCode: String!
     skuDescription: String!
     skuPrice: Float!
     skuQuantity: Float!
+    skuExpiryDate: String!
+    skuSuppliers: [ID!]!
     skuUom: String!
     isActive: Boolean!
     createdBy: String!
@@ -41,10 +45,12 @@ export const typeDefs = `#graphql
   Input for updating an existing SKU
   """
   input UpdateSkuInput {
-    skuName: String
+    skuCode: String
     skuDescription: String
     skuPrice: Float
     skuQuantity: Float
+    skuExpiryDate: String
+    skuSuppliers: [ID!]
     skuUom: String
     isActive: Boolean
     updatedBy: String!
