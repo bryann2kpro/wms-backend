@@ -1,6 +1,6 @@
 {
-  "id": "6243b163-ea09-4bc2-9b3d-87799a3f1bce",
-  "prevId": "3ad6ba7b-2e89-478c-b735-1a03e862dbff",
+  "id": "10de495d-e484-4356-96c5-d85b7fecf005",
+  "prevId": "772e714f-f203-4609-b3c4-6baa7c565bf6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1654,8 +1654,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "sku_name": {
-          "name": "sku_name",
+        "sku_code": {
+          "name": "sku_code",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -1668,13 +1668,25 @@
         },
         "sku_price": {
           "name": "sku_price",
-          "type": "numeric",
+          "type": "numeric(6, 2)",
           "primaryKey": false,
           "notNull": true
         },
         "sku_quantity": {
           "name": "sku_quantity",
-          "type": "numeric(2)",
+          "type": "numeric(6, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sku_expiry_date": {
+          "name": "sku_expiry_date",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sku_suppliers": {
+          "name": "sku_suppliers",
+          "type": "uuid[]",
           "primaryKey": false,
           "notNull": true
         },
@@ -1718,7 +1730,22 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "skus_sku_suppliers_supplers_supplier_id_fk": {
+          "name": "skus_sku_suppliers_supplers_supplier_id_fk",
+          "tableFrom": "skus",
+          "tableTo": "supplers",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "sku_suppliers"
+          ],
+          "columnsTo": [
+            "supplier_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -2847,7 +2874,17 @@
       "isRLSEnabled": false
     }
   },
-  "enums": {},
+  "enums": {
+    "main.audit_action": {
+      "name": "audit_action",
+      "schema": "main",
+      "values": [
+        "CREATE",
+        "UPDATE",
+        "DELETE"
+      ]
+    }
+  },
   "schemas": {
     "main": "main"
   },
