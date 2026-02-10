@@ -22,6 +22,8 @@ function transformSku(sku: {
   skuDescription: string;
   skuPrice: string;
   skuQuantity: string;
+  skuExpiryDate: Date;
+  skuSuppliers: string[];
   skuUom: string;
   isActive: boolean;
   createdAt: Date;
@@ -35,7 +37,9 @@ function transformSku(sku: {
     skuDescription: sku.skuDescription,
     skuPrice: parseFloat(sku.skuPrice),
     skuQuantity: parseFloat(sku.skuQuantity),
+    skuExpiryDate: sku.skuExpiryDate,
     skuUom: sku.skuUom,
+    skuSuppliers: sku.skuSuppliers,
     isActive: sku.isActive,
     createdAt: sku.createdAt.toISOString(),
     updatedAt: sku.updatedAt.toISOString(),
@@ -77,6 +81,8 @@ export const resolvers = {
       skuDescription: string;
       skuPrice: number;
       skuQuantity: number;
+      skuExpiryDate: Date;
+      skuSuppliers: string[];
       skuUom: string;
       isActive: boolean;
       createdBy: string;
@@ -87,6 +93,8 @@ export const resolvers = {
         skuDescription: input.skuDescription,
         skuPrice: input.skuPrice.toString(),
         skuQuantity: input.skuQuantity.toString(),
+        skuExpiryDate: input.skuExpiryDate,
+        skuSuppliers: input.skuSuppliers,
         skuUom: input.skuUom,
         isActive: input.isActive,
         createdBy: input.createdBy,
@@ -104,6 +112,8 @@ export const resolvers = {
       skuDescription?: string;
       skuPrice?: number;
       skuQuantity?: number;
+      skuSupplier?: string[];
+      skuExpiryDate?: Date;
       skuUom?: string;
       isActive?: boolean;
       updatedBy: string;
@@ -116,6 +126,8 @@ export const resolvers = {
       if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
       if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice.toString();
       if (input.skuQuantity !== undefined) updateData.skuQuantity = input.skuQuantity.toString();
+      if (input.skuExpiryDate !== undefined) updateData.skuExpiryDate = input.skuExpiryDate;
+      if (input.skuSupplier !== undefined) updateData.skuSupplier = input.skuSupplier;
       if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
       if (input.isActive !== undefined) updateData.isActive = input.isActive;
 

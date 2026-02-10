@@ -1,0 +1,1 @@
+ALTER TABLE "main"."skus" ALTER COLUMN "sku_supplier" DROP NOT NULL;

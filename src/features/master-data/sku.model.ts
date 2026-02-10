@@ -1,5 +1,6 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
+import { SuppliersTable } from "./suppliers.model";
 
 /**
 * Sku Table
@@ -12,6 +13,8 @@ export const SkuTable = MainSchema.table('skus', {
   skuDescription: text('sku_description').notNull(),
   skuPrice: numeric('sku_price').notNull(),
   skuQuantity: numeric('sku_quantity', { precision: 2 }).notNull(),
+  skuExpiryDate: timestamp('sku_expiry_date').notNull(),
+  skuSuppliers: uuid('sku_suppliers').array().notNull().references(() => SuppliersTable.supplierId),
   skuUom: text('sku_unit_of_measurement').notNull(),
   isActive: boolean('is_active').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
