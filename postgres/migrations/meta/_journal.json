@@ -120,6 +120,13 @@
       "when": 1770689687846,
       "tag": "0016_left_turbo",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1770692025863,
+      "tag": "0017_nosy_rictor",
+      "breakpoints": true
     }
   ]
 }

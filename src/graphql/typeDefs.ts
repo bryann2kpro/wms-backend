@@ -9,6 +9,7 @@
 import { typeDefs as skuTypeDefs } from '@/features/master-data/sku.typeDefs';
 import { typeDefs as authTypeDefs } from '@/features/auth/auth.typeDefs';
 import { typeDefs as rbacTypeDefs } from '@/features/rbac/rbac.typeDefs';
+import { typeDefs as auditLogTypeDefs } from '@/features/audit-log/audit.typeDefs';
 
 // Master Data typeDefs
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
@@ -31,6 +32,11 @@ import { directiveTypeDefs } from './directives';
  * Features use 'extend type Query' and 'extend type Mutation' to add their fields.
  */
 const baseTypeDefs = `#graphql
+  """
+  Custom scalar for JSON data
+  """
+  scalar JSON
+
   """
   Root Query type - extended by features
   """
@@ -88,4 +94,5 @@ export const typeDefs = [
   stockUnitTypeDefs,
   racksTypeDefs,
   reportTypeDefs,
+  auditLogTypeDefs,
 ];
