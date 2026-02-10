@@ -5,6 +5,7 @@
  * with automatic audit logging functionality.
  */
 
+import { randomUUID } from "crypto";
 import { GraphQLContext } from "@/graphql/context";
 import { AuditLogRepositoryClass } from "./audit.repository";
 import { logger } from "@/util/logger";
@@ -13,19 +14,28 @@ import { logger } from "@/util/logger";
 // TYPES
 // ============================================
 
-export type AuditActionType = 'CREATE' | 'UPDATE' | 'DELETE';
+export type AuditActionType =
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'BULK_CREATE'
+  | 'BULK_UPDATE'
+  | 'BULK_DELETE';
 
 export interface WithAuditOptions<TArgs, TResult> {
   /** The entity/table name being modified */
   entity: string;
-  /** The type of action (CREATE, UPDATE, DELETE) */
+  /**
+   * The type of action (CREATE, UPDATE, DELETE) or bulk variants
+   * (BULK_CREATE, BULK_UPDATE, BULK_DELETE).
+   */
   action: AuditActionType;
   /** 
    * Extract the entity ID from the result or args.
    * For CREATE: usually from result (e.g., result.regionId)
    * For UPDATE/DELETE: usually from args (e.g., args.id)
    */
-  getEntityId?: (result: TResult | null, args: TArgs) => string | null;
+  getEntityId?: (result: TResult | null, args: TArgs) => string | string[] | null;
   /**
    * Fetch old data before the mutation executes (for UPDATE/DELETE).
    * Return null/undefined if not applicable.
@@ -164,14 +174,18 @@ export function withAudit<TParent, TArgs, TResult>(
   resolver: ResolverFn<TParent, TArgs, TResult>
 ): ResolverFn<TParent, TArgs, TResult> {
   const { entity, action, getEntityId, getOldData, getNewData } = options;
+  const isBulkAction = action === 'BULK_CREATE' || action === 'BULK_UPDATE' || action === 'BULK_DELETE';
+  const isCreateAction = action === 'CREATE' || action === 'BULK_CREATE';
+  const isDeleteAction = action === 'DELETE' || action === 'BULK_DELETE';
 
   return async (parent, args, context, info) => {
+    const batchId = isBulkAction ? randomUUID() : null;
     let oldData: unknown = null;
     let result: TResult | null = null;
 
     try {
       // Fetch old data before mutation (for UPDATE/DELETE)
-      if (getOldData && (action === 'UPDATE' || action === 'DELETE')) {
+      if (getOldData && (action === 'UPDATE' || action === 'DELETE' || action === 'BULK_UPDATE' || action === 'BULK_DELETE')) {
         try {
           oldData = await getOldData(args, context);
         } catch (error) {
@@ -182,29 +196,58 @@ export function withAudit<TParent, TArgs, TResult>(
       // Execute the actual resolver
       result = await resolver(parent, args, context, info);
 
-      // Create audit log entry (fire and forget to not block response)
-      const entityId = getEntityId ? getEntityId(result, args) : null;
-      const newData = getNewData ? getNewData(result, args) : result;
+      // Create audit log entry/entries (fire and forget to not block response)
+      const entityIdValue = getEntityId ? getEntityId(result, args) : null;
+      const newDataValue = getNewData ? getNewData(result, args) : result;
 
-      // Log asynchronously to not impact response time
-      auditLogRepository.createAuditLog({
-        userId: context.user?.id ?? null,
-        role: getUserRole(context),
-        action,
-        entity,
-        entityId,
-        oldData: action !== 'CREATE' ? oldData : undefined,
-        newData: action !== 'DELETE' ? newData : undefined,
-        ipAddress: getIpAddress(context),
-        userAgent: getUserAgent(context),
-      }).catch((error) => {
-        logger.error('[withAudit] Failed to create audit log:', error);
-      });
+      if (isBulkAction && Array.isArray(entityIdValue)) {
+        const oldArray = Array.isArray(oldData) ? oldData : entityIdValue.map(() => oldData);
+        const newArray = Array.isArray(newDataValue) ? newDataValue : entityIdValue.map(() => newDataValue);
+
+        Promise.all(
+          entityIdValue.map((id, index) =>
+            auditLogRepository.createAuditLog({
+              userId: context.user?.id ?? null,
+              role: getUserRole(context),
+              action,
+              entity,
+              entityId: id,
+              batchId,
+              oldData: !isCreateAction ? oldArray[index] : undefined,
+              newData: !isDeleteAction ? newArray[index] : undefined,
+              ipAddress: getIpAddress(context),
+              userAgent: getUserAgent(context),
+            })
+          )
+        ).catch((error) => {
+          logger.error('[withAudit] Failed to create bulk audit logs:', error);
+        });
+      } else {
+        const entityId = Array.isArray(entityIdValue) ? entityIdValue[0] ?? null : entityIdValue;
+        const newData = Array.isArray(newDataValue) ? newDataValue[0] : newDataValue;
+
+        // Log asynchronously to not impact response time
+        auditLogRepository.createAuditLog({
+          userId: context.user?.id ?? null,
+          role: getUserRole(context),
+          action,
+          entity,
+          entityId,
+          batchId,
+          oldData: !isCreateAction ? oldData : undefined,
+          newData: !isDeleteAction ? newData : undefined,
+          ipAddress: getIpAddress(context),
+          userAgent: getUserAgent(context),
+        }).catch((error) => {
+          logger.error('[withAudit] Failed to create audit log:', error);
+        });
+      }
 
       return result;
     } catch (error) {
       // Even on error, try to log the failed attempt
-      const entityId = getEntityId ? getEntityId(result, args) : null;
+      const entityIdValue = getEntityId ? getEntityId(result, args) : null;
+      const entityId = Array.isArray(entityIdValue) ? entityIdValue.join(',') : entityIdValue;
 
       auditLogRepository.createAuditLog({
         userId: context.user?.id ?? null,
@@ -212,6 +255,7 @@ export function withAudit<TParent, TArgs, TResult>(
         action: `${action}_FAILED`,
         entity,
         entityId,
+        batchId,
         oldData: action !== 'CREATE' ? oldData : undefined,
         newData: { args, error: error instanceof Error ? error.message : String(error) },
         ipAddress: getIpAddress(context),

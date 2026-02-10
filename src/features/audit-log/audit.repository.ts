@@ -25,6 +25,7 @@ export type CreateAuditLogInput = {
   action: string;
   entity: string;
   entityId?: string | null;
+  batchId?: string | null;
   oldData?: unknown;
   newData?: unknown;
   ipAddress: string;
@@ -106,6 +107,7 @@ export class AuditLogRepositoryClass {
           action: input.action,
           entity: input.entity,
           entityId: input.entityId,
+          batchId: input.batchId,
         });
 
         const [auditLog] = await db
@@ -116,6 +118,7 @@ export class AuditLogRepositoryClass {
             action: input.action,
             entity: input.entity,
             entityId: input.entityId ?? undefined,
+            batchId: input.batchId ?? undefined,
             oldData: input.oldData,
             newData: input.newData,
             ipAddress: input.ipAddress,

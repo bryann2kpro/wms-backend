@@ -5,6 +5,15 @@ export const AuditActionEnum = MainSchema.enum('audit_action', [
   'CREATE',
   'UPDATE',
   'DELETE',
+  'BULK_CREATE',
+  'BULK_UPDATE',
+  'BULK_DELETE',
+  'CREATE_FAILED',
+  'UPDATE_FAILED',
+  'DELETE_FAILED',
+  'BULK_CREATE_FAILED',
+  'BULK_UPDATE_FAILED',
+  'BULK_DELETE_FAILED',
 ]);
 
 /**
@@ -30,6 +39,7 @@ export const AuditLogTable = MainSchema.table('audit_logs', {
     action: text('action').notNull(),
     entity: text('entity').notNull(),
     entityId: text('entity_id'),
+    batchId: uuid('batch_id'),
     oldData: jsonb('old_data'),
     newData: jsonb('new_data'),
     ipAddress: inet('ip_address').notNull(),

@@ -1,0 +1,1 @@
+ALTER TABLE "main"."audit_logs" ADD COLUMN "batch_id" uuid DEFAULT gen_random_uuid();
