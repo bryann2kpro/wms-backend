@@ -1,6 +1,6 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
-import { SuppliersTable } from "./suppliers.model";
+import { StockUnitTable } from "./stock-unit.model";
 
 /**
 * Sku Table
@@ -20,7 +20,7 @@ export const SkuTable = MainSchema.table('skus', {
    * @field originalSkuCode - Original SKU code from supplier (nullable)
    */
   skuSuppliers: jsonb('sku_suppliers').notNull().$type<Array<{ supplierId: string; originalSkuCode: string | null }>>(),
-  skuUom: text('sku_unit_of_measurement').notNull(),
+  skuUom: uuid('sku_unit_of_measurement').notNull().references(() => StockUnitTable.stockUnitId),
   isActive: boolean('is_active').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

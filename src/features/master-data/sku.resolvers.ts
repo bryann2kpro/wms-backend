@@ -117,9 +117,12 @@ export const resolvers = {
       }
 
       // Only pass pagination params if both are provided, otherwise get all data
-      const paginationParams = (args.pageSize && args.pageNumber) 
-        ? { pageSize: args.pageSize, pageNumber: args.pageNumber }
-        : undefined;
+      let paginationParams;
+      if (args.pageSize && args.pageNumber) {
+        paginationParams = { pageSize: args.pageSize, pageNumber: args.pageNumber };
+      } else {
+        paginationParams = undefined;
+      }
 
       const result = await skuRepository.getSku(filter, paginationParams);
 
