@@ -6,11 +6,13 @@
  */
 
 import { mergeResolvers } from '@graphql-tools/merge';
+import { GraphQLScalarType, Kind } from 'graphql';
 
 // Feature resolvers (separated from typeDefs for proper layer separation)
 import { resolvers as skuResolvers } from '@/features/master-data/sku.resolvers';
 import { resolvers as authResolvers } from '@/features/auth/auth.resolvers';
 import { resolvers as rbacResolvers } from '@/features/rbac/rbac.resolvers';
+import { resolvers as auditResolvers } from '@/features/audit-log/audit.resolvers';
 
 // Master Data resolvers
 import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
@@ -26,9 +28,47 @@ import { resolvers as reportResolvers } from '@/features/report/report.resolvers
 // ============================================
 
 /**
+ * Custom JSON scalar type for handling arbitrary JSON data
+ */
+const JSONScalar = new GraphQLScalarType({
+  name: 'JSON',
+  description: 'Custom scalar type for JSON data',
+  serialize(value: unknown) {
+    return value;
+  },
+  parseValue(value: unknown) {
+    return value;
+  },
+  parseLiteral(ast) {
+    switch (ast.kind) {
+      case Kind.STRING:
+        return JSON.parse(ast.value);
+      case Kind.INT:
+      case Kind.FLOAT:
+        return Number(ast.value);
+      case Kind.BOOLEAN:
+        return ast.value;
+      case Kind.NULL:
+        return null;
+      case Kind.LIST:
+        return ast.values.map((v) => JSONScalar.parseLiteral(v, {}));
+      case Kind.OBJECT:
+        const obj: Record<string, unknown> = {};
+        ast.fields.forEach((field) => {
+          obj[field.name.value] = JSONScalar.parseLiteral(field.value, {});
+        });
+        return obj;
+      default:
+        return null;
+    }
+  },
+});
+
+/**
  * Base resolvers for root Query and Mutation types.
  */
 const baseResolvers = {
+  JSON: JSONScalar,
   Query: {
     _health: () => 'GraphQL server is running!',
   },
@@ -50,6 +90,7 @@ export const resolvers = mergeResolvers([
   skuResolvers,
   authResolvers,
   rbacResolvers,
+  auditResolvers,
   // Master Data
   regionResolvers,
   deliveryScheduleResolvers,

@@ -57,6 +57,20 @@
       "when": 1770093935995,
       "tag": "0007_fuzzy_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1770624030372,
+      "tag": "0008_fluffy_solo",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1770687625288,
+      "tag": "0009_conscious_rick_jones",
+      "breakpoints": true
     }
   ]
 }
