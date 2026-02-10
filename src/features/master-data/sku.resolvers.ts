@@ -7,21 +7,46 @@
  * Type definitions are in sku.typeDefs.ts
  */
 
-import { skuRepository } from '@/composition-root';
+import { skuRepository, suppliersRepository } from '@/composition-root';
 
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
 
 /**
+ * Transform supplier for GraphQL response
+ */
+function transformSupplier(supplier: {
+  supplierId: string;
+  supplierName: string;
+  supplierCode: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  updatedBy: string;
+}) {
+  return {
+    supplierId: supplier.supplierId,
+    supplierName: supplier.supplierName,
+    supplierCode: supplier.supplierCode,
+    createdAt: supplier.createdAt.toISOString(),
+    updatedAt: supplier.updatedAt.toISOString(),
+    createdBy: supplier.createdBy,
+    updatedBy: supplier.updatedBy,
+  };
+}
+
+/**
  * Transform SKU for GraphQL response
  */
 function transformSku(sku: {
   skuId: string;
-  skuName: string;
+  skuCode: string;
   skuDescription: string;
   skuPrice: string;
   skuQuantity: string;
+  skuExpiryDate: Date;
+  skuSuppliers: string[];
   skuUom: string;
   isActive: boolean;
   createdAt: Date;
@@ -31,11 +56,13 @@ function transformSku(sku: {
 }) {
   return {
     skuId: sku.skuId,
-    skuName: sku.skuName,
+    skuCode: sku.skuCode,
     skuDescription: sku.skuDescription,
     skuPrice: parseFloat(sku.skuPrice),
     skuQuantity: parseFloat(sku.skuQuantity),
+    skuExpiryDate: sku.skuExpiryDate,
     skuUom: sku.skuUom,
+    skuSuppliers: sku.skuSuppliers,
     isActive: sku.isActive,
     createdAt: sku.createdAt.toISOString(),
     updatedAt: sku.updatedAt.toISOString(),
@@ -68,25 +95,59 @@ export const resolvers = {
     },
   },
 
+  Sku: {
+    /**
+     * Resolve suppliers for a SKU by fetching supplier data using the IDs
+     */
+    skuSuppliers: async (sku: { skuSuppliers: string[] }) => {
+      if (!sku.skuSuppliers || sku.skuSuppliers.length === 0) {
+        return [];
+      }
+
+      try {
+        // Fetch suppliers by IDs using the repository
+        const result = await suppliersRepository.getSupplier(
+          { supplierId: sku.skuSuppliers },
+          { pageSize: 1000, pageNumber: 1 } // Get all suppliers (no pagination needed for this use case)
+        );
+        
+        // Transform suppliers for GraphQL response
+        return result.query.map(transformSupplier);
+      } catch (error) {
+        console.error('Error fetching suppliers for SKU:', error);
+        return [];
+      }
+    },
+  },
+
   Mutation: {
     /**
      * Create a new SKU (uses repository)
      */
     createSku: async (_: unknown, { input }: { input: {
-      skuName: string;
+      skuCode: string;
       skuDescription: string;
       skuPrice: number;
       skuQuantity: number;
+      skuExpiryDate: string | Date;
+      skuSuppliers: string[];
       skuUom: string;
       isActive: boolean;
       createdBy: string;
       updatedBy: string;
     }}) => {
+      // Convert date string to Date object if needed
+      if (typeof input.skuExpiryDate === 'string') {
+        input.skuExpiryDate = new Date(input.skuExpiryDate);
+      }
+
       const sku = await skuRepository.createSku({
-        skuName: input.skuName,
+        skuCode: input.skuCode,
         skuDescription: input.skuDescription,
         skuPrice: input.skuPrice.toString(),
         skuQuantity: input.skuQuantity.toString(),
+        skuExpiryDate: input.skuExpiryDate,
+        skuSuppliers: input.skuSuppliers,
         skuUom: input.skuUom,
         isActive: input.isActive,
         createdBy: input.createdBy,
@@ -100,10 +161,12 @@ export const resolvers = {
      * Update an existing SKU (uses repository)
      */
     updateSku: async (_: unknown, { id, input }: { id: string; input: {
-      skuName?: string;
+      skuCode?: string;
       skuDescription?: string;
       skuPrice?: number;
       skuQuantity?: number;
+      skuSuppliers?: string[];
+      skuExpiryDate?: string | Date;
       skuUom?: string;
       isActive?: boolean;
       updatedBy: string;
@@ -112,10 +175,15 @@ export const resolvers = {
         updatedBy: input.updatedBy,
       };
 
-      if (input.skuName !== undefined) updateData.skuName = input.skuName;
+      if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
       if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
       if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice.toString();
       if (input.skuQuantity !== undefined) updateData.skuQuantity = input.skuQuantity.toString();
+      if (input.skuExpiryDate !== undefined && typeof input.skuExpiryDate === 'string') {
+        // Convert date string to Date object if needed
+        updateData.skuExpiryDate = new Date(input.skuExpiryDate);
+      }
+      if (input.skuSuppliers !== undefined) updateData.skuSuppliers = input.skuSuppliers;
       if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
       if (input.isActive !== undefined) updateData.isActive = input.isActive;
 

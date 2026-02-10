@@ -1,0 +1,1 @@
+ALTER TABLE "main"."skus" ALTER COLUMN "sku_quantity" SET DATA TYPE numeric(4);
