@@ -84,6 +84,27 @@ function getUserAgent(context: GraphQLContext): string {
   return userAgent || 'unknown';
 }
 
+/**
+ * Extract user's role from context
+ * Returns the first role name, prioritizing Super Admin if present
+ */
+function getUserRole(context: GraphQLContext): string | null {
+  if (!context.user || context.userPermissions.length === 0) {
+    return null;
+  }
+  
+  // Prioritize Super Admin if present
+  const superAdminRole = context.userPermissions.find(
+    (permission) => permission.roleName === 'Super Admin'
+  );
+  if (superAdminRole) {
+    return superAdminRole.roleName;
+  }
+  
+  // Otherwise return the first role
+  return context.userPermissions[0]?.roleName ?? null;
+}
+
 // ============================================
 // WITH AUDIT WRAPPER
 // ============================================
@@ -168,6 +189,7 @@ export function withAudit<TParent, TArgs, TResult>(
       // Log asynchronously to not impact response time
       auditLogRepository.createAuditLog({
         userId: context.user?.id ?? null,
+        role: getUserRole(context),
         action,
         entity,
         entityId,
@@ -186,6 +208,7 @@ export function withAudit<TParent, TArgs, TResult>(
 
       auditLogRepository.createAuditLog({
         userId: context.user?.id ?? null,
+        role: getUserRole(context),
         action: `${action}_FAILED`,
         entity,
         entityId,

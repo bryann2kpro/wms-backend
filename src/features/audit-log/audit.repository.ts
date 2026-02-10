@@ -5,9 +5,10 @@
 import { logger } from "@/util/logger";
 import { PaginatedResponse, PaginationParams } from "../rbac/rbac.model";
 import { AuditLogTable } from "./audit.model";
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq, gte, lte, ne } from "drizzle-orm";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { db } from "@/db";
+import { GraphQLContext } from "@/graphql/context";
 
 export type AuditLogFilter = {
   dateFrom?: string;
@@ -20,6 +21,7 @@ export type AuditLogFilter = {
 
 export type CreateAuditLogInput = {
   userId?: string | null;
+  role?: string | null;
   action: string;
   entity: string;
   entityId?: string | null;
@@ -36,9 +38,14 @@ export class AuditLogRepositoryClass {
      * Get audit logs with optional filtering and pagination
      * @param filter - Filter options
      * @param paginationParams - Pagination parameters
+     * @param context - GraphQL context for role-based filtering
      * @returns Paginated audit logs
      */
-    async getAuditLog(filter: AuditLogFilter, paginationParams: PaginationParams): Promise<PaginatedResponse<any>> {
+    async getAuditLog(
+      filter: AuditLogFilter, 
+      paginationParams: PaginationParams,
+      context?: GraphQLContext
+    ): Promise<PaginatedResponse<any>> {
       try {
         logger.info('ℹ️ [AuditLogRepository.getAuditLog] Getting audit logs...');
         logger.debug('Filter:', filter);
@@ -63,6 +70,13 @@ export class AuditLogRepositoryClass {
         if (filter.action) {
           whereCondition.push(eq(AuditLogTable.action, filter.action));
         }
+        
+        console.log('context', context?.isSuperAdmin);
+        // Filter out Super Admin logs for non-Super Admin users
+        if (context && !context.isSuperAdmin) {
+          whereCondition.push(ne(AuditLogTable.role, 'Super Admin'));
+        }
+        
         const baseQuery = db
           .select()
           .from(AuditLogTable)
@@ -99,6 +113,7 @@ export class AuditLogRepositoryClass {
           .insert(AuditLogTable)
           .values({
             userId: input.userId ?? undefined,
+            role: input.role ?? undefined,
             action: input.action,
             entity: input.entity,
             entityId: input.entityId ?? undefined,
