@@ -8,6 +8,7 @@
 import { Request } from 'express';
 import { authRepository } from '@/composition-root';
 import { UserType } from '@/features/auth/auth.model';
+import { UserRoleType } from '@/features/auth/auth.repository';
 
 // ============================================
 // TYPES
@@ -25,6 +26,14 @@ export interface UserRolePermission {
   moduleName: string;
 }
 
+export interface UserRole {
+  id: string;
+  userId: string;
+  roleId: string;
+  roleName: string;
+  status: string;
+}
+
 export interface GraphQLContext {
   /** The authenticated user, or null if not authenticated */
   user: UserType | null;
@@ -32,6 +41,8 @@ export interface GraphQLContext {
   userPermissions: UserRolePermission[];
   /** Whether the user is a Super Admin (bypasses all permission checks) */
   isSuperAdmin: boolean;
+  /** The user's roles (for audit logs) */
+  userRoles: UserRole[];
   /** The raw request object (for audit trail, etc.) */
   req: Request;
 }
@@ -52,6 +63,7 @@ export async function createContext({ req }: { req: Request }): Promise<GraphQLC
     user: null,
     userPermissions: [],
     isSuperAdmin: false,
+    userRoles: [],
     req,
   };
 
@@ -74,6 +86,15 @@ export async function createContext({ req }: { req: Request }): Promise<GraphQLC
     }
 
     context.user = user;
+
+    const userRoles = await authRepository.getUserRoles(user.id);
+    context.userRoles = userRoles.map(role => ({
+      id: role.userRoleId,
+      userId: user.id,
+      roleId: role.roleId,
+      roleName: role.roleName,
+      status: role.status,
+    }));
 
     // Get user's roles with permissions
     const userPermissions = await authRepository.getUserRoleWithPermission(user.id);

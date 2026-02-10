@@ -89,20 +89,20 @@ function getUserAgent(context: GraphQLContext): string {
  * Returns the first role name, prioritizing Super Admin if present
  */
 function getUserRole(context: GraphQLContext): string | null {
-  if (!context.user || context.userPermissions.length === 0) {
+  if (!context.user || context.userRoles.length === 0) {
     return null;
   }
-  
+
   // Prioritize Super Admin if present
-  const superAdminRole = context.userPermissions.find(
-    (permission) => permission.roleName === 'Super Admin'
+  const superAdminRole = context.userRoles.find(
+    (role) => role.roleName === 'Super Admin'
   );
   if (superAdminRole) {
     return superAdminRole.roleName;
   }
-  
+
   // Otherwise return the first role
-  return context.userPermissions[0]?.roleName ?? null;
+  return context.userRoles[0]?.roleName ?? null;
 }
 
 // ============================================

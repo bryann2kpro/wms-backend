@@ -71,7 +71,6 @@ export class AuditLogRepositoryClass {
           whereCondition.push(eq(AuditLogTable.action, filter.action));
         }
         
-        console.log('context', context?.isSuperAdmin);
         // Filter out Super Admin logs for non-Super Admin users
         if (context && !context.isSuperAdmin) {
           whereCondition.push(ne(AuditLogTable.role, 'Super Admin'));
