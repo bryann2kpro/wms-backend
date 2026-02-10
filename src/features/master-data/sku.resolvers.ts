@@ -46,7 +46,7 @@ function transformSku(sku: {
   skuPrice: string;
   skuQuantity: string;
   skuExpiryDate: Date;
-  skuSuppliers: string[];
+  skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }>;
   skuUom: string;
   isActive: boolean;
   createdAt: Date;
@@ -143,20 +143,35 @@ export const resolvers = {
     /**
      * Resolve suppliers for a SKU by fetching supplier data using the IDs
      */
-    skuSuppliers: async (sku: { skuSuppliers: string[] }) => {
+    skuSuppliers: async (sku: { skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }> }) => {
       if (!sku.skuSuppliers || sku.skuSuppliers.length === 0) {
         return [];
       }
 
       try {
+        // Extract supplier IDs from the array
+        const supplierIds = sku.skuSuppliers.map(s => s.supplierId);
+        
         // Fetch suppliers by IDs using the repository
         const result = await suppliersRepository.getSupplier(
-          { supplierId: sku.skuSuppliers },
+          { supplierId: supplierIds },
           { pageSize: 1000, pageNumber: 1 } // Get all suppliers (no pagination needed for this use case)
         );
         
-        // Transform suppliers for GraphQL response
-        return result.query.map(transformSupplier);
+        // Create a map of supplierId -> supplier for quick lookup
+        const supplierMap = new Map(
+          result.query.map(supplier => [supplier.supplierId, supplier])
+        );
+        
+        // Combine supplier data with original SKU codes
+        return sku.skuSuppliers.map(skuSupplier => {
+          const supplier = supplierMap.get(skuSupplier.supplierId);
+          return {
+            supplierId: skuSupplier.supplierId,
+            supplier: supplier ? transformSupplier(supplier) : null,
+            originalSkuCode: skuSupplier.originalSkuCode,
+          };
+        }).filter(item => item.supplier !== null); // Filter out suppliers that weren't found
       } catch (error) {
         console.error('Error fetching suppliers for SKU:', error);
         return [];
@@ -174,7 +189,7 @@ export const resolvers = {
       skuPrice: number;
       skuQuantity: number;
       skuExpiryDate: string | Date;
-      skuSuppliers: string[];
+      skuSuppliers: Array<{ supplierId: string; originalSkuCode?: string | null }>;
       skuUom: string;
       isActive: boolean;
       createdBy: string;
@@ -185,13 +200,19 @@ export const resolvers = {
         input.skuExpiryDate = new Date(input.skuExpiryDate);
       }
 
+      // Transform skuSuppliers to match the expected format
+      const skuSuppliersData = input.skuSuppliers.map(s => ({
+        supplierId: s.supplierId,
+        originalSkuCode: s.originalSkuCode ?? null,
+      }));
+
       const sku = await skuRepository.createSku({
         skuCode: input.skuCode,
         skuDescription: input.skuDescription,
         skuPrice: input.skuPrice.toString(),
         skuQuantity: input.skuQuantity.toString(),
         skuExpiryDate: input.skuExpiryDate,
-        skuSuppliers: input.skuSuppliers,
+        skuSuppliers: skuSuppliersData,
         skuUom: input.skuUom,
         isActive: input.isActive,
         createdBy: input.createdBy,
@@ -209,7 +230,7 @@ export const resolvers = {
       skuDescription?: string;
       skuPrice?: number;
       skuQuantity?: number;
-      skuSuppliers?: string[];
+      skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }>;
       skuExpiryDate?: string | Date;
       skuUom?: string;
       isActive?: boolean;
@@ -227,7 +248,13 @@ export const resolvers = {
         // Convert date string to Date object if needed
         updateData.skuExpiryDate = new Date(input.skuExpiryDate);
       }
-      if (input.skuSuppliers !== undefined) updateData.skuSuppliers = input.skuSuppliers;
+      if (input.skuSuppliers !== undefined) {
+        // Transform skuSuppliers to match the expected format
+        updateData.skuSuppliers = input.skuSuppliers.map(s => ({
+          supplierId: s.supplierId,
+          originalSkuCode: s.originalSkuCode ?? null,
+        }));
+      }
       if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
       if (input.isActive !== undefined) updateData.isActive = input.isActive;
 

@@ -6,6 +6,7 @@
 
 import { db } from '@/db';
 import { SkuTable } from './sku.model';
+import { SuppliersTable } from './suppliers.model';
 import { eq, and, like, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -135,11 +136,37 @@ export class SkuRepositoryClass {
   }
 
   /**
+   * Validate supplier IDs exist in the suppliers table
+   */
+  private async validateSupplierIds(supplierIds: string[]): Promise<void> {
+    if (supplierIds.length === 0) return;
+    
+    const existingSuppliers = await db
+      .select({ supplierId: SuppliersTable.supplierId })
+      .from(SuppliersTable)
+      .where(inArray(SuppliersTable.supplierId, supplierIds));
+    
+    const existingIds = new Set(existingSuppliers.map(s => s.supplierId));
+    const invalidIds = supplierIds.filter(id => !existingIds.has(id));
+    
+    if (invalidIds.length > 0) {
+      throw new Error(`Invalid supplier IDs: ${invalidIds.join(', ')}. These suppliers do not exist.`);
+    }
+  }
+
+  /**
    * Create a new SKU
    */
   async createSku(data: Omit<SkuInsertType, 'skuId' | 'createdAt' | 'updatedAt'>): Promise<SkuType> {
     try {
       logger.info('ℹ️ [SkuRepository.createSku] Creating SKU...');
+      
+      // Validate supplier IDs reference existing suppliers
+      if (data.skuSuppliers && Array.isArray(data.skuSuppliers)) {
+        const supplierIds = data.skuSuppliers.map(s => s.supplierId);
+        await this.validateSupplierIds(supplierIds);
+      }
+      
       const [sku] = await db
         .insert(SkuTable)
         .values(data)
@@ -159,6 +186,13 @@ export class SkuRepositoryClass {
   async updateSku(id: string, data: Partial<SkuInsertType>): Promise<SkuType | null> {
     try {
       logger.info('ℹ️ [SkuRepository.updateSku] Updating SKU...');
+      
+      // Validate supplier IDs reference existing suppliers if skuSuppliers is being updated
+      if (data.skuSuppliers && Array.isArray(data.skuSuppliers)) {
+        const supplierIds = data.skuSuppliers.map(s => s.supplierId);
+        await this.validateSupplierIds(supplierIds);
+      }
+      
       const [sku] = await db
         .update(SkuTable)
         .set({ ...data, updatedAt: new Date() })

@@ -127,6 +127,20 @@
       "when": 1770692025863,
       "tag": "0017_nosy_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1770704325948,
+      "tag": "0018_sloppy_betty_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1770704461244,
+      "tag": "0019_mysterious_tempest",
+      "breakpoints": true
     }
   ]
 }

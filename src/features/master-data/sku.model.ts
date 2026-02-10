@@ -1,5 +1,5 @@
 import { MainSchema } from "@/db/db.schema";
-import { uuid, text, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
+import { uuid, text, numeric, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { SuppliersTable } from "./suppliers.model";
 
 /**
@@ -13,8 +13,13 @@ export const SkuTable = MainSchema.table('skus', {
   skuDescription: text('sku_description').notNull(),
   skuPrice: numeric('sku_price', { precision: 6, scale: 2 }).notNull(),
   skuQuantity: numeric('sku_quantity', { precision: 6, scale: 2 }).notNull(),
-  skuExpiryDate: timestamp('sku_expiry_date').notNull(),
-  skuSuppliers: uuid('sku_suppliers').array().notNull().references(() => SuppliersTable.supplierId),
+  skuExpiryDate: timestamp('sku_expiry_date', { withTimezone: true }).notNull(),
+  /**
+   * SKU Suppliers - Array of supplier references with original SKU codes
+   * @field supplierId - References SuppliersTable.supplierId (foreign key relationship)
+   * @field originalSkuCode - Original SKU code from supplier (nullable)
+   */
+  skuSuppliers: jsonb('sku_suppliers').notNull().$type<Array<{ supplierId: string; originalSkuCode: string | null }>>(),
   skuUom: text('sku_unit_of_measurement').notNull(),
   isActive: boolean('is_active').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

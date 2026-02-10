@@ -7,6 +7,15 @@
 
 export const typeDefs = `#graphql
   """
+  Supplier reference with original SKU code
+  """
+  type SkuSupplier {
+    supplierId: ID!
+    supplier: Supplier!
+    originalSkuCode: String
+  }
+
+  """
   Stock Keeping Unit - represents a product in the inventory
   """
   type Sku {
@@ -16,13 +25,21 @@ export const typeDefs = `#graphql
     skuPrice: Float!
     skuQuantity: Float!
     skuExpiryDate: String!
-    skuSuppliers: [Supplier!]!
+    skuSuppliers: [SkuSupplier!]!
     skuUom: String!
     isActive: Boolean!
     createdAt: String!
     updatedAt: String!
     createdBy: String!
     updatedBy: String!
+  }
+
+  """
+  Input for supplier reference when creating/updating SKU
+  """
+  input SkuSupplierInput {
+    supplierId: ID!
+    originalSkuCode: String
   }
 
   """
@@ -34,7 +51,7 @@ export const typeDefs = `#graphql
     skuPrice: Float!
     skuQuantity: Float!
     skuExpiryDate: String!
-    skuSuppliers: [ID!]!
+    skuSuppliers: [SkuSupplierInput!]!
     skuUom: String!
     isActive: Boolean!
     createdBy: String!
@@ -50,7 +67,7 @@ export const typeDefs = `#graphql
     skuPrice: Float
     skuQuantity: Float
     skuExpiryDate: String
-    skuSuppliers: [ID!]
+    skuSuppliers: [SkuSupplierInput!]
     skuUom: String
     isActive: Boolean
     updatedBy: String!
