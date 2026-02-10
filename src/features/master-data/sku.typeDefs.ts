@@ -56,12 +56,33 @@ export const typeDefs = `#graphql
     updatedBy: String!
   }
 
+  """
+  Paginated SKU response
+  """
+  type SkuPaginatedResponse {
+    query: [Sku!]!
+    pagination: Pagination!
+  }
+
+  """
+  Input for filtering SKUs
+  """
+  input SkuFilterInput {
+    skuId: ID
+    skuIds: [ID!]
+    skuCode: String
+    skuCodes: [String!]
+    skuDescription: String
+    isActive: Boolean
+  }
+
   extend type Query {
     """
-    Get all SKUs.
+    Get SKUs with optional filtering and pagination.
+    If pageSize and pageNumber are not provided, returns all matching SKUs.
     Requires authentication.
     """
-    skus: [Sku!]! @auth
+    skus(filter: SkuFilterInput, pageSize: Int, pageNumber: Int): SkuPaginatedResponse! @auth
     
     """
     Get a single SKU by ID.

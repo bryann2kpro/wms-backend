@@ -78,11 +78,55 @@ function transformSku(sku: {
 export const resolvers = {
   Query: {
     /**
-     * Get all SKUs (uses repository)
+     * Get SKUs with optional filtering and pagination (uses repository)
      */
-    skus: async () => {
-      const skus = await skuRepository.getAllSkus();
-      return skus.map(transformSku);
+    skus: async (_: unknown, args: {
+      filter?: {
+        skuId?: string;
+        skuIds?: string[];
+        skuCode?: string;
+        skuCodes?: string[];
+        skuDescription?: string;
+        isActive?: boolean;
+      };
+      pageSize?: number;
+      pageNumber?: number;
+    }) => {
+      const filter: any = {};
+      
+      if (args.filter) {
+        if (args.filter.skuIds) {
+          filter.skuId = args.filter.skuIds;
+        } else if (args.filter.skuId) {
+          filter.skuId = args.filter.skuId;
+        }
+        
+        if (args.filter.skuCodes) {
+          filter.skuCode = args.filter.skuCodes;
+        } else if (args.filter.skuCode) {
+          filter.skuCode = args.filter.skuCode;
+        }
+        
+        if (args.filter.skuDescription) {
+          filter.skuDescription = args.filter.skuDescription;
+        }
+        
+        if (args.filter.isActive !== undefined) {
+          filter.isActive = args.filter.isActive;
+        }
+      }
+
+      // Only pass pagination params if both are provided, otherwise get all data
+      const paginationParams = (args.pageSize && args.pageNumber) 
+        ? { pageSize: args.pageSize, pageNumber: args.pageNumber }
+        : undefined;
+
+      const result = await skuRepository.getSku(filter, paginationParams);
+
+      return {
+        query: result.query.map(transformSku),
+        pagination: result.pagination,
+      };
     },
 
     /**
