@@ -9,10 +9,10 @@ import { SuppliersTable } from "./suppliers.model";
 
 export const SkuTable = MainSchema.table('skus', {
   skuId: uuid('sku_id').defaultRandom().notNull().primaryKey(),
-  skuName: text('sku_name').notNull(),
+  skuCode: text('sku_code').notNull(),
   skuDescription: text('sku_description').notNull(),
   skuPrice: numeric('sku_price').notNull(),
-  skuQuantity: numeric('sku_quantity', { precision: 2 }).notNull(),
+  skuQuantity: numeric('sku_quantity', { precision: 4 }).notNull(),
   skuExpiryDate: timestamp('sku_expiry_date').notNull(),
   skuSuppliers: uuid('sku_suppliers').array().notNull().references(() => SuppliersTable.supplierId),
   skuUom: text('sku_unit_of_measurement').notNull(),
