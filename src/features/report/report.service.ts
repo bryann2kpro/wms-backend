@@ -5,8 +5,14 @@
  * Uses mock data by default; replace with DB queries when ready.
  */
 
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { jsPDF } from 'jspdf';
 import { autoTable, CellHookData } from 'jspdf-autotable';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const MOVEMENT_REPORT_HTML_PATH = path.join(__dirname, 'html', 'movement-report.html');
 
 // Movement Report row shape
 export interface MovementReportRow {
@@ -63,6 +69,47 @@ const INVOICE_SUMMARY_MOCK_ROWS: InvoiceSummaryRow[] = [
 export function getMovementReportData(_dateFrom?: string, _dateTo?: string): MovementReportRow[] {
   // TODO: filter by dateFrom/dateTo when querying DB
   return MOVEMENT_MOCK_ROWS;
+}
+
+/**
+ * Load the movement report HTML template and inject data.
+ * Use this to "pump" resolver data into movement-report.html.
+ */
+export async function renderMovementReportHtml(
+  rows: MovementReportRow[],
+  dateFrom?: string,
+  dateTo?: string
+): Promise<string> {
+  const template = await readFile(MOVEMENT_REPORT_HTML_PATH, 'utf-8');
+  const tableRows = rows
+    .map(
+      (r) =>
+        `<tr>
+          <td class="border px-4 py-2">${escapeHtml(r.companyCode)}</td>
+          <td class="border px-4 py-2">${escapeHtml(r.itemCode)}</td>
+          <td class="border px-4 py-2">${escapeHtml(r.description)}</td>
+          <td class="border px-4 py-2 text-right">${r.countAdjustmentQty}</td>
+        </tr>`
+    )
+    .join('\n');
+  const grandTotal = rows.reduce((sum, r) => sum + r.countAdjustmentQty, 0);
+  const totalRow = `<tr class="font-bold">
+    <td class="border px-4 py-2" colspan="3">TOTAL OUT</td>
+    <td class="border px-4 py-2 text-right">${grandTotal}</td>
+  </tr>`;
+
+  return template
+    .replace(/\{\{dateFrom\}\}/g, dateFrom ?? '—')
+    .replace(/\{\{dateTo\}\}/g, dateTo ?? '—')
+    .replace(/\{\{tableRows\}\}/, tableRows + '\n' + totalRow);
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /**

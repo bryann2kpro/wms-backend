@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movement Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="p-6">
+    <h1 class="text-2xl font-bold mb-2">Movement Report</h1>
+    <p class="text-gray-600 mb-4">
+        Period: <strong>{{dateFrom}}</strong> to <strong>{{dateTo}}</strong>
+    </p>
+    <div class="table-container relative w-full overflow-x-auto">
+        <table class="w-full border-collapse border border-gray-300">
+            <thead>
+                <tr class="bg-black text-white">
+                    <th class="border px-4 py-2 text-left">Company Code</th>
+                    <th class="border px-4 py-2 text-left">Item Code</th>
+                    <th class="border px-4 py-2 text-left">Description</th>
+                    <th class="border px-4 py-2 text-right">Count Adjustment Unit Qty</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{tableRows}}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
