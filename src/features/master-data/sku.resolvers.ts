@@ -266,5 +266,13 @@ export const resolvers = {
       
       return transformSku(sku);
     },
+
+    /**
+     * Delete a SKU (uses repository)
+     */
+    deleteSku: async (_: unknown, { id }: { id: string }) => {
+      const result = await skuRepository.deleteSku(id);
+      return result;
+    },
   },
 };

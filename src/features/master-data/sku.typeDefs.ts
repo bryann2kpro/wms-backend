@@ -120,5 +120,11 @@ export const typeDefs = `#graphql
     Requires authentication.
     """
     updateSku(id: ID!, input: UpdateSkuInput!): Sku @auth
+    
+    """
+    Delete a SKU by ID.
+    Requires authentication.
+    """
+    deleteSku(id: ID!): Boolean! @auth
   }
 `;
