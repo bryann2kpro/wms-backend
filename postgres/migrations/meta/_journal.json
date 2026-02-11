@@ -148,6 +148,13 @@
       "when": 1770705651843,
       "tag": "0020_lazy_ulik",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1770778465487,
+      "tag": "0021_kind_reptil",
+      "breakpoints": true
     }
   ]
 }

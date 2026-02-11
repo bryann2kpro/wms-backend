@@ -43,7 +43,7 @@ function transformSku(sku: {
   skuId: string;
   skuCode: string;
   skuDescription: string;
-  skuPrice: string;
+  skuPrice: string | null;
   skuQuantity: string;
   skuExpiryDate: Date;
   skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }>;
@@ -58,7 +58,7 @@ function transformSku(sku: {
     skuId: sku.skuId,
     skuCode: sku.skuCode,
     skuDescription: sku.skuDescription,
-    skuPrice: parseFloat(sku.skuPrice),
+    skuPrice: sku.skuPrice ? parseFloat(sku.skuPrice) : null,
     skuQuantity: parseFloat(sku.skuQuantity),
     skuExpiryDate: sku.skuExpiryDate,
     skuUom: sku.skuUom,
@@ -189,7 +189,7 @@ export const resolvers = {
     createSku: async (_: unknown, { input }: { input: {
       skuCode: string;
       skuDescription: string;
-      skuPrice: number;
+      skuPrice?: number;
       skuQuantity: number;
       skuExpiryDate: string | Date;
       skuSuppliers: Array<{ supplierId: string; originalSkuCode?: string | null }>;
@@ -212,7 +212,7 @@ export const resolvers = {
       const sku = await skuRepository.createSku({
         skuCode: input.skuCode,
         skuDescription: input.skuDescription,
-        skuPrice: input.skuPrice.toString(),
+        skuPrice: input.skuPrice?.toString() ?? null,
         skuQuantity: input.skuQuantity.toString(),
         skuExpiryDate: input.skuExpiryDate,
         skuSuppliers: skuSuppliersData,
@@ -245,7 +245,7 @@ export const resolvers = {
 
       if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
       if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
-      if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice.toString();
+      if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice?.toString() ?? null;
       if (input.skuQuantity !== undefined) updateData.skuQuantity = input.skuQuantity.toString();
       if (input.skuExpiryDate !== undefined && typeof input.skuExpiryDate === 'string') {
         // Convert date string to Date object if needed

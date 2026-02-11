@@ -11,7 +11,7 @@ export const SkuTable = MainSchema.table('skus', {
   skuId: uuid('sku_id').defaultRandom().notNull().primaryKey(),
   skuCode: text('sku_code').notNull(),
   skuDescription: text('sku_description').notNull(),
-  skuPrice: numeric('sku_price', { precision: 6, scale: 2 }).notNull(),
+  skuPrice: numeric('sku_price', { precision: 6, scale: 2 }),
   skuQuantity: numeric('sku_quantity', { precision: 6, scale: 2 }).notNull(),
   skuExpiryDate: timestamp('sku_expiry_date', { withTimezone: true }).notNull(),
   /**
