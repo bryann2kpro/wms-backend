@@ -9,6 +9,7 @@ import { and, eq, gte, lte, ne } from "drizzle-orm";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { db } from "@/db";
 import { GraphQLContext } from "@/graphql/context";
+import { DbTransaction } from "@/types/db-transaction";
 
 export type AuditLogFilter = {
   dateFrom?: string;
@@ -99,9 +100,10 @@ export class AuditLogRepositoryClass {
     /**
  * Create a new audit log entry
  * @param input - Audit log data
+ * @param tx - Optional transaction 
  * @returns The created audit log entry
  */
-    async createAuditLog(input: CreateAuditLogInput): Promise<typeof AuditLogTable.$inferSelect> {
+    async createAuditLog(input: CreateAuditLogInput, tx?: DbTransaction): Promise<typeof AuditLogTable.$inferSelect> {
       try {
         logger.debug('[AuditLogRepository.createAuditLog] Creating audit log...', {
           action: input.action,
@@ -110,7 +112,7 @@ export class AuditLogRepositoryClass {
           batchId: input.batchId,
         });
 
-        const [auditLog] = await db
+        const [auditLog] = await (tx || db)
           .insert(AuditLogTable)
           .values({
             userId: input.userId ?? undefined,

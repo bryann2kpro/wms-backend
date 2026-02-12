@@ -9,6 +9,7 @@ import { Request } from 'express';
 import { authRepository } from '@/composition-root';
 import { UserType } from '@/features/auth/auth.model';
 import { UserRoleType } from '@/features/auth/auth.repository';
+import { DbTransaction } from '@/types/db-transaction';
 
 // ============================================
 // TYPES
@@ -45,6 +46,8 @@ export interface GraphQLContext {
   userRoles: UserRole[];
   /** The raw request object (for audit trail, etc.) */
   req: Request;
+  /** Optional database transaction for atomic operations */
+  tx?: DbTransaction;
 }
 
 // ============================================
