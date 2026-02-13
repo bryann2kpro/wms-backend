@@ -7,6 +7,8 @@
 
 import { suppliersRepository } from '@/composition-root';
 import { SupplierFilter } from './suppliers.repository';
+import { withAudit } from '@/features/audit-log/audit.wrapper';
+import { GraphQLContext } from '@/graphql/context';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -97,48 +99,75 @@ export const resolvers = {
     /**
      * Create a new supplier
      */
-    createSupplier: async (_: unknown, { input }: { input: {
-      supplierName: string;
-      supplierCode: string;
-      createdBy: string;
-      updatedBy: string;
-    }}) => {
-      const supplier = await suppliersRepository.createSupplier({
-        supplierName: input.supplierName,
-        supplierCode: input.supplierCode,
-        createdBy: input.createdBy,
-        updatedBy: input.updatedBy,
-      });
+    createSupplier: withAudit(
+      {
+        entity: 'Supplier',
+        action: 'CREATE',
+        getEntityId: (result) => result?.supplierId ?? null,
+      },
+      async (_: unknown, { input }: { input: {
+        supplierName: string;
+        supplierCode: string;
+        createdBy: string;
+        updatedBy: string;
+      }}, context: GraphQLContext) => {
+        const supplier = await suppliersRepository.createSupplier({
+          supplierName: input.supplierName,
+          supplierCode: input.supplierCode,
+          createdBy: input.createdBy,
+          updatedBy: input.updatedBy,
+        }, context.tx);
 
-      return transformSupplier(supplier);
-    },
+        return transformSupplier(supplier);
+      }
+    ),
 
     /**
      * Update an existing supplier
      */
-    updateSupplier: async (_: unknown, { id, input }: { id: string; input: {
-      supplierName?: string;
-      supplierCode?: string;
-      updatedBy: string;
-    }}) => {
-      const updateData: Record<string, unknown> = {
-        updatedBy: input.updatedBy,
-      };
+    updateSupplier: withAudit(
+      {
+        entity: 'Supplier',
+        action: 'UPDATE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await suppliersRepository.getSupplierById(args.id);
+        },
+      },
+      async (_: unknown, { id, input }: { id: string; input: {
+        supplierName?: string;
+        supplierCode?: string;
+        updatedBy: string;
+      }}, context: GraphQLContext) => {
+        const updateData: Record<string, unknown> = {
+          updatedBy: input.updatedBy,
+        };
 
-      if (input.supplierName !== undefined) updateData.supplierName = input.supplierName;
-      if (input.supplierCode !== undefined) updateData.supplierCode = input.supplierCode;
+        if (input.supplierName !== undefined) updateData.supplierName = input.supplierName;
+        if (input.supplierCode !== undefined) updateData.supplierCode = input.supplierCode;
 
-      const supplier = await suppliersRepository.updateSupplier(updateData, id);
-      if (!supplier) return null;
-      
-      return transformSupplier(supplier);
-    },
+        const supplier = await suppliersRepository.updateSupplier(updateData, id, context.tx);
+        if (!supplier) return null;
+        
+        return transformSupplier(supplier);
+      }
+    ),
 
     /**
      * Delete a supplier
      */
-    deleteSupplier: async (_: unknown, { id }: { id: string }) => {
-      return await suppliersRepository.deleteSupplier(id);
-    },
+    deleteSupplier: withAudit(
+      {
+        entity: 'Supplier',
+        action: 'DELETE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await suppliersRepository.getSupplierById(args.id);
+        },
+      },
+      async (_: unknown, { id }: { id: string }, context: GraphQLContext) => {
+        return await suppliersRepository.deleteSupplier(id, context.tx);
+      }
+    ),
   },
 };

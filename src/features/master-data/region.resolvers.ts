@@ -7,6 +7,7 @@
 
 import { regionRepository } from '@/composition-root';
 import { RegionFilter } from './region.repository';
+import { withAudit } from '@/features/audit-log/audit.wrapper';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -97,48 +98,84 @@ export const resolvers = {
     /**
      * Create a new region
      */
-    createRegion: async (_: unknown, { input }: { input: {
+    createRegion: withAudit<unknown, { input: {
       regionName: string;
       regionCode: string;
       createdBy: string;
       updatedBy: string;
-    }}) => {
-      const region = await regionRepository.createRegion({
-        regionName: input.regionName,
-        regionCode: input.regionCode,
-        createdBy: input.createdBy,
-        updatedBy: input.updatedBy,
-      });
+    }}, ReturnType<typeof transformRegion>>(
+      {
+        entity: 'Region',
+        action: 'CREATE',
+        getEntityId: (result) => (result as ReturnType<typeof transformRegion> | null)?.regionId ?? null,
+      },
+      async (_: unknown, { input }: { input: {
+        regionName: string;
+        regionCode: string;
+        createdBy: string;
+        updatedBy: string;
+      }}, context) => {
+        const region = await regionRepository.createRegion({
+          regionName: input.regionName,
+          regionCode: input.regionCode,
+          createdBy: input.createdBy,
+          updatedBy: input.updatedBy,
+        }, context.tx);
 
-      return transformRegion(region);
-    },
+        return transformRegion(region);
+      }
+    ),
 
     /**
      * Update an existing region
      */
-    updateRegion: async (_: unknown, { id, input }: { id: string; input: {
+    updateRegion: withAudit<unknown, { id: string; input: {
       regionName?: string;
       regionCode?: string;
       updatedBy: string;
-    }}) => {
-      const updateData: Record<string, unknown> = {
-        updatedBy: input.updatedBy,
-      };
+    }}, ReturnType<typeof transformRegion> | null>(
+      {
+        entity: 'Region',
+        action: 'UPDATE',
+        getEntityId: (_, args) => (args as { id: string }).id,
+        getOldData: async (args) => {
+          return await regionRepository.getRegionById((args as { id: string }).id);
+        },
+      },
+      async (_: unknown, { id, input }: { id: string; input: {
+        regionName?: string;
+        regionCode?: string;
+        updatedBy: string;
+      }}, context) => {
+        const updateData: Record<string, unknown> = {
+          updatedBy: input.updatedBy,
+        };
 
-      if (input.regionName !== undefined) updateData.regionName = input.regionName;
-      if (input.regionCode !== undefined) updateData.regionCode = input.regionCode;
+        if (input.regionName !== undefined) updateData.regionName = input.regionName;
+        if (input.regionCode !== undefined) updateData.regionCode = input.regionCode;
 
-      const region = await regionRepository.updateRegion(updateData, id);
-      if (!region) return null;
-      
-      return transformRegion(region);
-    },
+        const region = await regionRepository.updateRegion(updateData, id, context.tx);
+        if (!region) return null;
+        
+        return transformRegion(region);
+      }
+    ),
 
     /**
      * Delete a region
      */
-    deleteRegion: async (_: unknown, { id }: { id: string }) => {
-      return await regionRepository.deleteRegion(id);
-    },
+    deleteRegion: withAudit<unknown, { id: string }, boolean>(
+      {
+        entity: 'Region',
+        action: 'DELETE',
+        getEntityId: (_, args) => (args as { id: string }).id,
+        getOldData: async (args) => {
+          return await regionRepository.getRegionById((args as { id: string }).id);
+        },
+      },
+      async (_: unknown, { id }: { id: string }, context) => {
+        return await regionRepository.deleteRegion(id, context.tx);
+      }
+    ),
   },
 };
