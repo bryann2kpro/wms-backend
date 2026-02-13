@@ -5,7 +5,7 @@ import { authRoutes } from '@/features/auth/index.js';
 import { healthRoutes } from '@/features/health/index.js';
 import { handleUpload } from '@/features/upload/index.js';
 import { rbacRoutes } from '@/features/rbac';
-import { reportPreviewRoutes } from '@/features/report/report.preview.routes.js';
+import { reportPreviewRoutes } from '@/features/report/report.routes.js';
 
 const v1Router = express.Router();
 
@@ -18,7 +18,6 @@ v1Router.use('/rbac', rbacRoutes);
 
 v1Router.use('/upload', handleUpload);
 
-/** Report HTML preview (for dev: test format/UI in browser) */
 v1Router.use('/report', reportPreviewRoutes);
 
 export default v1Router;
