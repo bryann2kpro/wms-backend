@@ -7,6 +7,7 @@
 
 import { outletsRepository } from '@/composition-root';
 import { OutletFilter } from './outlets.repository';
+import { withAudit } from '../audit-log/audit.wrapper';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -115,87 +116,134 @@ export const resolvers = {
     /**
      * Create a new outlet
      */
-    createOutlet: async (_: unknown, { input }: { input: {
-      outletName: string;
-      outletCode: string;
-      outletAddress?: string;
-      regionId?: string;
-      createdBy: string;
-      updatedBy: string;
-    }}) => {
-      const outlet = await outletsRepository.createOutlet({
-        outletName: input.outletName,
-        outletCode: input.outletCode,
-        outletAddress: input.outletAddress ?? '',
-        regionId: input.regionId || null,
-        createdBy: input.createdBy,
-        updatedBy: input.updatedBy,
-      });
-
-      // Fetch the full outlet with region info
-      const fullOutlet = await outletsRepository.getOutletById(outlet.outletId);
-      return fullOutlet ? transformOutlet(fullOutlet) : null;
-    },
+    createOutlet: withAudit(
+      {
+        entity: 'Outlet',
+        action: 'CREATE',
+        getEntityId: (result) => result?.outletId ?? null,
+      },
+      async (_: unknown, { input }: { input: {
+        outletName: string;
+        outletCode: string;
+        regionId?: string;
+        createdBy: string;
+        updatedBy: string;
+      }}) => {
+        const outlet = await outletsRepository.createOutlet({
+          outletName: input.outletName,
+          outletCode: input.outletCode,
+          regionId: input.regionId || null,
+          createdBy: input.createdBy,
+          updatedBy: input.updatedBy,
+        });
+  
+        // Fetch the full outlet with region info
+        const fullOutlet = await outletsRepository.getOutletById(outlet.outletId);
+        return fullOutlet ? transformOutlet(fullOutlet) : null;
+      }
+    ),
 
     /**
      * Update an existing outlet
      */
-    updateOutlet: async (_: unknown, { id, input }: { id: string; input: {
-      outletName?: string;
-      outletCode?: string;
-      regionId?: string;
-      updatedBy: string;
-    }}) => {
-      const updateData: Record<string, unknown> = {
-        updatedBy: input.updatedBy,
-      };
-
-      if (input.outletName !== undefined) updateData.outletName = input.outletName;
-      if (input.outletCode !== undefined) updateData.outletCode = input.outletCode;
-      if (input.regionId !== undefined) updateData.regionId = input.regionId || null;
-
-      await outletsRepository.updateOutlet(updateData, id);
-      
-      // Fetch the full outlet with region info
-      const fullOutlet = await outletsRepository.getOutletById(id);
-      return fullOutlet ? transformOutlet(fullOutlet) : null;
-    },
+    updateOutlet: withAudit(
+      {
+        entity: 'Outlet',
+        action: 'UPDATE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await outletsRepository.getOutletById(args.id);
+        },
+      },
+      async (_: unknown, { id, input }: { id: string; input: {
+        outletName?: string;
+        outletCode?: string;
+        regionId?: string;
+        updatedBy: string;
+      }}) => {
+        const updateData: Record<string, unknown> = {
+          updatedBy: input.updatedBy,
+        };
+  
+        if (input.outletName !== undefined) updateData.outletName = input.outletName;
+        if (input.outletCode !== undefined) updateData.outletCode = input.outletCode;
+        if (input.regionId !== undefined) updateData.regionId = input.regionId || null;
+  
+        await outletsRepository.updateOutlet(updateData, id);
+        
+        // Fetch the full outlet with region info
+        const fullOutlet = await outletsRepository.getOutletById(id);
+        return fullOutlet ? transformOutlet(fullOutlet) : null;
+      }
+    ),
 
     /**
      * Assign an outlet to a region
      */
-    assignOutletToRegion: async (_: unknown, { outletId, regionId, updatedBy }: { 
-      outletId: string; 
-      regionId?: string; 
-      updatedBy: string; 
-    }) => {
-      await outletsRepository.assignOutletToRegion(outletId, regionId || null, updatedBy);
-      
-      // Fetch the full outlet with region info
-      const fullOutlet = await outletsRepository.getOutletById(outletId);
-      return fullOutlet ? transformOutlet(fullOutlet) : null;
-    },
+    assignOutletToRegion: withAudit(
+      {
+        entity: 'Outlet',
+        action: 'UPDATE',
+        getEntityId: (_, args) => args.outletId,
+        getOldData: async (args) => {
+          return await outletsRepository.getOutletById(args.outletId);
+        },
+      },
+      async (_: unknown, { outletId, regionId, updatedBy }: { 
+        outletId: string; 
+        regionId?: string; 
+        updatedBy: string; 
+      }) => {
+        await outletsRepository.assignOutletToRegion(outletId, regionId || null, updatedBy);
+        
+        // Fetch the full outlet with region info
+        const fullOutlet = await outletsRepository.getOutletById(outletId);
+        return fullOutlet ? transformOutlet(fullOutlet) : null;
+      },
+    ),
 
     /**
      * Bulk assign outlets to a region
      */
-    bulkAssignOutletsToRegion: async (_: unknown, { outletIds, regionId, updatedBy }: { 
-      outletIds: string[]; 
-      regionId?: string; 
-      updatedBy: string; 
-    }) => {
-      await outletsRepository.bulkAssignOutletsToRegion(outletIds, regionId || null, updatedBy);
-      
-      // Fetch all updated outlets with region info
-      const result = await outletsRepository.getOutlet({ outletId: outletIds }, {});
-      return result.query.map(transformOutlet);
-    },
-
+    bulkAssignOutletsToRegion: withAudit(
+      {
+        entity: 'Outlet',
+        action: 'BULK_UPDATE',
+        getEntityId: (_result, args) => args.outletIds,
+        getOldData: async (args) => {
+          return outletsRepository.getOutlet(
+            { outletId: args.outletIds },
+            {}
+          ).then(res => res.query);
+        },
+      },
+      async (_: unknown, { outletIds, regionId, updatedBy }: { 
+        outletIds: string[]; 
+        regionId?: string; 
+        updatedBy: string; 
+      }) => {
+        await outletsRepository.bulkAssignOutletsToRegion(outletIds, regionId || null, updatedBy);
+        
+        // Fetch all updated outlets with region info
+        const result = await outletsRepository.getOutlet({ outletId: outletIds }, {});
+        return result.query.map(transformOutlet);
+      },
+    ),
     /**
      * Delete an outlet
      */
-    deleteOutlet: async (_: unknown, { id }: { id: string }) => {
+    deleteOutlet: withAudit(
+      {
+        entity: 'Outlet',
+        action: 'DELETE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await outletsRepository.getOutletById(args.id);
+        },
+      },
+      async (_: unknown, { id }: { id: string }) => {
       return await outletsRepository.deleteOutlet(id);
-    },
+      },
+    ),
   },
 };

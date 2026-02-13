@@ -6,7 +6,7 @@
  */
 
 import { auditLogRepository } from '@/composition-root';
-import { AuditLogFilter } from './audit.repository';
+import { AuditLogFilter, AuditLogSort } from './audit.repository';
 import { PaginationParams } from '../rbac/rbac.model';
 import { GraphQLContext } from '@/graphql/context';
 
@@ -15,12 +15,13 @@ import { GraphQLContext } from '@/graphql/context';
 // ============================================
 
 function transformAuditLog(auditLog: {
-  auditLogId: string;
-  userId: string;
+  auditLogId: string | number;
+  userId: string | null;
+  userName: string | null;
   role: string | null;
   action: string;
   entity: string;
-  entityId: string;
+  entityId: string | null;
   oldData: unknown;
   newData: unknown;
   ipAddress: string;
@@ -28,8 +29,9 @@ function transformAuditLog(auditLog: {
   createdAt: Date;
 }) {
   return {
-    auditLogId: auditLog.auditLogId,
+    auditLogId: String(auditLog.auditLogId),
     userId: auditLog.userId,
+    userName: auditLog.userName,
     role: auditLog.role,
     action: auditLog.action,
     entity: auditLog.entity,
@@ -38,7 +40,7 @@ function transformAuditLog(auditLog: {
     newData: auditLog.newData,
     ipAddress: auditLog.ipAddress,
     userAgent: auditLog.userAgent,
-    createdAt: auditLog.createdAt.toISOString(),
+    createdAt: auditLog.createdAt instanceof Date ? auditLog.createdAt.toISOString() : auditLog.createdAt,
   };
 }
 
@@ -50,20 +52,28 @@ export const resolvers = {
   Query: {
     auditLogs: async (_: unknown, args: {
       filter?: AuditLogFilter;
+      sort?: AuditLogSort;
       pageSize?: number;
       pageNumber?: number;
     }, context: GraphQLContext) => {
       const filter: AuditLogFilter = args.filter || {};
+      const sort: AuditLogSort | undefined = args.sort;
       const paginationParams: PaginationParams = {
         pageSize: args.pageSize || 10,
         pageNumber: args.pageNumber || 1,
       };
-      const result = await auditLogRepository.getAuditLog(filter, paginationParams, context);
+      const result = await auditLogRepository.getAuditLog(filter, paginationParams, context, sort);
 
       return {
         query: result.query.map(transformAuditLog),
         pagination: result.pagination,
       };
+    },
+    auditLogActions: async (_: unknown, __: unknown, context: GraphQLContext) => {
+      return await auditLogRepository.getDistinctActions(context);
+    },
+    auditLogEntities: async (_: unknown, __: unknown, context: GraphQLContext) => {
+      return await auditLogRepository.getDistinctEntities(context);
     },
   },
 };
