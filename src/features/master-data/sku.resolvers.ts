@@ -8,6 +8,8 @@
  */
 
 import { skuRepository, suppliersRepository } from '@/composition-root';
+import { withAudit } from '@/features/audit-log/audit.wrapper';
+import { GraphQLContext } from '@/graphql/context';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -124,73 +126,90 @@ export const resolvers = {
     /**
      * Create a new SKU (uses repository)
      */
-    createSku: async (_: unknown, { input }: { input: {
-      skuCode: string;
-      skuDescription: string;
-      skuPrice: number;
-      skuQuantity: number;
-      skuExpiryDate: string | Date;
-      skuSuppliers: string[];
-      skuUom: string;
-      isActive: boolean;
-      createdBy: string;
-      updatedBy: string;
-    }}) => {
-      // Convert date string to Date object if needed
-      if (typeof input.skuExpiryDate === 'string') {
-        input.skuExpiryDate = new Date(input.skuExpiryDate);
+    createSku: withAudit(
+      {
+        entity: 'SKU',
+        action: 'CREATE',
+        getEntityId: (result) => result?.skuId ?? null,
+      },
+      async (_: unknown, { input }: { input: {
+        skuCode: string;
+        skuDescription: string;
+        skuPrice: number;
+        skuQuantity: number;
+        skuExpiryDate: string | Date;
+        skuSuppliers: string[];
+        skuUom: string;
+        isActive: boolean;
+        createdBy: string;
+        updatedBy: string;
+      }}, context: GraphQLContext) => {
+        // Convert date string to Date object if needed
+        if (typeof input.skuExpiryDate === 'string') {
+          input.skuExpiryDate = new Date(input.skuExpiryDate);
+        }
+
+        const sku = await skuRepository.createSku({
+          skuCode: input.skuCode,
+          skuDescription: input.skuDescription,
+          skuPrice: input.skuPrice.toString(),
+          skuQuantity: input.skuQuantity.toString(),
+          skuExpiryDate: input.skuExpiryDate,
+          skuSuppliers: input.skuSuppliers,
+          skuUom: input.skuUom,
+          isActive: input.isActive,
+          createdBy: input.createdBy,
+          updatedBy: input.updatedBy,
+        });
+
+        return transformSku(sku);
       }
-
-      const sku = await skuRepository.createSku({
-        skuCode: input.skuCode,
-        skuDescription: input.skuDescription,
-        skuPrice: input.skuPrice.toString(),
-        skuQuantity: input.skuQuantity.toString(),
-        skuExpiryDate: input.skuExpiryDate,
-        skuSuppliers: input.skuSuppliers,
-        skuUom: input.skuUom,
-        isActive: input.isActive,
-        createdBy: input.createdBy,
-        updatedBy: input.updatedBy,
-      });
-
-      return transformSku(sku);
-    },
+    ),
 
     /**
      * Update an existing SKU (uses repository)
      */
-    updateSku: async (_: unknown, { id, input }: { id: string; input: {
-      skuCode?: string;
-      skuDescription?: string;
-      skuPrice?: number;
-      skuQuantity?: number;
-      skuSuppliers?: string[];
-      skuExpiryDate?: string | Date;
-      skuUom?: string;
-      isActive?: boolean;
-      updatedBy: string;
-    }}) => {
-      const updateData: Record<string, unknown> = {
-        updatedBy: input.updatedBy,
-      };
+    updateSku: withAudit(
+      {
+        entity: 'SKU',
+        action: 'UPDATE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await skuRepository.getSkuById(args.id);
+        },
+      },
+      async (_: unknown, { id, input }: { id: string; input: {
+        skuCode?: string;
+        skuDescription?: string;
+        skuPrice?: number;
+        skuQuantity?: number;
+        skuSuppliers?: string[];
+        skuExpiryDate?: string | Date;
+        skuUom?: string;
+        isActive?: boolean;
+        updatedBy: string;
+      }}, context: GraphQLContext) => {
+        const updateData: Record<string, unknown> = {
+          updatedBy: input.updatedBy,
+        };
 
-      if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
-      if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
-      if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice.toString();
-      if (input.skuQuantity !== undefined) updateData.skuQuantity = input.skuQuantity.toString();
-      if (input.skuExpiryDate !== undefined && typeof input.skuExpiryDate === 'string') {
-        // Convert date string to Date object if needed
-        updateData.skuExpiryDate = new Date(input.skuExpiryDate);
+        if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
+        if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
+        if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice.toString();
+        if (input.skuQuantity !== undefined) updateData.skuQuantity = input.skuQuantity.toString();
+        if (input.skuExpiryDate !== undefined && typeof input.skuExpiryDate === 'string') {
+          // Convert date string to Date object if needed
+          updateData.skuExpiryDate = new Date(input.skuExpiryDate);
+        }
+        if (input.skuSuppliers !== undefined) updateData.skuSuppliers = input.skuSuppliers;
+        if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
+        if (input.isActive !== undefined) updateData.isActive = input.isActive;
+
+        const sku = await skuRepository.updateSku(id, updateData);
+        if (!sku) return null;
+        
+        return transformSku(sku);
       }
-      if (input.skuSuppliers !== undefined) updateData.skuSuppliers = input.skuSuppliers;
-      if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
-      if (input.isActive !== undefined) updateData.isActive = input.isActive;
-
-      const sku = await skuRepository.updateSku(id, updateData);
-      if (!sku) return null;
-      
-      return transformSku(sku);
-    },
+    ),
   },
 };

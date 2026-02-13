@@ -12,6 +12,8 @@ export const typeDefs = `#graphql
   type AuditLog {
     auditLogId: ID!
     userId: ID
+    userName: String
+    role: String
     action: String!
     entity: String!
     entityId: ID
@@ -43,32 +45,55 @@ export const typeDefs = `#graphql
   }
 
   """
-  Input for creating a new audit log
+  Sort field options for audit logs
   """
-  input CreateAuditLogInput {
-    userId: ID
-    action: String
-    entity: String
-    entityId: ID
-    oldData: JSON
-    newData: JSON
-    ipAddress: String
-    userAgent: String
+  enum AuditLogSortField {
+    CREATED_AT
+    ACTION
+    ENTITY
+    USER_NAME
+  }
+
+  """
+  Sort direction
+  """
+  enum SortDirection {
+    ASC
+    DESC
+  }
+
+  """
+  Sort input for audit logs query
+  """
+  input AuditLogSort {
+    field: AuditLogSortField!
+    direction: SortDirection!
   }
 
   extend type Query {
     """
-    Get audit logs with optional filtering and pagination.
+    Get audit logs with optional filtering, sorting, and pagination.
     Requires authentication.
     """
-    auditLogs(filter: AuditLogFilterInput, pageSize: Int, pageNumber: Int): AuditLogPaginatedResponse! @auth
-  }
+    auditLogs(
+      filter: AuditLogFilterInput
+      sort: AuditLogSort
+      pageSize: Int
+      pageNumber: Int
+    ): AuditLogPaginatedResponse! @auth
 
-  extend type Mutation {
     """
-    Create a new audit log.
+    Get distinct audit log actions.
+    Returns a list of all unique action types in the audit logs.
     Requires authentication.
     """
-    createAuditLog(input: CreateAuditLogInput!): AuditLog! @auth
+    auditLogActions: [String!]! @auth
+
+    """
+    Get distinct audit log entities.
+    Returns a list of all unique entity types in the audit logs.
+    Requires authentication.
+    """
+    auditLogEntities: [String!]! @auth
   }
 `;

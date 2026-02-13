@@ -178,9 +178,10 @@ ViteExpress.listen(app, Number(PORT), async () => {
   console.log(`Server is listening on port ${PORT}...`);
 
   try {
-    logger.info('🚀 Running migrations...');
-    await runMigrations();
-    logger.info('✅ Migrations completed successfully');
+    if (env.NODE_ENV === 'production') {
+      logger.info('🚀 Running migrations...');
+      await runMigrations();
+    }
 
     logger.info('🚀 Initializing accounts...');
     await initAccounts();

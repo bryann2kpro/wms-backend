@@ -7,6 +7,7 @@
 
 import { racksRepository } from '@/composition-root';
 import { RackFilter } from './racks.repository';
+import { withAudit } from '../audit-log/audit.wrapper';
 
 // ============================================ 
 // HELPER FUNCTIONS
@@ -110,47 +111,73 @@ export const resolvers = {
     /**
      * Create a new rack
      */
-    createRack: async (_: unknown, { input }: { input: {
-      rackRow: string;
-      rackColumn: string;
-      rackLevel: string;
-      createdBy: string;
-      updatedBy: string;
-    }}) => {
-      const rack = await racksRepository.createRack({
-        rackRow: input.rackRow,
-        rackColumn: input.rackColumn,
-        rackLevel: input.rackLevel,
-        createdBy: input.createdBy,
-        updatedBy: input.updatedBy,
-      });
-      return rack ? transformRack(rack) : null;
-    },
+    createRack: withAudit(
+      {
+        entity: 'Rack',
+        action: 'CREATE',
+        getEntityId: (result) => result?.rackId ?? null,
+      },
+      async (_: unknown, { input }: { input: {
+        rackRow: string;
+        rackColumn: string;
+        rackLevel: string;
+        createdBy: string;
+        updatedBy: string;
+      }}) => {
+        const rack = await racksRepository.createRack({
+          rackRow: input.rackRow,
+          rackColumn: input.rackColumn,
+          rackLevel: input.rackLevel,
+          createdBy: input.createdBy,
+          updatedBy: input.updatedBy,
+        });
+        return rack ? transformRack(rack) : null;
+      },
+    ),
 
     /**
      * Update an existing rack
      */
-    updateRack: async (_: unknown, { id, input }: { id: string; input: {
-      rackRow?: string;
-      rackColumn?: string;
-      rackLevel?: string;
-      updatedBy: string;
-    }}) => {
-      const rack = await racksRepository.updateRack({
-        rackRow: input.rackRow || undefined,
-        rackColumn: input.rackColumn || undefined,
-        rackLevel: input.rackLevel || undefined,
-        updatedBy: input.updatedBy,
-      }, id);
-      if (!rack) return null;
-      return transformRack(rack);
-    },
-
+    updateRack: withAudit(
+      {
+        entity: 'Rack',
+        action: 'UPDATE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await racksRepository.getRackById(args.id);
+        },
+      },
+      async (_: unknown, { id, input }: { id: string; input: {
+        rackRow?: string;
+        rackColumn?: string;
+        rackLevel?: string;
+        updatedBy: string;
+      }}) => {
+        const rack = await racksRepository.updateRack({
+          rackRow: input.rackRow || undefined,
+          rackColumn: input.rackColumn || undefined,
+          rackLevel: input.rackLevel || undefined,
+          updatedBy: input.updatedBy,
+        }, id);
+        if (!rack) return null;
+        return transformRack(rack);
+      },
+    ),
     /**
      * Delete an rack
      */
-    deleteRack: async (_: unknown, { id }: { id: string }) => {
+    deleteRack: withAudit(
+      {
+        entity: 'Rack',
+        action: 'DELETE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await racksRepository.getRackById(args.id);
+        },
+      },
+      async (_: unknown, { id }: { id: string }) => {
       return await racksRepository.deleteRack(id);
-    },
+      },
+    ),
   },
 };

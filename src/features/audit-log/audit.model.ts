@@ -5,6 +5,15 @@ export const AuditActionEnum = MainSchema.enum('audit_action', [
   'CREATE',
   'UPDATE',
   'DELETE',
+  'BULK_CREATE',
+  'BULK_UPDATE',
+  'BULK_DELETE',
+  'CREATE_FAILED',
+  'UPDATE_FAILED',
+  'DELETE_FAILED',
+  'BULK_CREATE_FAILED',
+  'BULK_UPDATE_FAILED',
+  'BULK_DELETE_FAILED',
 ]);
 
 /**
@@ -14,6 +23,7 @@ export const AuditActionEnum = MainSchema.enum('audit_action', [
  * 
  * @field id - Primary key
  * @field userId - User who made the change
+ * @field role - Role of the user who made the change
  * @field action - Type of change (CREATE, UPDATE, DELETE)
  * @field entity - Name of the table that was changed
  * @field entityId - ID of the record that was changed
@@ -25,9 +35,11 @@ export const AuditActionEnum = MainSchema.enum('audit_action', [
 export const AuditLogTable = MainSchema.table('audit_logs', {
     auditLogId: bigserial("audit_log_id", { mode: "number" }).notNull().primaryKey(),
     userId: uuid('user_id'),
+    role: text('role'),
     action: text('action').notNull(),
     entity: text('entity').notNull(),
     entityId: text('entity_id'),
+    batchId: uuid('batch_id'),
     oldData: jsonb('old_data'),
     newData: jsonb('new_data'),
     ipAddress: inet('ip_address').notNull(),
@@ -38,4 +50,5 @@ export const AuditLogTable = MainSchema.table('audit_logs', {
   index("audit_user_idx").on(table.userId),
   index("audit_entity_idx").on(table.entity, table.entityId),
   index("audit_created_idx").on(table.createdAt),
+  index("audit_role_idx").on(table.role),
 ]);
