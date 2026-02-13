@@ -4,9 +4,11 @@
  * @description Resolvers for generating report PDFs (Movement Report, Invoices Summary).
  */
 
+import { logger } from '@/util/logger';
 import {
   getMovementReportData,
   getInvoiceSummaryData,
+  renderMovementReportHtml,
   generateMovementReportPdf,
   generateInvoiceSummaryPdf,
 } from './report.service';
@@ -23,13 +25,23 @@ export const resolvers = {
           type: 'INVOICE_SUMMARY' | 'MOVEMENT_REPORT';
           dateFrom?: string;
           dateTo?: string;
+          format?: 'PDF' | 'EXCEL';
         };
       }
     ) => {
-      const { type, dateFrom, dateTo } = args.input;
+      logger.info('ℹ️ [report.resolvers.generateReport] Generating report...');
+      const { type, dateFrom, dateTo, format } = args.input;
+
+      logger.debug('🔎 [report.resolvers.generateReport] Report type: %s', type);
+      logger.debug('🔎 [report.resolvers.generateReport] Date from: %s', dateFrom);
+      logger.debug('🔎 [report.resolvers.generateReport] Date to: %s', dateTo);
+      logger.debug('🔎 [report.resolvers.generateReport] Format: %s', format);
 
       if (type === 'MOVEMENT_REPORT') {
         const rows = getMovementReportData(dateFrom, dateTo);
+        // Pump data into the HTML template (use movementReportHtml for preview, email, or HTML→PDF)
+        const movementReportHtml = await renderMovementReportHtml(rows, dateFrom, dateTo);
+        logger.debug('Movement report HTML rendered, length: %d', movementReportHtml.length);
         return generateMovementReportPdf(rows);
       }
 

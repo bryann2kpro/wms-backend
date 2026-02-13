@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proforma Invoices</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Print-friendly: light backgrounds, dark text, minimal ink -->
+    <style>
+        @media print {
+            body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .print-container { box-shadow: none !important; }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-white p-6 font-sans antialiased text-gray-900">
+    <div class="mx-auto max-w-6xl print-container">
+        <header class="mb-6">
+            <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Proforma Invoices</h1>
+            <p class="mt-1 text-sm text-gray-600">
+                Period: <strong class="text-gray-900">{{dateFrom}}</strong> to <strong class="text-gray-900">{{dateTo}}</strong>
+            </p>
+        </header>
+
+        <div class="overflow-hidden rounded-lg border border-gray-300 bg-white">
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[640px] text-sm">
+                    <thead>
+                        <tr>
+                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900">Proforma Invoice No</th>
+                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900">PO No</th>
+                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900">Outlet</th>
+                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900">Expected Arrival Date</th>
+                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900">Region</th>
+                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-900">Ctn</th>
+                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-900">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-300">
+                        {{tableRows}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

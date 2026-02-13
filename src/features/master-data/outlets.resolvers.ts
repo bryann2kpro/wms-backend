@@ -118,6 +118,7 @@ export const resolvers = {
     createOutlet: async (_: unknown, { input }: { input: {
       outletName: string;
       outletCode: string;
+      outletAddress?: string;
       regionId?: string;
       createdBy: string;
       updatedBy: string;
@@ -125,6 +126,7 @@ export const resolvers = {
       const outlet = await outletsRepository.createOutlet({
         outletName: input.outletName,
         outletCode: input.outletCode,
+        outletAddress: input.outletAddress ?? '',
         regionId: input.regionId || null,
         createdBy: input.createdBy,
         updatedBy: input.updatedBy,
