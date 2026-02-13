@@ -8,6 +8,7 @@
 import { auditLogRepository } from '@/composition-root';
 import { AuditLogFilter } from './audit.repository';
 import { PaginationParams } from '../rbac/rbac.model';
+import { GraphQLContext } from '@/graphql/context';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -16,6 +17,7 @@ import { PaginationParams } from '../rbac/rbac.model';
 function transformAuditLog(auditLog: {
   auditLogId: string;
   userId: string;
+  role: string | null;
   action: string;
   entity: string;
   entityId: string;
@@ -28,6 +30,7 @@ function transformAuditLog(auditLog: {
   return {
     auditLogId: auditLog.auditLogId,
     userId: auditLog.userId,
+    role: auditLog.role,
     action: auditLog.action,
     entity: auditLog.entity,
     entityId: auditLog.entityId,
@@ -49,13 +52,13 @@ export const resolvers = {
       filter?: AuditLogFilter;
       pageSize?: number;
       pageNumber?: number;
-    }) => {
-      const filter: AuditLogFilter = {};
+    }, context: GraphQLContext) => {
+      const filter: AuditLogFilter = args.filter || {};
       const paginationParams: PaginationParams = {
         pageSize: args.pageSize || 10,
         pageNumber: args.pageNumber || 1,
       };
-      const result = await auditLogRepository.getAuditLog(filter, paginationParams);
+      const result = await auditLogRepository.getAuditLog(filter, paginationParams, context);
 
       return {
         query: result.query.map(transformAuditLog),

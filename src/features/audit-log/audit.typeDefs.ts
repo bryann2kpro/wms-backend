@@ -42,33 +42,11 @@ export const typeDefs = `#graphql
     action: String
   }
 
-  """
-  Input for creating a new audit log
-  """
-  input CreateAuditLogInput {
-    userId: ID
-    action: String
-    entity: String
-    entityId: ID
-    oldData: JSON
-    newData: JSON
-    ipAddress: String
-    userAgent: String
-  }
-
   extend type Query {
     """
     Get audit logs with optional filtering and pagination.
     Requires authentication.
     """
     auditLogs(filter: AuditLogFilterInput, pageSize: Int, pageNumber: Int): AuditLogPaginatedResponse! @auth
-  }
-
-  extend type Mutation {
-    """
-    Create a new audit log.
-    Requires authentication.
-    """
-    createAuditLog(input: CreateAuditLogInput!): AuditLog! @auth
   }
 `;

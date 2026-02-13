@@ -127,6 +127,27 @@
       "when": 1770692025863,
       "tag": "0017_nosy_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1770696594355,
+      "tag": "0018_cold_doorman",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1770710176036,
+      "tag": "0019_curvy_black_panther",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1770711986956,
+      "tag": "0020_cute_nightcrawler",
+      "breakpoints": true
     }
   ]
 }
