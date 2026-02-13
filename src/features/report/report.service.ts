@@ -88,18 +88,20 @@ export async function renderMovementReportHtml(
 
   const tableRows = rows
     .map(
-      (r) =>
-        `<tr>
-          <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-medium">${escapeHtml(r.itemCode)}</td>
-          <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-medium">${escapeHtml(r.description)}</td>
-          <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-medium text-right">${r.countAdjustmentQty}</td>
-        </tr>`
+      (r, i) => {
+        const rowOdd = i % 2 === 0 ? 'bg-gray-50' : '';
+        return `<tr class="border-b border-gray-300 hover:bg-gray-100 ${rowOdd}">
+          <td class="px-4 py-3 whitespace-nowrap text-gray-900 font-medium">${escapeHtml(r.itemCode)}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-gray-800">${escapeHtml(r.description)}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums font-medium text-gray-900">${r.countAdjustmentQty}</td>
+        </tr>`;
+      }
     )
     .join('\n');
   const grandTotal = rows.reduce((sum, r) => sum + r.countAdjustmentQty, 0);
-  const totalRow = `<tr class="font-bold">
-    <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-medium" colspan="2">TOTAL OUT</td>
-    <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-medium text-right">${grandTotal}</td>
+  const totalRow = `<tr class="border-t-2 border-gray-500 bg-gray-200 font-bold text-gray-900">
+    <td class="px-4 py-3.5" colspan="2">TOTAL OUT</td>
+    <td class="px-4 py-3.5 text-right tabular-nums">${grandTotal}</td>
   </tr>`;
 
   // For mock get the first data from region
@@ -108,8 +110,8 @@ export async function renderMovementReportHtml(
 
   const regionName = region.query[0].regionName;
 
-  const tableRegionHeader = `<tr class="data-[state=selected]:bg-muted border-b transition-colors bg-muted/50 hover:bg-muted/50">
-    <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-semibold text-foreground py-3" colspan="3">${regionName}</td>
+  const tableRegionHeader = `<tr class="border-b border-gray-400 bg-gray-100">
+    <td class="px-4 py-3 font-semibold text-gray-900" colspan="3">${regionName}</td>
   </tr>`;
 
   return template
