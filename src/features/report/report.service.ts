@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { jsPDF } from 'jspdf';
 import { autoTable, CellHookData } from 'jspdf-autotable';
+import { regionRepository } from '@/composition-root';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MOVEMENT_REPORT_HTML_PATH = path.join(__dirname, 'html', 'movement-report.html');
@@ -81,24 +82,35 @@ export async function renderMovementReportHtml(
   dateTo?: string
 ): Promise<string> {
   const template = await readFile(MOVEMENT_REPORT_HTML_PATH, 'utf-8');
+
   const tableRows = rows
     .map(
       (r) =>
         `<tr>
-          <td class="border px-4 py-2">${escapeHtml(r.companyCode)}</td>
-          <td class="border px-4 py-2">${escapeHtml(r.itemCode)}</td>
-          <td class="border px-4 py-2">${escapeHtml(r.description)}</td>
-          <td class="border px-4 py-2 text-right">${r.countAdjustmentQty}</td>
+          <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-medium">${escapeHtml(r.itemCode)}</td>
+          <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-medium">${escapeHtml(r.description)}</td>
+          <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-medium text-right">${r.countAdjustmentQty}</td>
         </tr>`
     )
     .join('\n');
   const grandTotal = rows.reduce((sum, r) => sum + r.countAdjustmentQty, 0);
   const totalRow = `<tr class="font-bold">
-    <td class="border px-4 py-2" colspan="3">TOTAL OUT</td>
-    <td class="border px-4 py-2 text-right">${grandTotal}</td>
+    <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-medium" colspan="2">TOTAL OUT</td>
+    <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-medium text-right">${grandTotal}</td>
+  </tr>`;
+
+  // For mock get the first data from region
+
+  const region = await regionRepository.getRegion({}, { pageSize: 1, pageNumber: 1 });
+
+  const regionName = region.query[0].regionName;
+
+  const tableRegionHeader = `<tr class="data-[state=selected]:bg-muted border-b transition-colors bg-muted/50 hover:bg-muted/50">
+    <td class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] font-semibold text-foreground py-3" colspan="3">${regionName}</td>
   </tr>`;
 
   return template
+    .replace(/\{\{tableRegionHeader\}\}/, tableRegionHeader)
     .replace(/\{\{dateFrom\}\}/g, dateFrom ?? '—')
     .replace(/\{\{dateTo\}\}/g, dateTo ?? '—')
     .replace(/\{\{tableRows\}\}/, tableRows + '\n' + totalRow);

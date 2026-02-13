@@ -11,20 +11,22 @@
     <p class="text-gray-600 mb-4">
         Period: <strong>{{dateFrom}}</strong> to <strong>{{dateTo}}</strong>
     </p>
-    <div class="table-container relative w-full overflow-x-auto">
-        <table class="w-full border-collapse border border-gray-300">
-            <thead>
-                <tr class="bg-black text-white">
-                    <th class="border px-4 py-2 text-left">Company Code</th>
-                    <th class="border px-4 py-2 text-left">Item Code</th>
-                    <th class="border px-4 py-2 text-left">Description</th>
-                    <th class="border px-4 py-2 text-right">Count Adjustment Unit Qty</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{tableRows}}
-            </tbody>
-        </table>
+    <div class="overflow-x-auto rounded-lg border">
+        <div class="relative w-full overflow-x-auto">
+            <table class="w-full caption-bottom text-sm">
+                <thead class="[&_tr]:border-b">
+                    <tr class="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors">
+                        <th class="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Item Code</th>
+                        <th class="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Description</th>
+                        <th class="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]">Count Adjustment Unit Qty</th>
+                    </tr>
+                </thead>
+                <tbody class="[&_tr:last-child]:border-0">
+                    {{tableRegionHeader}}
+                    {{tableRows}}
+                </tbody>
+            </table>
+        </div>
     </div>
 </body>
-</html>
+</html> 
