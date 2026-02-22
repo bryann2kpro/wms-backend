@@ -8,6 +8,7 @@
  */
 
 import { skuRepository, suppliersRepository } from '@/composition-root';
+import { logger } from '@/util/logger';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -92,53 +93,63 @@ export const resolvers = {
       pageSize?: number;
       pageNumber?: number;
     }) => {
-      const filter: any = {};
-      
-      if (args.filter) {
-        if (args.filter.skuIds) {
-          filter.skuId = args.filter.skuIds;
-        } else if (args.filter.skuId) {
-          filter.skuId = args.filter.skuId;
-        }
+      try {
+        const filter: any = {};
         
-        if (args.filter.skuCodes) {
-          filter.skuCode = args.filter.skuCodes;
-        } else if (args.filter.skuCode) {
-          filter.skuCode = args.filter.skuCode;
+        if (args.filter) {
+          if (args.filter.skuIds) {
+            filter.skuId = args.filter.skuIds;
+          } else if (args.filter.skuId) {
+            filter.skuId = args.filter.skuId;
+          }
+          
+          if (args.filter.skuCodes) {
+            filter.skuCode = args.filter.skuCodes;
+          } else if (args.filter.skuCode) {
+            filter.skuCode = args.filter.skuCode;
+          }
+          
+          if (args.filter.skuDescription) {
+            filter.skuDescription = args.filter.skuDescription;
+          }
+          
+          if (args.filter.isActive !== undefined) {
+            filter.isActive = args.filter.isActive;
+          }
         }
-        
-        if (args.filter.skuDescription) {
-          filter.skuDescription = args.filter.skuDescription;
+
+        // Only pass pagination params if both are provided, otherwise get all data
+        let paginationParams;
+        if (args.pageSize && args.pageNumber) {
+          paginationParams = { pageSize: args.pageSize, pageNumber: args.pageNumber };
+        } else {
+          paginationParams = undefined;
         }
-        
-        if (args.filter.isActive !== undefined) {
-          filter.isActive = args.filter.isActive;
-        }
+
+        const result = await skuRepository.getSku(filter, paginationParams);
+
+        return {
+          query: result.query.map(transformSku),
+          pagination: result.pagination,
+        };
+      } catch (error) {
+        logger.error('[sku.resolvers] Error:', error);
+        return false;
       }
-
-      // Only pass pagination params if both are provided, otherwise get all data
-      let paginationParams;
-      if (args.pageSize && args.pageNumber) {
-        paginationParams = { pageSize: args.pageSize, pageNumber: args.pageNumber };
-      } else {
-        paginationParams = undefined;
-      }
-
-      const result = await skuRepository.getSku(filter, paginationParams);
-
-      return {
-        query: result.query.map(transformSku),
-        pagination: result.pagination,
-      };
     },
 
     /**
      * Get a single SKU by ID (uses repository)
      */
     sku: async (_: unknown, { id }: { id: string }) => {
-      const sku = await skuRepository.getSkuById(id);
-      if (!sku) return null;
-      return transformSku(sku);
+      try {
+        const sku = await skuRepository.getSkuById(id);
+        if (!sku) return null;
+        return transformSku(sku);
+      } catch (error) {
+        logger.error('[sku.resolvers] Error:', error);
+        return false;
+      }
     },
   },
 
@@ -176,7 +187,7 @@ export const resolvers = {
           };
         }).filter(item => item.supplier !== null); // Filter out suppliers that weren't found
       } catch (error) {
-        console.error('Error fetching suppliers for SKU:', error);
+        logger.error('[sku.resolvers.skuSuppliers] Error fetching suppliers for SKU:', error);
         return [];
       }
     },
@@ -198,31 +209,36 @@ export const resolvers = {
       createdBy: string;
       updatedBy: string;
     }}) => {
-      // Convert date string to Date object if needed
-      if (typeof input.skuExpiryDate === 'string') {
-        input.skuExpiryDate = new Date(input.skuExpiryDate);
+      try {
+        // Convert date string to Date object if needed
+        if (typeof input.skuExpiryDate === 'string') {
+          input.skuExpiryDate = new Date(input.skuExpiryDate);
+        }
+
+        // Transform skuSuppliers to match the expected format
+        const skuSuppliersData = input.skuSuppliers.map(s => ({
+          supplierId: s.supplierId,
+          originalSkuCode: s.originalSkuCode ?? null,
+        }));
+
+        const sku = await skuRepository.createSku({
+          skuCode: input.skuCode,
+          skuDescription: input.skuDescription,
+          skuPrice: input.skuPrice?.toString() ?? null,
+          skuQuantity: input.skuQuantity.toString(),
+          skuExpiryDate: input.skuExpiryDate,
+          skuSuppliers: skuSuppliersData,
+          skuUom: input.skuUom,
+          isActive: input.isActive,
+          createdBy: input.createdBy,
+          updatedBy: input.updatedBy,
+        });
+
+        return transformSku(sku);
+      } catch (error) {
+        logger.error('[sku.resolvers.createSku] Error:', error);
+        return false;
       }
-
-      // Transform skuSuppliers to match the expected format
-      const skuSuppliersData = input.skuSuppliers.map(s => ({
-        supplierId: s.supplierId,
-        originalSkuCode: s.originalSkuCode ?? null,
-      }));
-
-      const sku = await skuRepository.createSku({
-        skuCode: input.skuCode,
-        skuDescription: input.skuDescription,
-        skuPrice: input.skuPrice?.toString() ?? null,
-        skuQuantity: input.skuQuantity.toString(),
-        skuExpiryDate: input.skuExpiryDate,
-        skuSuppliers: skuSuppliersData,
-        skuUom: input.skuUom,
-        isActive: input.isActive,
-        createdBy: input.createdBy,
-        updatedBy: input.updatedBy,
-      });
-
-      return transformSku(sku);
     },
 
     /**
@@ -239,40 +255,50 @@ export const resolvers = {
       isActive?: boolean;
       updatedBy: string;
     }}) => {
-      const updateData: Record<string, unknown> = {
-        updatedBy: input.updatedBy,
-      };
+      try {
+        const updateData: Record<string, unknown> = {
+          updatedBy: input.updatedBy,
+        };
 
-      if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
-      if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
-      if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice?.toString() ?? null;
-      if (input.skuQuantity !== undefined) updateData.skuQuantity = input.skuQuantity.toString();
-      if (input.skuExpiryDate !== undefined && typeof input.skuExpiryDate === 'string') {
-        // Convert date string to Date object if needed
-        updateData.skuExpiryDate = new Date(input.skuExpiryDate);
-      }
-      if (input.skuSuppliers !== undefined) {
-        // Transform skuSuppliers to match the expected format
-        updateData.skuSuppliers = input.skuSuppliers.map(s => ({
-          supplierId: s.supplierId,
-          originalSkuCode: s.originalSkuCode ?? null,
-        }));
-      }
-      if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
-      if (input.isActive !== undefined) updateData.isActive = input.isActive;
+        if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
+        if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
+        if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice?.toString() ?? null;
+        if (input.skuQuantity !== undefined) updateData.skuQuantity = input.skuQuantity.toString();
+        if (input.skuExpiryDate !== undefined && typeof input.skuExpiryDate === 'string') {
+          // Convert date string to Date object if needed
+          updateData.skuExpiryDate = new Date(input.skuExpiryDate);
+        }
+        if (input.skuSuppliers !== undefined) {
+          // Transform skuSuppliers to match the expected format
+          updateData.skuSuppliers = input.skuSuppliers.map(s => ({
+            supplierId: s.supplierId,
+            originalSkuCode: s.originalSkuCode ?? null,
+          }));
+        }
+        if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
+        if (input.isActive !== undefined) updateData.isActive = input.isActive;
 
-      const sku = await skuRepository.updateSku(id, updateData);
-      if (!sku) return null;
-      
-      return transformSku(sku);
+        const sku = await skuRepository.updateSku(id, updateData);
+        if (!sku) return null;
+        
+        return transformSku(sku);
+      } catch (error) {
+        logger.error('[sku.resolvers.updateSku] Error:', error);
+        return false;
+      }
     },
 
     /**
      * Delete a SKU (uses repository)
      */
     deleteSku: async (_: unknown, { id }: { id: string }) => {
-      const result = await skuRepository.deleteSku(id);
-      return result;
+      try {
+        const result = await skuRepository.deleteSku(id);
+        return result;
+      } catch (error) {
+        logger.error('[sku.resolvers.deleteSku] Error:', error);
+        return false;
+      }
     },
   },
 };

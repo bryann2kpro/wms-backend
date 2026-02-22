@@ -140,17 +140,22 @@ export class SkuRepositoryClass {
    */
   private async validateSupplierIds(supplierIds: string[]): Promise<void> {
     if (supplierIds.length === 0) return;
-    
-    const existingSuppliers = await db
-      .select({ supplierId: SuppliersTable.supplierId })
-      .from(SuppliersTable)
-      .where(inArray(SuppliersTable.supplierId, supplierIds));
-    
-    const existingIds = new Set(existingSuppliers.map(s => s.supplierId));
-    const invalidIds = supplierIds.filter(id => !existingIds.has(id));
-    
-    if (invalidIds.length > 0) {
-      throw new Error(`Invalid supplier IDs: ${invalidIds.join(', ')}. These suppliers do not exist.`);
+
+    try {
+      const existingSuppliers = await db
+        .select({ supplierId: SuppliersTable.supplierId })
+        .from(SuppliersTable)
+        .where(inArray(SuppliersTable.supplierId, supplierIds));
+
+      const existingIds = new Set(existingSuppliers.map(s => s.supplierId));
+      const invalidIds = supplierIds.filter(id => !existingIds.has(id));
+
+      if (invalidIds.length > 0) {
+        throw new Error(`Invalid supplier IDs: ${invalidIds.join(', ')}. These suppliers do not exist.`);
+      }
+    } catch (error) {
+      logger.error('❌ [SkuRepository.validateSupplierIds] Error:', error);
+      throw error;
     }
   }
 
