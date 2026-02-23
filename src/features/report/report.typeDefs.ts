@@ -23,6 +23,8 @@ export const typeDefs = `#graphql
     dateFrom: String
     """Optional end date filter (ISO date string)"""
     dateTo: String
+    """Optional region ID to filter or display (e.g. for movement report header)"""
+    regionId: String
     """If true, upload the generated PDF to S3 and return s3Url"""
     saveToS3: Boolean
   }

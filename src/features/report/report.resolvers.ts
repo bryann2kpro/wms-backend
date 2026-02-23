@@ -32,29 +32,29 @@ export const resolvers = {
           dateFrom?: string;
           dateTo?: string;
           format?: 'PDF' | 'EXCEL';
-          region?: string;
+          regionId?: string;
           saveToS3?: boolean;
         };
       }
     ) => {
       logger.info('ℹ️ [report.resolvers.generateReport] Generating report...');
-      const { type, dateFrom, dateTo, format, region, saveToS3 } = args.input;
+      const { type, dateFrom, dateTo, format, regionId, saveToS3 } = args.input;
 
       logger.debug('🔎 [report.resolvers.generateReport] Report type: %s', type);
       logger.debug('🔎 [report.resolvers.generateReport] Date from: %s', dateFrom);
       logger.debug('🔎 [report.resolvers.generateReport] Date to: %s', dateTo);
       logger.debug('🔎 [report.resolvers.generateReport] Format: %s', format);
-      logger.debug('🔎 [report.resolvers.generateReport] Region: %s', region);
+      logger.debug('🔎 [report.resolvers.generateReport] Region ID: %s', regionId);
       logger.debug('🔎 [report.resolvers.generateReport] Save to S3: %s', saveToS3);
 
       let result: { pdfBase64: string; filename: string };
 
       if (type === 'MOVEMENT_REPORT') {
-        const rows = getMovementReportData(dateFrom, dateTo);
-        result = await generateMovementReportPdf(rows, dateFrom, dateTo);
+        const rows = getMovementReportData(dateFrom, dateTo, regionId);
+        result = await generateMovementReportPdf(rows, dateFrom, dateTo, regionId);
       } else if (type === 'INVOICE_SUMMARY') {
-        const rows = getInvoiceSummaryData(dateFrom, dateTo);
-        result = generateInvoiceSummaryPdf(rows);
+        const rows = await getInvoiceSummaryData(dateFrom, dateTo, regionId);
+        result = await generateInvoiceSummaryPdf(rows, regionId);
       } else {
         throw new Error(`Unsupported report type: ${type}`);
       }
