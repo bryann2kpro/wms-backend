@@ -83,6 +83,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "action": {
           "name": "action",
           "type": "text",
@@ -98,6 +104,12 @@
         "entity_id": {
           "name": "entity_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -175,6 +187,21 @@
           "columns": [
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_role_idx": {
+          "name": "audit_role_idx",
+          "columns": [
+            {
+              "expression": "role",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1447,7 +1474,7 @@
           "name": "outlet_address",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "region_id": {
           "name": "region_id",
@@ -2881,7 +2908,16 @@
       "values": [
         "CREATE",
         "UPDATE",
-        "DELETE"
+        "DELETE",
+        "BULK_CREATE",
+        "BULK_UPDATE",
+        "BULK_DELETE",
+        "CREATE_FAILED",
+        "UPDATE_FAILED",
+        "DELETE_FAILED",
+        "BULK_CREATE_FAILED",
+        "BULK_UPDATE_FAILED",
+        "BULK_DELETE_FAILED"
       ]
     }
   },
