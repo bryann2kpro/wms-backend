@@ -5,27 +5,38 @@
  * with automatic audit logging functionality.
  */
 
+import { randomUUID } from "crypto";
 import { GraphQLContext } from "@/graphql/context";
 import { AuditLogRepositoryClass } from "./audit.repository";
 import { logger } from "@/util/logger";
+import { db } from "@/db";
 
 // ============================================
 // TYPES
 // ============================================
 
-export type AuditActionType = 'CREATE' | 'UPDATE' | 'DELETE';
+export type AuditActionType =
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'BULK_CREATE'
+  | 'BULK_UPDATE'
+  | 'BULK_DELETE';
 
 export interface WithAuditOptions<TArgs, TResult> {
   /** The entity/table name being modified */
   entity: string;
-  /** The type of action (CREATE, UPDATE, DELETE) */
+  /**
+   * The type of action (CREATE, UPDATE, DELETE) or bulk variants
+   * (BULK_CREATE, BULK_UPDATE, BULK_DELETE).
+   */
   action: AuditActionType;
   /** 
    * Extract the entity ID from the result or args.
    * For CREATE: usually from result (e.g., result.regionId)
    * For UPDATE/DELETE: usually from args (e.g., args.id)
    */
-  getEntityId?: (result: TResult | null, args: TArgs) => string | null;
+  getEntityId?: (result: TResult | null, args: TArgs) => string | string[] | null;
   /**
    * Fetch old data before the mutation executes (for UPDATE/DELETE).
    * Return null/undefined if not applicable.
@@ -82,6 +93,27 @@ function getIpAddress(context: GraphQLContext): string {
 function getUserAgent(context: GraphQLContext): string {
   const userAgent = context.req.headers['user-agent'];
   return userAgent || 'unknown';
+}
+
+/**
+ * Extract user's role from context
+ * Returns the first role name, prioritizing Super Admin if present
+ */
+function getUserRole(context: GraphQLContext): string | null {
+  if (!context.user || context.userRoles.length === 0) {
+    return null;
+  }
+
+  // Prioritize Super Admin if present
+  const superAdminRole = context.userRoles.find(
+    (role) => role.roleName === 'Super Admin'
+  );
+  if (superAdminRole) {
+    return superAdminRole.roleName;
+  }
+
+  // Otherwise return the first role
+  return context.userRoles[0]?.roleName ?? null;
 }
 
 // ============================================
@@ -143,62 +175,104 @@ export function withAudit<TParent, TArgs, TResult>(
   resolver: ResolverFn<TParent, TArgs, TResult>
 ): ResolverFn<TParent, TArgs, TResult> {
   const { entity, action, getEntityId, getOldData, getNewData } = options;
+  const isBulkAction = action === 'BULK_CREATE' || action === 'BULK_UPDATE' || action === 'BULK_DELETE';
+  const isCreateAction = action === 'CREATE' || action === 'BULK_CREATE';
+  const isDeleteAction = action === 'DELETE' || action === 'BULK_DELETE';
 
   return async (parent, args, context, info) => {
+    const batchId = isBulkAction ? randomUUID() : null;
     let oldData: unknown = null;
     let result: TResult | null = null;
 
-    try {
-      // Fetch old data before mutation (for UPDATE/DELETE)
-      if (getOldData && (action === 'UPDATE' || action === 'DELETE')) {
-        try {
-          oldData = await getOldData(args, context);
-        } catch (error) {
-          logger.warn('[withAudit] Failed to fetch old data:', error);
+    // Execute everything within a transaction to ensure atomicity
+    return await db.transaction(async (tx) => {
+      try {
+        // Create context with transaction
+        const contextWithTx: GraphQLContext = {
+          ...context,
+          tx,
+        };
+
+        // Fetch old data before mutation (for UPDATE/DELETE)
+        if (getOldData && (action === 'UPDATE' || action === 'DELETE' || action === 'BULK_UPDATE' || action === 'BULK_DELETE')) {
+          try {
+            oldData = await getOldData(args, contextWithTx);
+          } catch (error) {
+            logger.warn('[withAudit] Failed to fetch old data:', error);
+          }
         }
+
+        // Execute the actual resolver with transaction in context
+        result = await resolver(parent, args, contextWithTx, info);
+
+        // Create audit log entry/entries within the same transaction
+        const entityIdValue = getEntityId ? getEntityId(result, args) : null;
+        const newDataValue = getNewData ? getNewData(result, args) : result;
+
+        if (isBulkAction && Array.isArray(entityIdValue)) {
+          const oldArray = Array.isArray(oldData) ? oldData : entityIdValue.map(() => oldData);
+          const newArray = Array.isArray(newDataValue) ? newDataValue : entityIdValue.map(() => newDataValue);
+
+          await Promise.all(
+            entityIdValue.map((id, index) =>
+              auditLogRepository.createAuditLog({
+                userId: context.user?.id ?? null,
+                role: getUserRole(context),
+                action,
+                entity,
+                entityId: id,
+                batchId,
+                oldData: !isCreateAction ? oldArray[index] : undefined,
+                newData: !isDeleteAction ? newArray[index] : undefined,
+                ipAddress: getIpAddress(context),
+                userAgent: getUserAgent(context),
+              }, tx)
+            )
+          );
+        } else {
+          const entityId = Array.isArray(entityIdValue) ? entityIdValue[0] ?? null : entityIdValue;
+          const newData = Array.isArray(newDataValue) ? newDataValue[0] : newDataValue;
+
+          await auditLogRepository.createAuditLog({
+            userId: context.user?.id ?? null,
+            role: getUserRole(context),
+            action,
+            entity,
+            entityId,
+            batchId,
+            oldData: !isCreateAction ? oldData : undefined,
+            newData: !isDeleteAction ? newData : undefined,
+            ipAddress: getIpAddress(context),
+            userAgent: getUserAgent(context),
+          }, tx);
+        }
+
+        return result;
+      } catch (error) {
+        // Even on error, try to log the failed attempt within the transaction
+        try {
+          const entityIdValue = getEntityId ? getEntityId(result, args) : null;
+          const entityId = Array.isArray(entityIdValue) ? entityIdValue.join(',') : entityIdValue;
+
+          await auditLogRepository.createAuditLog({
+            userId: context.user?.id ?? null,
+            role: getUserRole(context),
+            action: `${action}_FAILED`,
+            entity,
+            entityId,
+            batchId,
+            oldData: action !== 'CREATE' ? oldData : undefined,
+            newData: { args, error: error instanceof Error ? error.message : String(error) },
+            ipAddress: getIpAddress(context),
+            userAgent: getUserAgent(context),
+          }, tx);
+        } catch (logError) {
+          logger.error('[withAudit] Failed to create audit log for failed mutation:', logError);
+        }
+
+        throw error;
       }
-
-      // Execute the actual resolver
-      result = await resolver(parent, args, context, info);
-
-      // Create audit log entry (fire and forget to not block response)
-      const entityId = getEntityId ? getEntityId(result, args) : null;
-      const newData = getNewData ? getNewData(result, args) : result;
-
-      // Log asynchronously to not impact response time
-      auditLogRepository.createAuditLog({
-        userId: context.user?.id ?? null,
-        action,
-        entity,
-        entityId,
-        oldData: action !== 'CREATE' ? oldData : undefined,
-        newData: action !== 'DELETE' ? newData : undefined,
-        ipAddress: getIpAddress(context),
-        userAgent: getUserAgent(context),
-      }).catch((error) => {
-        logger.error('[withAudit] Failed to create audit log:', error);
-      });
-
-      return result;
-    } catch (error) {
-      // Even on error, try to log the failed attempt
-      const entityId = getEntityId ? getEntityId(result, args) : null;
-
-      auditLogRepository.createAuditLog({
-        userId: context.user?.id ?? null,
-        action: `${action}_FAILED`,
-        entity,
-        entityId,
-        oldData: action !== 'CREATE' ? oldData : undefined,
-        newData: { args, error: error instanceof Error ? error.message : String(error) },
-        ipAddress: getIpAddress(context),
-        userAgent: getUserAgent(context),
-      }).catch((logError) => {
-        logger.error('[withAudit] Failed to create audit log for failed mutation:', logError);
-      });
-
-      throw error;
-    }
+    });
   };
 }
 

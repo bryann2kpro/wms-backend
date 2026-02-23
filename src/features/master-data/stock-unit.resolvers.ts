@@ -7,6 +7,8 @@
 
 import { stockUnitRepository } from '@/composition-root';
 import { StockUnitFilter } from './stock-unit.repository';
+import { withAudit } from '@/features/audit-log/audit.wrapper';
+import { GraphQLContext } from '@/graphql/context';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -104,66 +106,103 @@ export const resolvers = {
     /**
      * Create a new stock unit
      */
-    createStockUnit: async (_: unknown, { input }: { input: {
-      unitName: string;
-      unitCode: string;
-      isActive?: boolean;
-      createdBy: string;
-      updatedBy: string;
-    }}) => {
-      const stockUnit = await stockUnitRepository.createStockUnit({
-        unitName: input.unitName,
-        unitCode: input.unitCode,
-        isActive: input.isActive ?? true,
-        createdBy: input.createdBy,
-        updatedBy: input.updatedBy,
-      });
+    createStockUnit: withAudit(
+      {
+        entity: 'StockUnit',
+        action: 'CREATE',
+        getEntityId: (result) => result?.stockUnitId ?? null,
+      },
+      async (_: unknown, { input }: { input: {
+        unitName: string;
+        unitCode: string;
+        isActive?: boolean;
+        createdBy: string;
+        updatedBy: string;
+      }}, context: GraphQLContext) => {
+        const stockUnit = await stockUnitRepository.createStockUnit({
+          unitName: input.unitName,
+          unitCode: input.unitCode,
+          isActive: input.isActive ?? true,
+          createdBy: input.createdBy,
+          updatedBy: input.updatedBy,
+        }, context.tx);
 
-      return transformStockUnit(stockUnit);
-    },
+        return transformStockUnit(stockUnit);
+      }
+    ),
 
     /**
      * Update an existing stock unit
      */
-    updateStockUnit: async (_: unknown, { id, input }: { id: string; input: {
-      unitName?: string;
-      unitCode?: string;
-      isActive?: boolean;
-      updatedBy: string;
-    }}) => {
-      const updateData: Record<string, unknown> = {
-        updatedBy: input.updatedBy,
-      };
+    updateStockUnit: withAudit(
+      {
+        entity: 'StockUnit',
+        action: 'UPDATE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await stockUnitRepository.getStockUnitById(args.id);
+        },
+      },
+      async (_: unknown, { id, input }: { id: string; input: {
+        unitName?: string;
+        unitCode?: string;
+        isActive?: boolean;
+        updatedBy: string;
+      }}, context: GraphQLContext) => {
+        const updateData: Record<string, unknown> = {
+          updatedBy: input.updatedBy,
+        };
 
-      if (input.unitName !== undefined) updateData.unitName = input.unitName;
-      if (input.unitCode !== undefined) updateData.unitCode = input.unitCode;
-      if (input.isActive !== undefined) updateData.isActive = input.isActive;
+        if (input.unitName !== undefined) updateData.unitName = input.unitName;
+        if (input.unitCode !== undefined) updateData.unitCode = input.unitCode;
+        if (input.isActive !== undefined) updateData.isActive = input.isActive;
 
-      const stockUnit = await stockUnitRepository.updateStockUnit(updateData, id);
-      if (!stockUnit) return null;
-      
-      return transformStockUnit(stockUnit);
-    },
+        const stockUnit = await stockUnitRepository.updateStockUnit(updateData, id, context.tx);
+        if (!stockUnit) return null;
+        
+        return transformStockUnit(stockUnit);
+      }
+    ),
 
     /**
      * Toggle stock unit active status
      */
-    toggleStockUnitActive: async (_: unknown, { id, isActive, updatedBy }: { 
-      id: string; 
-      isActive: boolean; 
-      updatedBy: string; 
-    }) => {
-      const stockUnit = await stockUnitRepository.toggleStockUnitActive(id, isActive, updatedBy);
-      if (!stockUnit) return null;
-      
-      return transformStockUnit(stockUnit);
-    },
+    toggleStockUnitActive: withAudit(
+      {
+        entity: 'StockUnit',
+        action: 'UPDATE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await stockUnitRepository.getStockUnitById(args.id);
+        },
+      },
+      async (_: unknown, { id, isActive, updatedBy }: { 
+        id: string; 
+        isActive: boolean; 
+        updatedBy: string; 
+      }, context: GraphQLContext) => {
+        const stockUnit = await stockUnitRepository.toggleStockUnitActive(id, isActive, updatedBy, context.tx);
+        if (!stockUnit) return null;
+        
+        return transformStockUnit(stockUnit);
+      }
+    ),
 
     /**
      * Delete a stock unit
      */
-    deleteStockUnit: async (_: unknown, { id }: { id: string }) => {
-      return await stockUnitRepository.deleteStockUnit(id);
-    },
+    deleteStockUnit: withAudit(
+      {
+        entity: 'StockUnit',
+        action: 'DELETE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await stockUnitRepository.getStockUnitById(args.id);
+        },
+      },
+      async (_: unknown, { id }: { id: string }, context: GraphQLContext) => {
+        return await stockUnitRepository.deleteStockUnit(id, context.tx);
+      }
+    ),
   },
 };

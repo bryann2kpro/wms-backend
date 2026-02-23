@@ -8,6 +8,8 @@
  */
 
 import { skuRepository, suppliersRepository } from '@/composition-root';
+import { withAudit } from '@/features/audit-log/audit.wrapper';
+import { GraphQLContext } from '@/graphql/context';
 import { logger } from '@/util/logger';
 
 // ============================================
@@ -197,7 +199,13 @@ export const resolvers = {
     /**
      * Create a new SKU (uses repository)
      */
-    createSku: async (_: unknown, { input }: { input: {
+    createSku: withAudit(
+      {
+        entity: 'SKU',
+        action: 'CREATE',
+        getEntityId: (result: SkuType) => result?.skuId ?? null,
+      }, 
+      async (_: unknown, { input }: { input: {
       skuCode: string;
       skuDescription: string;
       skuPrice?: number;
@@ -208,23 +216,23 @@ export const resolvers = {
       isActive: boolean;
       createdBy: string;
       updatedBy: string;
-    }}) => {
+    }}, context: GraphQLContext) => {
       try {
         // Convert date string to Date object if needed
         if (typeof input.skuExpiryDate === 'string') {
           input.skuExpiryDate = new Date(input.skuExpiryDate);
         }
-
         // Transform skuSuppliers to match the expected format
         const skuSuppliersData = input.skuSuppliers.map(s => ({
           supplierId: s.supplierId,
           originalSkuCode: s.originalSkuCode ?? null,
         }));
 
+
         const sku = await skuRepository.createSku({
           skuCode: input.skuCode,
           skuDescription: input.skuDescription,
-          skuPrice: input.skuPrice?.toString() ?? null,
+          skuPrice: input.skuPrice?.toString(),
           skuQuantity: input.skuQuantity.toString(),
           skuExpiryDate: input.skuExpiryDate,
           skuSuppliers: skuSuppliersData,
@@ -239,27 +247,48 @@ export const resolvers = {
         logger.error('[sku.resolvers.createSku] Error:', error);
         return false;
       }
-    },
+    }),
 
     /**
      * Update an existing SKU (uses repository)
      */
-    updateSku: async (_: unknown, { id, input }: { id: string; input: {
+    updateSku: withAudit(
+      {
+        entity: 'SKU',
+        action: 'UPDATE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await skuRepository.getSkuById(args.id);
+        },
+      },
+      async (_: unknown, { id, input }: { id: string; input: {
       skuCode?: string;
       skuDescription?: string;
       skuPrice?: number;
       skuQuantity?: number;
-      skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }>;
+      skuSuppliers?:  Array<{ supplierId: string; originalSkuCode?: string | null }>;
       skuExpiryDate?: string | Date;
       skuUom?: string;
       isActive?: boolean;
       updatedBy: string;
-    }}) => {
+    }}, context: GraphQLContext) => {
       try {
+
         const updateData: Record<string, unknown> = {
           updatedBy: input.updatedBy,
         };
 
+        if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
+        if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
+        if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice.toString();
+        if (input.skuQuantity !== undefined) updateData.skuQuantity = input.skuQuantity.toString();
+        if (input.skuExpiryDate !== undefined && typeof input.skuExpiryDate === 'string') {
+          // Convert date string to Date object if needed
+          updateData.skuExpiryDate = new Date(input.skuExpiryDate);
+        }
+        if (input.skuSuppliers !== undefined) updateData.skuSuppliers = input.skuSuppliers;
+        if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
+        if (input.isActive !== undefined) updateData.isActive = input.isActive;
         if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
         if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
         if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice?.toString() ?? null;
@@ -282,23 +311,11 @@ export const resolvers = {
         if (!sku) return null;
         
         return transformSku(sku);
+        
       } catch (error) {
         logger.error('[sku.resolvers.updateSku] Error:', error);
         return false;
       }
-    },
-
-    /**
-     * Delete a SKU (uses repository)
-     */
-    deleteSku: async (_: unknown, { id }: { id: string }) => {
-      try {
-        const result = await skuRepository.deleteSku(id);
-        return result;
-      } catch (error) {
-        logger.error('[sku.resolvers.deleteSku] Error:', error);
-        return false;
-      }
-    },
+    }),
   },
 };

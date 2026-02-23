@@ -28,6 +28,7 @@ import { SuppliersRepositoryClass } from '@/features/master-data/suppliers.repos
 import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repository.js';
 import { RacksRepositoryClass } from '@/features/master-data/racks.repository.js';
 import { AuditLogRepositoryClass } from './features/audit-log/audit.repository';
+import { ReportControllerClass } from './features/report/report.controller';
 
 // ============================================
 // SERVICES / UTILITIES (create first - no dependencies)
@@ -59,3 +60,4 @@ export const authController = new AuthControllerClass(authRepository, jwtControl
 export const rbacController = new RbacControllerClass(authRepository, rbacRepository);
 export const healthController = new HealthControllerClass();
 export const auditLogRepository = new AuditLogRepositoryClass();
+export const reportController = new ReportControllerClass();

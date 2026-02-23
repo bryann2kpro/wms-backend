@@ -1,5 +1,5 @@
 {
-  "id": "1bf49e66-8dd8-4b08-9a1a-7635564224ab",
+  "id": "a747f38e-b20d-47ab-aff6-bad64222f1af",
   "prevId": "10de495d-e484-4356-96c5-d85b7fecf005",
   "version": "7",
   "dialect": "postgresql",
@@ -80,6 +80,12 @@
         "user_id": {
           "name": "user_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -175,6 +181,21 @@
           "columns": [
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_role_idx": {
+          "name": "audit_role_idx",
+          "columns": [
+            {
+              "expression": "role",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1447,7 +1468,7 @@
           "name": "outlet_address",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "region_id": {
           "name": "region_id",
@@ -1680,13 +1701,13 @@
         },
         "sku_expiry_date": {
           "name": "sku_expiry_date",
-          "type": "timestamp with time zone",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": true
         },
         "sku_suppliers": {
           "name": "sku_suppliers",
-          "type": "jsonb[]",
+          "type": "uuid[]",
           "primaryKey": false,
           "notNull": true
         },

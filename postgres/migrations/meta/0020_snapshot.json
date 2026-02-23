@@ -1,6 +1,6 @@
 {
-  "id": "6dc3b895-c3bd-4be2-ad94-96725455f9b9",
-  "prevId": "7f46e707-0d23-452b-9ac6-1e64054e217c",
+  "id": "c6733901-f377-4caa-b5f6-3c690fe6748a",
+  "prevId": "5096f16c-063a-4117-9952-653be1dd66dc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -83,6 +83,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "action": {
           "name": "action",
           "type": "text",
@@ -98,6 +104,12 @@
         "entity_id": {
           "name": "entity_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -175,6 +187,21 @@
           "columns": [
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_role_idx": {
+          "name": "audit_role_idx",
+          "columns": [
+            {
+              "expression": "role",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1447,7 +1474,7 @@
           "name": "outlet_address",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "region_id": {
           "name": "region_id",
@@ -1680,19 +1707,19 @@
         },
         "sku_expiry_date": {
           "name": "sku_expiry_date",
-          "type": "timestamp with time zone",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": true
         },
         "sku_suppliers": {
           "name": "sku_suppliers",
-          "type": "jsonb",
+          "type": "uuid[]",
           "primaryKey": false,
           "notNull": true
         },
         "sku_unit_of_measurement": {
           "name": "sku_unit_of_measurement",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -1731,16 +1758,16 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "skus_sku_unit_of_measurement_stock_units_stock_unit_id_fk": {
-          "name": "skus_sku_unit_of_measurement_stock_units_stock_unit_id_fk",
+        "skus_sku_suppliers_supplers_supplier_id_fk": {
+          "name": "skus_sku_suppliers_supplers_supplier_id_fk",
           "tableFrom": "skus",
-          "tableTo": "stock_units",
+          "tableTo": "supplers",
           "schemaTo": "main",
           "columnsFrom": [
-            "sku_unit_of_measurement"
+            "sku_suppliers"
           ],
           "columnsTo": [
-            "stock_unit_id"
+            "supplier_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -2881,7 +2908,16 @@
       "values": [
         "CREATE",
         "UPDATE",
-        "DELETE"
+        "DELETE",
+        "BULK_CREATE",
+        "BULK_UPDATE",
+        "BULK_DELETE",
+        "CREATE_FAILED",
+        "UPDATE_FAILED",
+        "DELETE_FAILED",
+        "BULK_CREATE_FAILED",
+        "BULK_UPDATE_FAILED",
+        "BULK_DELETE_FAILED"
       ]
     }
   },

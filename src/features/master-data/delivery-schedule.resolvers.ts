@@ -7,6 +7,7 @@
 
 import { deliveryScheduleRepository } from '@/composition-root';
 import { DeliveryScheduleFilter } from './delivery-schedule.repository';
+import { withAudit } from '../audit-log/audit.wrapper';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -117,76 +118,116 @@ export const resolvers = {
     /**
      * Create a new delivery schedule
      */
-    createDeliverySchedule: async (_: unknown, { input }: { input: {
-      regionId: string;
-      dayOfWeek: number;
-      cutoffDaysBefore: number;
-      cutoffTime: string;
-      isActive?: boolean;
-      createdBy: string;
-      updatedBy: string;
-    }}) => {
-      const schedule = await deliveryScheduleRepository.createDeliverySchedule({
-        regionId: input.regionId,
-        dayOfWeek: input.dayOfWeek,
-        cutoffDaysBefore: input.cutoffDaysBefore,
-        cutoffTime: input.cutoffTime,
-        isActive: input.isActive ?? true,
-        createdBy: input.createdBy,
-        updatedBy: input.updatedBy,
-      });
+    createDeliverySchedule: withAudit(
+      {
+        entity: 'DeliverySchedule',
+        action: 'CREATE',
+        getEntityId: (result) => result?.scheduleId ?? null,
+      },
+      async (_: unknown, { input }: { input: {
+        regionId: string;
+        dayOfWeek: number;
+        cutoffDaysBefore: number;
+        cutoffTime: string;
+        isActive?: boolean;
+        createdBy: string;
+        updatedBy: string;
+      }}) => {
+        const schedule = await deliveryScheduleRepository.createDeliverySchedule({
+          regionId: input.regionId,
+          dayOfWeek: input.dayOfWeek,
+          cutoffDaysBefore: input.cutoffDaysBefore,
+          cutoffTime: input.cutoffTime,
+          isActive: input.isActive ?? true,
+          createdBy: input.createdBy,
+          updatedBy: input.updatedBy,
+        });
 
-      // Fetch the full schedule with region info
-      const fullSchedule = await deliveryScheduleRepository.getScheduleById(schedule.scheduleId);
-      return fullSchedule ? transformSchedule(fullSchedule) : null;
-    },
+        // Fetch the full schedule with region info
+        const fullSchedule = await deliveryScheduleRepository.getScheduleById(schedule.scheduleId);
+        return fullSchedule ? transformSchedule(fullSchedule) : null;
+      }
+    ),
 
     /**
      * Update an existing delivery schedule
      */
-    updateDeliverySchedule: async (_: unknown, { id, input }: { id: string; input: {
-      dayOfWeek?: number;
-      cutoffDaysBefore?: number;
-      cutoffTime?: string;
-      isActive?: boolean;
-      updatedBy: string;
-    }}) => {
-      const updateData: Record<string, unknown> = {
-        updatedBy: input.updatedBy,
-      };
+    updateDeliverySchedule: withAudit(
+      {
+        entity: 'DeliverySchedule',
+        action: 'UPDATE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          const schedule = await deliveryScheduleRepository.getScheduleById(args.id);
+          return schedule ? transformSchedule(schedule) : null;
+        },
+      },
+      async (_: unknown, { id, input }: { id: string; input: {
+        dayOfWeek?: number;
+        cutoffDaysBefore?: number;
+        cutoffTime?: string;
+        isActive?: boolean;
+        updatedBy: string;
+      }}) => {
+        const updateData: Record<string, unknown> = {
+          updatedBy: input.updatedBy,
+        };
 
-      if (input.dayOfWeek !== undefined) updateData.dayOfWeek = input.dayOfWeek;
-      if (input.cutoffDaysBefore !== undefined) updateData.cutoffDaysBefore = input.cutoffDaysBefore;
-      if (input.cutoffTime !== undefined) updateData.cutoffTime = input.cutoffTime;
-      if (input.isActive !== undefined) updateData.isActive = input.isActive;
+        if (input.dayOfWeek !== undefined) updateData.dayOfWeek = input.dayOfWeek;
+        if (input.cutoffDaysBefore !== undefined) updateData.cutoffDaysBefore = input.cutoffDaysBefore;
+        if (input.cutoffTime !== undefined) updateData.cutoffTime = input.cutoffTime;
+        if (input.isActive !== undefined) updateData.isActive = input.isActive;
 
-      await deliveryScheduleRepository.updateDeliverySchedule(updateData, id);
-      
-      // Fetch the full schedule with region info
-      const fullSchedule = await deliveryScheduleRepository.getScheduleById(id);
-      return fullSchedule ? transformSchedule(fullSchedule) : null;
-    },
+        await deliveryScheduleRepository.updateDeliverySchedule(updateData, id);
+        
+        // Fetch the full schedule with region info
+        const fullSchedule = await deliveryScheduleRepository.getScheduleById(id);
+        return fullSchedule ? transformSchedule(fullSchedule) : null;
+      }
+    ),
 
     /**
      * Toggle delivery schedule active status
      */
-    toggleDeliveryScheduleActive: async (_: unknown, { id, isActive, updatedBy }: { 
-      id: string; 
-      isActive: boolean; 
-      updatedBy: string; 
-    }) => {
-      await deliveryScheduleRepository.toggleScheduleActive(id, isActive, updatedBy);
-      
-      // Fetch the full schedule with region info
-      const fullSchedule = await deliveryScheduleRepository.getScheduleById(id);
-      return fullSchedule ? transformSchedule(fullSchedule) : null;
-    },
+    toggleDeliveryScheduleActive: withAudit(
+      {
+        entity: 'DeliverySchedule',
+        action: 'UPDATE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          const schedule = await deliveryScheduleRepository.getScheduleById(args.id);
+          return schedule ? transformSchedule(schedule) : null;
+        },
+      },
+      async (_: unknown, { id, isActive, updatedBy }: { 
+        id: string; 
+        isActive: boolean; 
+        updatedBy: string; 
+      }) => {
+        await deliveryScheduleRepository.toggleScheduleActive(id, isActive, updatedBy);
+        
+        // Fetch the full schedule with region info
+        const fullSchedule = await deliveryScheduleRepository.getScheduleById(id);
+        return fullSchedule ? transformSchedule(fullSchedule) : null;
+      }
+    ),
 
     /**
      * Delete a delivery schedule
      */
-    deleteDeliverySchedule: async (_: unknown, { id }: { id: string }) => {
-      return await deliveryScheduleRepository.deleteDeliverySchedule(id);
-    },
+    deleteDeliverySchedule: withAudit(
+      {
+        entity: 'DeliverySchedule',
+        action: 'DELETE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          const schedule = await deliveryScheduleRepository.getScheduleById(args.id);
+          return schedule ? transformSchedule(schedule) : null;
+        },
+      },
+      async (_: unknown, { id }: { id: string }) => {
+        return await deliveryScheduleRepository.deleteDeliverySchedule(id);
+      }
+    ),
   },
 };
