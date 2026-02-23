@@ -60,6 +60,7 @@
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "pg": "^8.17.2",
+    "puppeteer": "^24.37.5",
     "vite-express": "*",
     "winston": "^3.19.0",
     "winston-loki": "^6.1.3",
