@@ -1447,11 +1447,7 @@
           "name": "outlet_address",
           "type": "text",
           "primaryKey": false,
-<<<<<<< HEAD
           "notNull": true
-=======
-          "notNull": false
->>>>>>> origin
         },
         "region_id": {
           "name": "region_id",
@@ -1684,21 +1680,13 @@
         },
         "sku_expiry_date": {
           "name": "sku_expiry_date",
-<<<<<<< HEAD
           "type": "timestamp with time zone",
-=======
-          "type": "timestamp",
->>>>>>> origin
           "primaryKey": false,
           "notNull": true
         },
         "sku_suppliers": {
           "name": "sku_suppliers",
-<<<<<<< HEAD
           "type": "jsonb",
-=======
-          "type": "uuid[]",
->>>>>>> origin
           "primaryKey": false,
           "notNull": true
         },
@@ -1742,26 +1730,7 @@
         }
       },
       "indexes": {},
-<<<<<<< HEAD
       "foreignKeys": {},
-=======
-      "foreignKeys": {
-        "skus_sku_suppliers_supplers_supplier_id_fk": {
-          "name": "skus_sku_suppliers_supplers_supplier_id_fk",
-          "tableFrom": "skus",
-          "tableTo": "supplers",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "sku_suppliers"
-          ],
-          "columnsTo": [
-            "supplier_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
->>>>>>> origin
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
