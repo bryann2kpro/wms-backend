@@ -20,6 +20,7 @@ import { RbacRepositoryClass } from '@/features/rbac/rbac.repository.js';
 import { HealthControllerClass } from '@/features/health/health.controller.js';
 import { UploadServices } from '@/features/upload/upload.services.js';
 import { UploadControllerClass } from '@/features/upload/upload.controller.js';
+import { S3Repository } from '@/features/upload/aws_s3.repository.js';
 
 // Master Data Repositories
 import { SkuRepositoryClass } from '@/features/master-data/sku.repository.js';
@@ -37,7 +38,10 @@ import { ReportControllerClass } from './features/report/report.controller';
 // ============================================
 
 export const jwtController = new JwtControllerClass();
-export const uploadService = new UploadServices();
+
+// S3 (used by upload)
+export const s3Repository = new S3Repository();
+export const uploadService = new UploadServices(s3Repository);
 
 // ============================================
 // REPOSITORIES (Data Access Layer)
