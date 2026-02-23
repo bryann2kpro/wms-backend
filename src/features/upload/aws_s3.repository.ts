@@ -123,6 +123,35 @@ export class S3Repository {
     }
   }
 
+  /**
+   * Upload a report PDF to S3 under reports/{reportType}/{date}/.
+   * @returns Public URL of the uploaded file, or empty string on failure.
+   */
+  async uploadReportPdf(
+    pdfBuffer: Buffer,
+    filename: string,
+    reportType: string
+  ): Promise<string> {
+    try {
+      const dateFolder = new Date().toISOString().split('T')[0];
+      const key = `reports/${reportType}/${dateFolder}/${Date.now()}-${filename}`;
+      logger.info(`ℹ️ [S3Repository.uploadReportPdf] Uploading report to S3: ${key}`);
+      const command = new PutObjectCommand({
+        Bucket: env.AWS_BUCKET_NAME,
+        Key: key,
+        Body: pdfBuffer,
+        ContentType: 'application/pdf',
+      });
+      await this.s3.send(command);
+      const url = `https://${env.AWS_BUCKET_NAME}.s3.amazonaws.com/${key}`;
+      logger.info(`✅ [S3Repository.uploadReportPdf] Report uploaded: ${url}`);
+      return url;
+    } catch (error) {
+      logger.error(`❌ [S3Repository.uploadReportPdf] Error uploading report: ${error}`);
+      return '';
+    }
+  }
+
   async getFileUrl(fileName: string, agencyName: string, enrollTime: string): Promise<string> {
     const sluggedAgencyName = this.slugify(agencyName);
     const key = `recons/${sluggedAgencyName}/${enrollTime}/${fileName}`;

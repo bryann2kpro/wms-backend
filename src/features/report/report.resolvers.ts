@@ -5,18 +5,24 @@
  */
 
 import { logger } from '@/util/logger';
+import { s3Repository } from '@/composition-root';
 import {
   getMovementReportData,
   getInvoiceSummaryData,
-  renderMovementReportHtml,
   generateMovementReportPdf,
   generateInvoiceSummaryPdf,
 } from './report.service';
+
+const REPORT_TYPE_S3_FOLDER: Record<string, string> = {
+  MOVEMENT_REPORT: 'movement',
+  INVOICE_SUMMARY: 'invoice-summary',
+};
 
 export const resolvers = {
   Mutation: {
     /**
      * Generate a report PDF. Returns base64-encoded PDF and filename for download.
+     * Optionally upload to S3 (saveToS3: true) and get back s3Url.
      */
     generateReport: async (
       _: unknown,
@@ -26,33 +32,46 @@ export const resolvers = {
           dateFrom?: string;
           dateTo?: string;
           format?: 'PDF' | 'EXCEL';
-          region: string;
+          region?: string;
+          saveToS3?: boolean;
         };
       }
     ) => {
       logger.info('ℹ️ [report.resolvers.generateReport] Generating report...');
-      const { type, dateFrom, dateTo, format, region } = args.input;
+      const { type, dateFrom, dateTo, format, region, saveToS3 } = args.input;
 
       logger.debug('🔎 [report.resolvers.generateReport] Report type: %s', type);
       logger.debug('🔎 [report.resolvers.generateReport] Date from: %s', dateFrom);
       logger.debug('🔎 [report.resolvers.generateReport] Date to: %s', dateTo);
       logger.debug('🔎 [report.resolvers.generateReport] Format: %s', format);
       logger.debug('🔎 [report.resolvers.generateReport] Region: %s', region);
+      logger.debug('🔎 [report.resolvers.generateReport] Save to S3: %s', saveToS3);
+
+      let result: { pdfBase64: string; filename: string };
 
       if (type === 'MOVEMENT_REPORT') {
         const rows = getMovementReportData(dateFrom, dateTo);
-        // Pump data into the HTML template (use movementReportHtml for preview, email, or HTML→PDF)
-        const movementReportHtml = await renderMovementReportHtml(rows, dateFrom, dateTo);
-        logger.debug('Movement report HTML rendered, length: %d', movementReportHtml.length);
-        return generateMovementReportPdf(rows);
-      }
-
-      if (type === 'INVOICE_SUMMARY') {
+        result = await generateMovementReportPdf(rows, dateFrom, dateTo);
+      } else if (type === 'INVOICE_SUMMARY') {
         const rows = getInvoiceSummaryData(dateFrom, dateTo);
-        return generateInvoiceSummaryPdf(rows);
+        result = generateInvoiceSummaryPdf(rows);
+      } else {
+        throw new Error(`Unsupported report type: ${type}`);
       }
 
-      throw new Error(`Unsupported report type: ${type}`);
+      let s3Url: string | null = null;
+      if (saveToS3 && result.pdfBase64) {
+        const pdfBuffer = Buffer.from(result.pdfBase64, 'base64');
+        const s3Folder = REPORT_TYPE_S3_FOLDER[type] ?? type.toLowerCase();
+        s3Url = await s3Repository.uploadReportPdf(pdfBuffer, result.filename, s3Folder);
+        s3Url = s3Url || null;
+      }
+
+      return {
+        pdfBase64: result.pdfBase64,
+        filename: result.filename,
+        s3Url,
+      };
     },
   },
 };
