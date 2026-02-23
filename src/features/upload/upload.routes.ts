@@ -1,9 +1,22 @@
+/**
+ * Upload Routes
+ *
+ * @description File upload routes.
+ *
+ * Endpoints:
+ * - POST /upload - Upload a single image (field: image, max 5MB, JPEG/PNG/GIF)
+ */
 
-import express from 'express';
-import { handleUpload } from './upload.controller.js';
+import { Router } from 'express';
+import { uploadController } from '@/composition-root.js';
 
-const router = express.Router();
+const router = Router();
 
-router.post('/', handleUpload);
+/**
+ * @route POST /upload
+ * @description Upload a single image file (multipart/form-data, field: image)
+ * @returns { url, filename, originalName, size, mimetype }
+ */
+router.post('/', uploadController.handleUpload.bind(uploadController));
 
 export default router;

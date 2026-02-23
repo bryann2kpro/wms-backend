@@ -18,6 +18,8 @@ import { JwtControllerClass } from '@/features/jwt/jwt.controller.js';
 import { RbacControllerClass } from '@/features/rbac/rbac.controller.js';
 import { RbacRepositoryClass } from '@/features/rbac/rbac.repository.js';
 import { HealthControllerClass } from '@/features/health/health.controller.js';
+import { UploadServices } from '@/features/upload/upload.services.js';
+import { UploadControllerClass } from '@/features/upload/upload.controller.js';
 
 // Master Data Repositories
 import { SkuRepositoryClass } from '@/features/master-data/sku.repository.js';
@@ -35,6 +37,7 @@ import { ReportControllerClass } from './features/report/report.controller';
 // ============================================
 
 export const jwtController = new JwtControllerClass();
+export const uploadService = new UploadServices();
 
 // ============================================
 // REPOSITORIES (Data Access Layer)
@@ -59,5 +62,6 @@ export const racksRepository = new RacksRepositoryClass();
 export const authController = new AuthControllerClass(authRepository, jwtController, rbacRepository);
 export const rbacController = new RbacControllerClass(authRepository, rbacRepository);
 export const healthController = new HealthControllerClass();
+export const uploadController = new UploadControllerClass(uploadService);
 export const auditLogRepository = new AuditLogRepositoryClass();
 export const reportController = new ReportControllerClass();
