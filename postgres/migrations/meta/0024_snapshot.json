@@ -1,10 +1,6 @@
 {
-<<<<<<< HEAD
-  "id": "1bf49e66-8dd8-4b08-9a1a-7635564224ab",
-=======
-  "id": "a747f38e-b20d-47ab-aff6-bad64222f1af",
->>>>>>> origin
-  "prevId": "10de495d-e484-4356-96c5-d85b7fecf005",
+  "id": "d3e9447b-8e2b-4a0a-9e04-b6665f5b268b",
+  "prevId": "6dc3b895-c3bd-4be2-ad94-96725455f9b9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -188,24 +184,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-<<<<<<< HEAD
-=======
-        },
-        "audit_role_idx": {
-          "name": "audit_role_idx",
-          "columns": [
-            {
-              "expression": "role",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
->>>>>>> origin
         }
       },
       "foreignKeys": {},
@@ -1469,11 +1447,7 @@
           "name": "outlet_address",
           "type": "text",
           "primaryKey": false,
-<<<<<<< HEAD
           "notNull": true
-=======
-          "notNull": false
->>>>>>> origin
         },
         "region_id": {
           "name": "region_id",
@@ -1696,7 +1670,7 @@
           "name": "sku_price",
           "type": "numeric(6, 2)",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "sku_quantity": {
           "name": "sku_quantity",
@@ -1706,27 +1680,19 @@
         },
         "sku_expiry_date": {
           "name": "sku_expiry_date",
-<<<<<<< HEAD
           "type": "timestamp with time zone",
-=======
-          "type": "timestamp",
->>>>>>> origin
           "primaryKey": false,
           "notNull": true
         },
         "sku_suppliers": {
           "name": "sku_suppliers",
-<<<<<<< HEAD
-          "type": "jsonb[]",
-=======
-          "type": "uuid[]",
->>>>>>> origin
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
         "sku_unit_of_measurement": {
           "name": "sku_unit_of_measurement",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -1765,16 +1731,16 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "skus_sku_suppliers_supplers_supplier_id_fk": {
-          "name": "skus_sku_suppliers_supplers_supplier_id_fk",
+        "skus_sku_unit_of_measurement_stock_units_stock_unit_id_fk": {
+          "name": "skus_sku_unit_of_measurement_stock_units_stock_unit_id_fk",
           "tableFrom": "skus",
-          "tableTo": "supplers",
+          "tableTo": "stock_units",
           "schemaTo": "main",
           "columnsFrom": [
-            "sku_suppliers"
+            "sku_unit_of_measurement"
           ],
           "columnsTo": [
-            "supplier_id"
+            "stock_unit_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"

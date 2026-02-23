@@ -1,10 +1,6 @@
 {
-<<<<<<< HEAD
-  "id": "1bf49e66-8dd8-4b08-9a1a-7635564224ab",
-=======
-  "id": "a747f38e-b20d-47ab-aff6-bad64222f1af",
->>>>>>> origin
-  "prevId": "10de495d-e484-4356-96c5-d85b7fecf005",
+  "id": "6dc3b895-c3bd-4be2-ad94-96725455f9b9",
+  "prevId": "7f46e707-0d23-452b-9ac6-1e64054e217c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -105,6 +101,15 @@
           "primaryKey": false,
           "notNull": false
         },
+<<<<<<< HEAD
+=======
+        "batch_id": {
+          "name": "batch_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+>>>>>>> origin
         "old_data": {
           "name": "old_data",
           "type": "jsonb",
@@ -1717,7 +1722,7 @@
         "sku_suppliers": {
           "name": "sku_suppliers",
 <<<<<<< HEAD
-          "type": "jsonb[]",
+          "type": "jsonb",
 =======
           "type": "uuid[]",
 >>>>>>> origin
@@ -1726,7 +1731,11 @@
         },
         "sku_unit_of_measurement": {
           "name": "sku_unit_of_measurement",
+<<<<<<< HEAD
+          "type": "uuid",
+=======
           "type": "text",
+>>>>>>> origin
           "primaryKey": false,
           "notNull": true
         },
@@ -1765,6 +1774,18 @@
       },
       "indexes": {},
       "foreignKeys": {
+<<<<<<< HEAD
+        "skus_sku_unit_of_measurement_stock_units_stock_unit_id_fk": {
+          "name": "skus_sku_unit_of_measurement_stock_units_stock_unit_id_fk",
+          "tableFrom": "skus",
+          "tableTo": "stock_units",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "sku_unit_of_measurement"
+          ],
+          "columnsTo": [
+            "stock_unit_id"
+=======
         "skus_sku_suppliers_supplers_supplier_id_fk": {
           "name": "skus_sku_suppliers_supplers_supplier_id_fk",
           "tableFrom": "skus",
@@ -1775,6 +1796,7 @@
           ],
           "columnsTo": [
             "supplier_id"
+>>>>>>> origin
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -2915,7 +2937,20 @@
       "values": [
         "CREATE",
         "UPDATE",
+<<<<<<< HEAD
         "DELETE"
+=======
+        "DELETE",
+        "BULK_CREATE",
+        "BULK_UPDATE",
+        "BULK_DELETE",
+        "CREATE_FAILED",
+        "UPDATE_FAILED",
+        "DELETE_FAILED",
+        "BULK_CREATE_FAILED",
+        "BULK_UPDATE_FAILED",
+        "BULK_DELETE_FAILED"
+>>>>>>> origin
       ]
     }
   },
