@@ -11,6 +11,7 @@ import { skuRepository, suppliersRepository } from '@/composition-root';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { logger } from '@/util/logger';
+import { SkuType } from './sku.repository';
 
 // ============================================
 // HELPER FUNCTIONS
