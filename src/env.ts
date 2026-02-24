@@ -18,10 +18,11 @@ export const env = createEnv({
     POSTGRES_DB: z.string().min(1),
     DATABASE_URL: z.string(),
     // AWS S3 Bucket stuffs
-    AWS_ACCESS_KEY_ID: z.string().optional(),
-    AWS_SECRET_ACCESS_KEY: z.string().optional(),
-    AWS_REGION: z.string().optional(),
-    AWS_BUCKET_NAME: z.string().optional(),
+    AWS_ACCESS_KEY_ID: z.string(),
+    AWS_SECRET_ACCESS_KEY: z.string(),
+    AWS_REGION: z.string(),
+    AWS_BUCKET_NAME: z.string(),
+    AWS_PRIVATE_BUCKET_NAME: z.string(),
     // Logging stuffs
     LOGGING_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     LOG_ENV: z.enum(["development", "production"]).default("development"),

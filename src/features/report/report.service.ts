@@ -2,12 +2,13 @@
  * Report Service
  *
  * @description Generates report PDFs (Movement Report, Invoices Summary).
- * Uses mock data by default; replace with DB queries when ready.
+ * Movement Report PDF is generated from the same HTML template as the preview so UI matches.
  */
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import puppeteer from 'puppeteer';
 import { jsPDF } from 'jspdf';
 import { autoTable, CellHookData } from 'jspdf-autotable';
 import { regionRepository } from '@/composition-root';
@@ -70,19 +71,25 @@ const INVOICE_SUMMARY_MOCK_ROWS: InvoiceSummaryRow[] = [
 /**
  * Fetch movement report data. Replace with DB query when ready.
  */
-export function getMovementReportData(_dateFrom?: string, _dateTo?: string): MovementReportRow[] {
-  // TODO: filter by dateFrom/dateTo when querying DB
+export function getMovementReportData(
+  _dateFrom?: string,
+  _dateTo?: string,
+  _regionId?: string
+): MovementReportRow[] {
+  // TODO: filter by dateFrom, dateTo, regionId when querying DB
   return MOVEMENT_MOCK_ROWS;
 }
 
 /**
  * Load the movement report HTML template and inject data.
  * Use this to "pump" resolver data into movement-report.html.
+ * When regionId is provided, the region header row shows that region's name; otherwise the first region is used.
  */
 export async function renderMovementReportHtml(
   rows: MovementReportRow[],
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
+  regionId?: string
 ): Promise<string> {
   const template = await readFile(MOVEMENT_REPORT_HTML_PATH, 'utf-8');
 
@@ -104,14 +111,17 @@ export async function renderMovementReportHtml(
     <td class="px-4 py-3.5 text-right tabular-nums">${grandTotal}</td>
   </tr>`;
 
-  // For mock get the first data from region
-
-  const region = await regionRepository.getRegion({}, { pageSize: 1, pageNumber: 1 });
-
-  const regionName = region.query[0].regionName;
+  let regionName: string;
+  if (regionId) {
+    const region = await regionRepository.getRegionById(regionId);
+    regionName = region?.regionName ?? '—';
+  } else {
+    const region = await regionRepository.getRegion({}, { pageSize: 1, pageNumber: 1 });
+    regionName = region.query[0]?.regionName ?? '—';
+  }
 
   const tableRegionHeader = `<tr class="border-b border-gray-400 bg-gray-100">
-    <td class="px-4 py-3 font-semibold text-gray-900" colspan="3">${regionName}</td>
+    <td class="px-4 py-3 font-semibold text-gray-900" colspan="3">${escapeHtml(regionName)}</td>
   </tr>`;
 
   return template
@@ -130,29 +140,45 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * Fetch invoice summary data. Replace with DB query when ready.
+ * Fetch invoice summary (proforma) data. When regionId is provided, filters by that region's name.
+ * Replace with DB query when ready (filter by dateFrom, dateTo, regionId).
  */
-export function getInvoiceSummaryData(_dateFrom?: string, _dateTo?: string): InvoiceSummaryRow[] {
-  // TODO: filter by dateFrom/dateTo when querying DB
-  return INVOICE_SUMMARY_MOCK_ROWS;
+export async function getInvoiceSummaryData(
+  _dateFrom?: string,
+  _dateTo?: string,
+  regionId?: string
+): Promise<InvoiceSummaryRow[]> {
+  // TODO: filter by dateFrom, dateTo, regionId when querying DB
+  if (!regionId) return INVOICE_SUMMARY_MOCK_ROWS;
+  const region = await regionRepository.getRegionById(regionId);
+  if (!region) return INVOICE_SUMMARY_MOCK_ROWS;
+  return INVOICE_SUMMARY_MOCK_ROWS.filter((r) => r.region === region.regionName);
 }
 
 /**
  * Load the proforma invoices HTML template and inject data.
  * Use this to render invoice summary in HTML format (proforma-invoices.html).
  * Rows are grouped by region with a per-region summary row (total amount and ctn).
+ * When regionId is provided, regionName is shown in the header (from getRegionById).
  */
 export async function renderProformaInvoicesHtml(
   rows: InvoiceSummaryRow[],
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
+  regionId?: string
 ): Promise<string> {
   const template = await readFile(PROFORMA_INVOICES_HTML_PATH, 'utf-8');
 
-  // Group by region (preserve order of first occurrence)
+  let regionName = '—';
+  if (regionId) {
+    const region = await regionRepository.getRegionById(regionId);
+    regionName = region ? escapeHtml(region.regionName) : '—';
+  }
+
+  // Group by region (preserve order of first occurrence) using passed-in rows
   const regionOrder: string[] = [];
   const byRegion = new Map<string, InvoiceSummaryRow[]>();
-  for (const r of INVOICE_SUMMARY_MOCK_ROWS) {
+  for (const r of rows) {
     if (!byRegion.has(r.region)) {
       regionOrder.push(r.region);
       byRegion.set(r.region, []);
@@ -202,65 +228,67 @@ export async function renderProformaInvoicesHtml(
   return template
     .replace(/\{\{dateFrom\}\}/g, dateFrom ?? '—')
     .replace(/\{\{dateTo\}\}/g, dateTo ?? '—')
+    .replace(/\{\{regionName\}\}/g, regionName)
     .replace(/\{\{tableRows\}\}/, rowHtml.join('\n') + '\n' + grandTotalRow);
 }
 
 function formatAmount(value: number): string {
-  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `RM ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 }
 
 /**
- * Generate Movement Report PDF and return base64 + filename.
+ * Render HTML to PDF using Puppeteer (same layout as preview).
+ * Waits for Tailwind CDN script so styles are applied before printing.
  */
-export function generateMovementReportPdf(
-  rows: MovementReportRow[]
-): { pdfBase64: string; filename: string } {
-  const grandTotal = rows.reduce((sum, r) => sum + r.countAdjustmentQty, 0);
-  const doc = new jsPDF({ orientation: 'landscape' });
-  doc.setFontSize(16);
-  doc.text('Movement Report', 14, 16);
-
-  const body: (string | number)[][] = [];
-  for (const r of rows) {
-    body.push([r.companyCode, r.itemCode, r.description, String(r.countAdjustmentQty)]);
-    body.push(['', '', 'TOTAL OUT', String(r.countAdjustmentQty)]);
-  }
-  body.push(['', '', 'TOTAL OUT', String(grandTotal)]);
-
-  autoTable(doc, {
-    head: [['Company Code', 'Item Code', 'Description', 'Count Adjustment Unit Qty']],
-    body,
-    startY: 22,
-    theme: 'grid',
-    headStyles: { fontStyle: 'bold', fillColor: "black" },
-    bodyStyles: { fontSize: 10 },
-    columnStyles: {
-      3: { halign: 'right' },
-    },
-    didParseCell: (data: CellHookData) => {
-      const raw = data.row.raw as (string | number)[];
-      if (data.section === 'body' && data.column.index === 3 && data.row.index < body.length - 1) {
-        const isSubtotal = raw[2] === 'TOTAL OUT';
-        if (isSubtotal) (data.cell.styles as { fontStyle?: string }).fontStyle = 'bold';
-      }
-      if (data.row.index === body.length - 1) {
-        (data.cell.styles as { fontStyle?: string }).fontStyle = 'bold';
-      }
-    },
+async function htmlToPdf(html: string): Promise<Buffer> {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, {
+      waitUntil: 'networkidle0',
+      timeout: 20000,
+    });
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '16px', right: '16px', bottom: '16px', left: '16px' },
+    });
+    return Buffer.from(pdfBuffer);
+  } finally {
+    await browser.close();
+  }
+}
 
+/**
+ * Generate Movement Report PDF from the same HTML template as the preview.
+ * PDF layout and styling match /api/v1/report/preview/movement.
+ * regionId is used for the region header row in the report.
+ */
+export async function generateMovementReportPdf(
+  rows: MovementReportRow[],
+  dateFrom?: string,
+  dateTo?: string,
+  regionId?: string
+): Promise<{ pdfBase64: string; filename: string }> {
+  const html = await renderMovementReportHtml(rows, dateFrom, dateTo, regionId);
+  const pdfBuffer = await htmlToPdf(html);
   const filename = `Movement_Report_${new Date().toISOString().split('T')[0]}.pdf`;
-  const pdfBase64 = doc.output('datauristring').split(',')[1] ?? '';
+  const pdfBase64 = pdfBuffer.toString('base64');
   return { pdfBase64, filename };
 }
 
 /**
- * Generate Invoices Summary PDF and return base64 + filename.
+ * Generate Invoices Summary (Proforma) PDF and return base64 + filename.
  * Groups by region with per-region total amount summary, then grand total.
+ * When regionId is provided, adds "Region: <name>" subtitle (name from getRegionById).
  */
-export function generateInvoiceSummaryPdf(
-  rows: InvoiceSummaryRow[]
-): { pdfBase64: string; filename: string } {
+export async function generateInvoiceSummaryPdf(
+  rows: InvoiceSummaryRow[],
+  regionId?: string
+): Promise<{ pdfBase64: string; filename: string }> {
   const regionOrder: string[] = [];
   const byRegion = new Map<string, InvoiceSummaryRow[]>();
   for (const r of rows) {
@@ -288,6 +316,15 @@ export function generateInvoiceSummaryPdf(
   const doc = new jsPDF();
   doc.setFontSize(16);
   doc.text('Proforma Invoices', 14, 16);
+  let startY = 22;
+  if (regionId) {
+    const region = await regionRepository.getRegionById(regionId);
+    if (region) {
+      doc.setFontSize(10);
+      doc.text(`Region: ${region.regionName}`, 14, 20);
+      startY = 26;
+    }
+  }
 
   const subtotalRowIndices = new Set<number>();
   let idx = 0;
@@ -301,7 +338,7 @@ export function generateInvoiceSummaryPdf(
   autoTable(doc, {
     head: [['Proforma Invoice No', 'Outlet', 'Expected Arrival Date', 'Region', 'Ctn', 'Amount']],
     body,
-    startY: 22,
+    startY,
     theme: 'grid',
     headStyles: { fontStyle: 'bold', fillColor: "black" },
     bodyStyles: { fontSize: 10 },

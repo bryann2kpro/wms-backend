@@ -1,5 +1,3 @@
-import { handleUpload } from './upload.controller.js';
+import uploadRoutes from './upload.routes.js';
 
-export {
-    handleUpload
-}
+export { uploadRoutes };

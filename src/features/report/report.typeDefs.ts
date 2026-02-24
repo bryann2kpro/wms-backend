@@ -23,6 +23,10 @@ export const typeDefs = `#graphql
     dateFrom: String
     """Optional end date filter (ISO date string)"""
     dateTo: String
+    """Optional region ID to filter or display (e.g. for movement report header)"""
+    regionId: String
+    """If true, upload the generated PDF to S3 and return s3Url"""
+    saveToS3: Boolean
   }
 
   """
@@ -33,6 +37,8 @@ export const typeDefs = `#graphql
     pdfBase64: String!
     """Suggested download filename (e.g. Movement_Report_2026-02-04.pdf)"""
     filename: String!
+    """S3 URL of the uploaded report (only when saveToS3 was true)"""
+    s3Url: String
   }
 
   extend type Mutation {

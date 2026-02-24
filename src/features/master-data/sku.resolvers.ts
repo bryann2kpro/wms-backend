@@ -11,6 +11,7 @@ import { skuRepository, suppliersRepository } from '@/composition-root';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { logger } from '@/util/logger';
+import { SkuType } from './sku.repository';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -217,6 +218,8 @@ export const resolvers = {
       isActive: boolean;
       createdBy: string;
       updatedBy: string;
+      createdAt: Date;
+      updatedAt: Date;
     }}, context: GraphQLContext) => {
       try {
         // Convert date string to Date object if needed
