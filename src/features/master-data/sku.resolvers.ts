@@ -217,6 +217,8 @@ export const resolvers = {
       isActive: boolean;
       createdBy: string;
       updatedBy: string;
+      createdAt: Date;
+      updatedAt: Date;
     }}, context: GraphQLContext) => {
       try {
         // Convert date string to Date object if needed
