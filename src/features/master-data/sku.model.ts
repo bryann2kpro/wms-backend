@@ -28,3 +28,8 @@ export const SkuTable = MainSchema.table('skus', {
   updatedBy: text('updated_by').notNull(),
 });
 
+export type SkuType = typeof SkuTable.$inferSelect;
+export type SkuInsertType = Omit<
+  typeof SkuTable.$inferInsert,
+  'isActive' | 'createdBy' | 'updatedBy'
+>;

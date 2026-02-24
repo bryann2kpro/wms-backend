@@ -5,7 +5,8 @@ import { logger } from '@/util/logger';
 import { RegionTable, RegionCode } from '@/features/master-data/region.model';
 import { RegionDeliveryScheduleTable, DayOfWeek } from '@/features/master-data/delivery-date.model';
 import { StockUnitTable, StockUnitCode } from '@/features/master-data/stock-unit.model';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
+import { SkuTable, SkuInsertType, SkuType } from '@/features/master-data/sku.model';
 
 // ============================================
 // REGION INITIALIZATION
@@ -222,6 +223,96 @@ async function initStockUnits(): Promise<void> {
   logger.info('✅ Stock units initialization complete!');
 }
 
+// ============================================
+// SKU INITIALIZATION
+// ============================================
+
+/**
+ * Default skus for the system (skuUomCode resolved to stock_unit_id in getOrCreateSkus)
+ */
+const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] = [
+  {
+    skuCode: 'RAW-E0011',
+    skuDescription: 'Empire Sushi Box(Medium) 300PCS/CTN (Local)',
+    skuPrice: null,
+    skuQuantity: '0',
+    skuExpiryDate: new Date(),
+    skuSuppliers: [],
+    skuUomCode: StockUnitCode.CARTON,
+  },{
+    skuCode: 'RAW-E0012',
+    skuDescription: 'Empire Sushi Box(Large) 300PCS/CTN (Local)',
+    skuPrice: null,
+    skuQuantity: '0',
+    skuExpiryDate: new Date(),
+    skuSuppliers: [],
+    skuUomCode: StockUnitCode.CARTON,
+  },{
+    skuCode: 'RAW-E0013',
+    skuDescription: 'Empire Sushi Box(Small) 300PCS/CTN (Local)',
+    skuPrice: null,
+    skuQuantity: '0',
+    skuExpiryDate: new Date(),
+    skuSuppliers: [],
+    skuUomCode: StockUnitCode.CARTON,
+  },{
+    skuCode: 'RAW-E0014',
+    skuDescription: 'Empire Sushi Box (60PCS/PKT) (Local)',
+    skuPrice: null,
+    skuQuantity: '0',
+    skuExpiryDate: new Date(),
+    skuSuppliers: [],
+    skuUomCode: StockUnitCode.PACKET,
+  },
+  //Add more skus here as needed
+];
+
+/**
+ * Get or create skus (resolves skuUomCode to stock_unit_id)
+ */
+async function getOrCreateSkus(
+  skus: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[]
+): Promise<SkuType[]> {
+  const codes = skus.map(s => s.skuCode);
+  const existing = await db
+    .select()
+    .from(SkuTable)
+    .where(inArray(SkuTable.skuCode, codes));
+
+  if (existing.length > 0) {
+    logger.info(`✓ Skus "${codes.join(', ')}" already exist`);
+    return existing;
+  }
+
+  const unitCodes = [...new Set(skus.map(s => s.skuUomCode))];
+  const units = await db
+    .select({ stockUnitId: StockUnitTable.stockUnitId, unitCode: StockUnitTable.unitCode })
+    .from(StockUnitTable)
+    .where(inArray(StockUnitTable.unitCode, unitCodes));
+  const unitByCode = Object.fromEntries(units.map(u => [u.unitCode, u.stockUnitId]));
+
+  const values = skus.map(({ skuUomCode, ...rest }) => ({
+    ...rest,
+    skuUom: unitByCode[skuUomCode],
+    isActive: true,
+    createdBy: 'system',
+    updatedBy: 'system',
+  }));
+
+  const inserted = await db.insert(SkuTable).values(values).returning();
+  logger.info(`✅ Skus "${codes.join(', ')}" created successfully`);
+  return inserted;
+}
+
+/**
+ * Initialize default skus
+ */
+async function initSkus(): Promise<void> {
+  logger.info('📦 Initializing skus...');
+  await getOrCreateSkus(DEFAULT_SKUS);
+  logger.info('✅ Skus initialization complete!');
+}
+
 /**
  * Main initialization function for master data
  */
@@ -237,7 +328,9 @@ export async function initMasterData(): Promise<void> {
     
     // Initialize stock units
     await initStockUnits();
-    
+    // Initialize skus (depends on stock units for skuUom)
+    await initSkus();
+
     logger.info('✅ Master data initialization complete!');
   } catch (error) {
     logger.error('❌ Error initializing master data:', error);

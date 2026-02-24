@@ -203,7 +203,8 @@ export const resolvers = {
       {
         entity: 'SKU',
         action: 'CREATE',
-        getEntityId: (result: SkuType) => result?.skuId ?? null,
+        getEntityId: (result): string | null =>
+          result && typeof result === 'object' && 'skuId' in result ? result.skuId : null,
       }, 
       async (_: unknown, { input }: { input: {
       skuCode: string;
