@@ -7,16 +7,25 @@
 
 export const typeDefs = `#graphql
   """
+  Supplier reference with original SKU code
+  """
+  type SkuSupplier {
+    supplierId: ID!
+    supplier: Supplier!
+    originalSkuCode: String
+  }
+
+  """
   Stock Keeping Unit - represents a product in the inventory
   """
   type Sku {
     skuId: ID!
     skuCode: String!
     skuDescription: String!
-    skuPrice: Float!
+    skuPrice: Float
     skuQuantity: Float!
     skuExpiryDate: String!
-    skuSuppliers: [Supplier!]!
+    skuSuppliers: [SkuSupplier!]!
     skuUom: String!
     isActive: Boolean!
     createdAt: String!
@@ -26,15 +35,23 @@ export const typeDefs = `#graphql
   }
 
   """
+  Input for supplier reference when creating/updating SKU
+  """
+  input SkuSupplierInput {
+    supplierId: ID!
+    originalSkuCode: String
+  }
+
+  """
   Input for creating a new SKU
   """
   input CreateSkuInput {
     skuCode: String!
     skuDescription: String!
-    skuPrice: Float!
+    skuPrice: Float
     skuQuantity: Float!
     skuExpiryDate: String!
-    skuSuppliers: [ID!]!
+    skuSuppliers: [SkuSupplierInput!]!
     skuUom: String!
     isActive: Boolean!
     createdBy: String!
@@ -50,18 +67,39 @@ export const typeDefs = `#graphql
     skuPrice: Float
     skuQuantity: Float
     skuExpiryDate: String
-    skuSuppliers: [ID!]
+    skuSuppliers: [SkuSupplierInput!]
     skuUom: String
     isActive: Boolean
     updatedBy: String!
   }
 
+  """
+  Paginated SKU response
+  """
+  type SkuPaginatedResponse {
+    query: [Sku!]!
+    pagination: Pagination!
+  }
+
+  """
+  Input for filtering SKUs
+  """
+  input SkuFilterInput {
+    skuId: ID
+    skuIds: [ID!]
+    skuCode: String
+    skuCodes: [String!]
+    skuDescription: String
+    isActive: Boolean
+  }
+
   extend type Query {
     """
-    Get all SKUs.
+    Get SKUs with optional filtering and pagination.
+    If pageSize and pageNumber are not provided, returns all matching SKUs.
     Requires authentication.
     """
-    skus: [Sku!]! @auth
+    skus(filter: SkuFilterInput, pageSize: Int, pageNumber: Int): SkuPaginatedResponse! @auth
     
     """
     Get a single SKU by ID.
@@ -82,5 +120,11 @@ export const typeDefs = `#graphql
     Requires authentication.
     """
     updateSku(id: ID!, input: UpdateSkuInput!): Sku @auth
+    
+    """
+    Delete a SKU by ID.
+    Requires authentication.
+    """
+    deleteSku(id: ID!): Boolean! @auth
   }
 `;
