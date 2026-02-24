@@ -252,7 +252,7 @@ const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] =
     skuDescription: 'Empire Sushi Box(Small) 300PCS/CTN (Local)',
     skuPrice: null,
     skuQuantity: '0',
-    skuExpiryDate: new Date(),
+    skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
   },{

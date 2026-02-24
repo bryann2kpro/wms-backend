@@ -49,8 +49,8 @@ function transformSku(sku: {
   skuDescription: string;
   skuPrice: string | null;
   skuQuantity: string;
-  skuExpiryDate: Date;
-  skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }>;
+  skuExpiryDate: Date | null;
+  skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }> | null;
   skuUom: string;
   isActive: boolean;
   createdAt: Date;
@@ -64,9 +64,9 @@ function transformSku(sku: {
     skuDescription: sku.skuDescription,
     skuPrice: sku.skuPrice ? parseFloat(sku.skuPrice) : null,
     skuQuantity: parseFloat(sku.skuQuantity),
-    skuExpiryDate: sku.skuExpiryDate,
+    skuExpiryDate: sku.skuExpiryDate ?? null,
     skuUom: sku.skuUom,
-    skuSuppliers: sku.skuSuppliers,
+    skuSuppliers: sku.skuSuppliers ?? [],
     isActive: sku.isActive,
     createdAt: sku.createdAt.toISOString(),
     updatedAt: sku.updatedAt.toISOString(),
@@ -108,7 +108,9 @@ export const resolvers = {
           
           if (args.filter.skuCodes) {
             filter.skuCode = args.filter.skuCodes;
-          } else if (args.filter.skuCode) {
+          } 
+          
+          if (args.filter.skuCode) {
             filter.skuCode = args.filter.skuCode;
           }
           
@@ -212,8 +214,8 @@ export const resolvers = {
       skuDescription: string;
       skuPrice?: number;
       skuQuantity: number;
-      skuExpiryDate: string | Date;
-      skuSuppliers: Array<{ supplierId: string; originalSkuCode?: string | null }>;
+      skuExpiryDate?: Date | null;
+      skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }>;
       skuUom: string;
       isActive: boolean;
       createdBy: string;
@@ -227,7 +229,7 @@ export const resolvers = {
           input.skuExpiryDate = new Date(input.skuExpiryDate);
         }
         // Transform skuSuppliers to match the expected format
-        const skuSuppliersData = input.skuSuppliers.map(s => ({
+        const skuSuppliersData = input.skuSuppliers?.map((s) => ({
           supplierId: s.supplierId,
           originalSkuCode: s.originalSkuCode ?? null,
         }));
@@ -238,8 +240,8 @@ export const resolvers = {
           skuDescription: input.skuDescription,
           skuPrice: input.skuPrice?.toString(),
           skuQuantity: input.skuQuantity.toString(),
-          skuExpiryDate: input.skuExpiryDate,
-          skuSuppliers: skuSuppliersData,
+          skuExpiryDate: input.skuExpiryDate ?? null,
+          skuSuppliers: skuSuppliersData ?? null,
           skuUom: input.skuUom,
           isActive: input.isActive,
           createdBy: input.createdBy,
@@ -270,8 +272,8 @@ export const resolvers = {
       skuDescription?: string;
       skuPrice?: number;
       skuQuantity?: number;
-      skuSuppliers?:  Array<{ supplierId: string; originalSkuCode?: string | null }>;
-      skuExpiryDate?: string | Date;
+      skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }> | null;
+      skuExpiryDate?: Date | null;
       skuUom?: string;
       isActive?: boolean;
       updatedBy: string;
@@ -303,7 +305,7 @@ export const resolvers = {
         }
         if (input.skuSuppliers !== undefined) {
           // Transform skuSuppliers to match the expected format
-          updateData.skuSuppliers = input.skuSuppliers.map(s => ({
+          updateData.skuSuppliers = input.skuSuppliers?.map((s) => ({
             supplierId: s.supplierId,
             originalSkuCode: s.originalSkuCode ?? null,
           }));

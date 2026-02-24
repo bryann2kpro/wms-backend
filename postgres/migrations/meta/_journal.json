@@ -176,6 +176,13 @@
       "when": 1770778465487,
       "tag": "0024_kind_reptil",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1771915357539,
+      "tag": "0025_stale_rawhide_kid",
+      "breakpoints": true
     }
   ]
 }

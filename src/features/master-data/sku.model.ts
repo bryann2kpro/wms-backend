@@ -13,13 +13,13 @@ export const SkuTable = MainSchema.table('skus', {
   skuDescription: text('sku_description').notNull(),
   skuPrice: numeric('sku_price', { precision: 6, scale: 2 }),
   skuQuantity: numeric('sku_quantity', { precision: 6, scale: 2 }).notNull(),
-  skuExpiryDate: timestamp('sku_expiry_date', { withTimezone: true }).notNull(),
+  skuExpiryDate: timestamp('sku_expiry_date', { withTimezone: true }),
   /**
    * SKU Suppliers - Array of supplier references with original SKU codes
    * @field supplierId - References SuppliersTable.supplierId (foreign key relationship)
    * @field originalSkuCode - Original SKU code from supplier (nullable)
    */
-  skuSuppliers: jsonb('sku_suppliers').notNull().$type<Array<{ supplierId: string; originalSkuCode: string | null }>>(),
+  skuSuppliers: jsonb('sku_suppliers').$type<Array<{ supplierId: string; originalSkuCode: string | null }>>(),
   skuUom: uuid('sku_unit_of_measurement').notNull().references(() => StockUnitTable.stockUnitId),
   isActive: boolean('is_active').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
