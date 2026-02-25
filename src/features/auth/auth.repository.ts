@@ -28,7 +28,7 @@ import {
   type RolePermissionGroupType,
 } from '@/features/rbac/rbac.model.js';
 import { db } from '@/db/index';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, inArray, asc, desc, or, sql, ilike, type SQL } from 'drizzle-orm';
 import type { NodePgQueryResultHKT } from 'drizzle-orm/node-postgres';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import type { ExtractTablesWithRelations } from 'drizzle-orm';
@@ -102,6 +102,115 @@ export class AuthRepositoryClass {
   }
 
   /**
+   * Get user IDs that have the given role (active assignment). Used for filter by roleId.
+   */
+  async getUserIdsByRoleId(roleId: string): Promise<string[]> {
+    try {
+      const rows = await db
+        .select({ userId: UserRole.userId })
+        .from(UserRole)
+        .where(and(eq(UserRole.roleId, roleId), eq(UserRole.status, 'active')));
+      return rows.map((r) => r.userId);
+    } catch (error) {
+      logger.error('❌ [AuthRepository.getUserIdsByRoleId] Error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Batch load roles for multiple users (for users list to avoid N+1). Returns flat array; caller groups by userId.
+   */
+  async getRolesForUserIds(userIds: string[]): Promise<Array<{ userId: string; roleId: string; roleName: string }>> {
+    if (userIds.length === 0) return [];
+    try {
+      const results = await db
+        .select({
+          userId: UserRole.userId,
+          roleId: Role.roleId,
+          roleName: Role.roleName,
+        })
+        .from(UserRole)
+        .innerJoin(Role, eq(UserRole.roleId, Role.roleId))
+        .where(and(inArray(UserRole.userId, userIds), eq(UserRole.status, 'active')));
+      return results;
+    } catch (error) {
+      logger.error('❌ [AuthRepository.getRolesForUserIds] Error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get users with filter, sort, and pagination (REST-style: filter/sort/pagination in repository).
+   * Used by GraphQL users query and any client that needs paginated user list.
+   */
+  async getUsersPaginated(params: {
+    filter?: { email?: string; displayName?: string; isActive?: boolean; roleId?: string };
+    sort?: { field: 'EMAIL' | 'DISPLAY_NAME' | 'CREATED_AT' | 'UPDATED_AT'; direction: 'ASC' | 'DESC' };
+    page: number;
+    pageSize: number;
+  }): Promise<{ users: UserType[]; totalCount: number }> {
+    const { filter, sort, page, pageSize } = params;
+    const conditions: Array<SQL | undefined> = [];
+
+    // Search (frontend sends same term in email + displayName) – treat as OR across both fields, case-insensitive
+    if (filter?.email && filter?.displayName && filter.email === filter.displayName) {
+      const term = `%${filter.email}%`;
+      conditions.push(
+        or(ilike(UsersTable.email, term), ilike(UsersTable.displayName, term)),
+      );
+    } else {
+      if (filter?.email) {
+        conditions.push(ilike(UsersTable.email, `%${filter.email}%`));
+      }
+      if (filter?.displayName) {
+        conditions.push(ilike(UsersTable.displayName, `%${filter.displayName}%`));
+      }
+    }
+    if (filter?.isActive !== undefined) {
+      conditions.push(eq(UsersTable.isActive, filter.isActive));
+    }
+
+    if (filter?.roleId) {
+      const userIdsWithRole = await this.getUserIdsByRoleId(filter.roleId);
+      if (userIdsWithRole.length === 0) {
+        logger.info('ℹ️ [AuthRepository.getUsersPaginated] No users with roleId:', filter.roleId);
+        return { users: [], totalCount: 0 };
+      }
+      conditions.push(inArray(UsersTable.id, userIdsWithRole));
+    }
+
+    const whereConditions = conditions.filter(
+      (c): c is SQL => c !== undefined,
+    );
+    const whereClause =
+      whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+    const sortColumn =
+      sort?.field === 'EMAIL' ? UsersTable.email
+      : sort?.field === 'DISPLAY_NAME' ? UsersTable.displayName
+      : sort?.field === 'UPDATED_AT' ? UsersTable.updatedAt
+      : UsersTable.createdAt;
+    const sortDirection = sort?.direction === 'DESC' ? desc : asc;
+
+    const [countRow] = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(UsersTable)
+      .where(whereClause);
+    const totalCount = Number(countRow?.value ?? 0);
+
+    const users = await db
+      .select()
+      .from(UsersTable)
+      .where(whereClause)
+      .orderBy(sortDirection(sortColumn))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
+    logger.info('ℹ️ [AuthRepository.getUsersPaginated] Fetched page', page, 'totalCount:', totalCount);
+    return { users, totalCount };
+  }
+
+  /**
    * Create a new user
    */
   async createUser(
@@ -147,6 +256,78 @@ export class AuthRepositoryClass {
       logger.error('❌ [AuthRepository.updateUser] Error:', error);
       return null;
     }
+  }
+
+  /**
+   * Create a new user and assign a role in a single transaction.
+   * Use this for GraphQL createUser / any flow that needs user + role atomically.
+   */
+  async createUserWithRole(
+    userData: Omit<UserInsertType, 'id' | 'createdAt' | 'updatedAt'>,
+    roleId: string
+  ): Promise<UserType> {
+    logger.info('ℹ️ [AuthRepository.createUserWithRole] Creating user with role...', {
+      email: userData.email,
+      roleId,
+    });
+    const newUser = await db.transaction(async (tx) => {
+      const user = await this.createUser(userData, tx);
+      await this.assignRoleToUser(
+        {
+          userId: user.id,
+          roleId,
+          status: 'active',
+          createdBy: userData.createdBy ?? 'system',
+          updatedBy: userData.updatedBy ?? 'system',
+        },
+        tx
+      );
+      return user;
+    });
+    logger.info('✅ [AuthRepository.createUserWithRole] User created with role:', newUser.email);
+    return newUser;
+  }
+
+  /**
+   * Update user and optionally replace role in a single transaction.
+   * User table is always updated (updatedAt/updatedBy) in the same transaction as role changes.
+   */
+  async updateUserWithRole(
+    userId: string,
+    userUpdateData: Partial<UserInsertType>,
+    options?: { roleId?: string | null }
+  ): Promise<UserType | null> {
+    logger.info('ℹ️ [AuthRepository.updateUserWithRole] Updating user with role...', {
+      userId,
+      roleId: options?.roleId ?? null,
+    });
+    const currentRoles = await this.getUserRoles(userId);
+
+    await db.transaction(async (tx) => {
+      // Always update User row so users.updatedAt/updatedBy stay in sync (updateUser sets updatedAt)
+      const userPayload: Partial<UserInsertType> = { updatedBy: 'system', ...userUpdateData };
+      await this.updateUser(userId, userPayload, tx);
+
+      if (options?.roleId != null && options.roleId !== '') {
+        for (const r of currentRoles) {
+          await this.removeRoleFromUser(userId, r.roleId, tx);
+        }
+        await this.assignRoleToUser(
+          {
+            userId,
+            roleId: options.roleId,
+            status: 'active',
+            createdBy: 'system',
+            updatedBy: 'system',
+          },
+          tx
+        );
+      }
+    });
+
+    const updated = await this.getUserById(userId);
+    logger.info('✅ [AuthRepository.updateUserWithRole] User updated:', userId);
+    return updated;
   }
 
   // ============================================
