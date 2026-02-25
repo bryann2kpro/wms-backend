@@ -33,6 +33,8 @@ export const typeDefs = `#graphql
         id: ID!
         grnId: ID!
         skuId: ID!
+        skuCode: String
+        skuDescription: String
         qty: String!
         remarks: String
         createdAt: String!

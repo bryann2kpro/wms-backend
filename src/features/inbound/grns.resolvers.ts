@@ -37,11 +37,14 @@ function transformGrn(grn: GrnType) {
     }
 }
 
-function transformGrnItem(item: GrnItemsType) {
+function transformGrnItem(item: GrnItemsType, skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>) {
+    const sku = skuMap?.get(item.skuId);
     return {
         id: item.id,
         grnId: item.grnId,
         skuId: item.skuId,
+        skuCode: sku?.skuCode ?? null,
+        skuDescription: sku?.skuDescription ?? null,
         qty: item.qty,
         remarks: item.remarks,
         createdAt: item.createdAt?.toISOString?.() ?? item.createdAt,
@@ -93,7 +96,15 @@ export const resolvers = {
         items: async (parent: { id: string }) => {
             const result = await grnItemsRepository.getGrnItems({ grnId: parent.id });
             if (result === false) return [];
-            return result.map(transformGrnItem);
+            const skuIds = [...new Set(result.map((r) => r.skuId))];
+            let skuMap = new Map<string, { skuCode: string | null; skuDescription: string | null }>();
+            if (skuIds.length > 0) {
+                const skuResult = await skuRepository.getSku({ skuId: skuIds });
+                for (const s of skuResult.query) {
+                    skuMap.set(s.skuId, { skuCode: s.skuCode ?? null, skuDescription: s.skuDescription ?? null });
+                }
+            }
+            return result.map((item) => transformGrnItem(item, skuMap));
         },
     },
     Mutation: {
@@ -159,6 +170,30 @@ export const resolvers = {
                                     skuIdToUse = newSku.skuId;
                                 } catch (err) {
                                     logger.error('[grns.resolvers]: Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
+                                }
+                            } else {
+                                try {
+                                    if (!item.skuId) {
+                                        logger.error('[grns.resolvers]: SKU ID is required to modify SKU amount', { item });
+                                        continue;
+                                    }
+                                    const currentSku = await skuRepository.getSkuById(item.skuId);
+                                    if (!currentSku) {
+                                        logger.error('[grns.resolvers]: SKU not found for quantity update', { skuId: item.skuId });
+                                        continue;
+                                    }
+                                    const currentQty = Number(currentSku.skuQuantity ?? 0);
+                                    const addQty = Number(item.qty) || 0;
+                                    const newQuantity = (currentQty + addQty).toFixed(2);
+                                    const updatedSku = await skuRepository.updateSku(item.skuId, {
+                                        skuQuantity: newQuantity,
+                                        updatedBy: updatedBy ?? createdBy,
+                                    });
+                                    if (!updatedSku) {
+                                        logger.error('[grns.resolvers]: Failed to update SKU quantity', { skuId: item.skuId });
+                                    }
+                                } catch (err) {
+                                    logger.error('[grns.resolvers]: Failed to modify SKU amount', { skuId: item.skuId, err });
                                 }
                             }
 
