@@ -122,6 +122,7 @@ export const resolvers = {
                 poNo?: string | null; 
                 receivedAt?: string | null; 
                 approvedBy?: string | null; 
+                status?: string | null;
                 createdBy: string;
                 updatedBy?: string | null; 
                 items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
@@ -135,12 +136,12 @@ export const resolvers = {
                         grnNo: input.grnNo,
                         // supplierId: input.supplierId,
                         // for testing purpose,
-                        supplierId: 'aa91b548-7c04-407a-9e93-f099244df881',
+                        supplierId: 'b3e317c5-4bec-49aa-82f3-0a83115a8e70',
                         supplierDeliveryId: input.supplierDeliveryId ?? undefined,
                         poNo: input.poNo ?? undefined,
                         createdBy,
                         updatedBy: context.user?.id ?? undefined,
-                        status: 'Draft',
+                        status: input.status ?? 'Draft',
                         receivedAt: input.receivedAt != null ? new Date(input.receivedAt) : null,
                     });
                     const updatedBy = context.user?.id ?? undefined;
@@ -216,6 +217,7 @@ export const resolvers = {
                 receivedAt?: string | null;
                 approvedBy?: string | null;
                 approvedAt?: string | null;
+                status?: string | null;
                 updatedBy?: string | null;
                 updatedAt?: Date;
             } }, context: GraphQLContext) => {
@@ -235,6 +237,7 @@ export const resolvers = {
                     if(input.receivedAt !== undefined) updateData.receivedAt = input.receivedAt != null ? new Date(input.receivedAt) : null;
                     if(input.approvedBy !== undefined) updateData.approvedBy = input.approvedBy;
                     if(input.approvedAt !== undefined) updateData.approvedAt = input.approvedAt != null ? new Date(input.approvedAt) : null;
+                    if(input.status !== undefined) updateData.status = input.status;
                     const grn = await grnsRepository.updateGrn(id, updateData);
                     if(!grn){
                         return false;

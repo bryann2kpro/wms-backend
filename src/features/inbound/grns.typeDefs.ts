@@ -65,6 +65,7 @@ export const typeDefs = `#graphql
         supplierDeliveryId: ID
         poNo: String
         receivedAt: String
+        status: String
         createdBy: String
         updatedBy: String
         items: [CreateGrnItemInput!]
@@ -79,6 +80,7 @@ export const typeDefs = `#graphql
         supplierDeliveryId: ID
         poNo: String
         receivedAt: String
+        status: String
         approvedBy: ID
         approvedAt: String
         updatedBy: ID
