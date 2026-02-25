@@ -72,6 +72,9 @@ export class GrnsRepositoryClass {
     async createGrn(data: Omit<GrnInsertType, 'id' | 'createdAt' | 'updatedAt'>): Promise<GrnType> {
         try {
             const [grn] = await db.insert(GrnsTable).values(data).returning();
+            if (!grn) {
+                throw new Error('Failed to create GRN: no row returned');
+            }
             logger.info('✅ [GrnsRepository.createGrn] GRN created successfully');
             return grn;
         } catch (error) {

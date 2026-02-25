@@ -111,16 +111,15 @@ export const resolvers = {
                 poNo?: string | null; 
                 receivedAt?: string | null; 
                 approvedBy?: string | null; 
-                createdBy: string; 
+                createdBy: string;
                 updatedBy?: string | null; 
                 items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             } }, context: GraphQLContext) => {
                 try {
-                    const createdBy = input.createdBy ?? context.user?.id ?? 'system';
-                    if(!createdBy){
-                        logger.error('[grns.resolvers]: Data created failed caused by user not found.');
-                        return false;
-                    };
+                    const createdBy = input.createdBy ?? context.user?.id;
+                    if (!createdBy) {
+                        throw new Error('createdBy is required (or provide an authenticated user)');
+                    }
                     const grn = await grnsRepository.createGrn({
                         grnNo: input.grnNo,
                         supplierId: input.supplierId,
@@ -131,9 +130,6 @@ export const resolvers = {
                         status: 'Draft',
                         receivedAt: input.receivedAt != null ? new Date(input.receivedAt) : null,
                     });
-                    if (!grn) {
-                        return false;
-                    }
                     const updatedBy = context.user?.id ?? undefined;
                     if (input.items?.length) {
                         for (const item of input.items) {
@@ -177,8 +173,8 @@ export const resolvers = {
                     }
                     return transformGrn(grn);
                 } catch (error) {
-                    logger.error('[grns.resolvers] Error:', error);
-                    return false;
+                    logger.error('[grns.resolvers] createGrn Error:', error);
+                    throw error;
                 }
             }
         ),
