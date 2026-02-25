@@ -122,7 +122,9 @@ export const resolvers = {
                     }
                     const grn = await grnsRepository.createGrn({
                         grnNo: input.grnNo,
-                        supplierId: input.supplierId,
+                        // supplierId: input.supplierId,
+                        // for testing purpose,
+                        supplierId: 'aa91b548-7c04-407a-9e93-f099244df881',
                         supplierDeliveryId: input.supplierDeliveryId ?? undefined,
                         poNo: input.poNo ?? undefined,
                         createdBy,
@@ -131,13 +133,18 @@ export const resolvers = {
                         receivedAt: input.receivedAt != null ? new Date(input.receivedAt) : null,
                     });
                     const updatedBy = context.user?.id ?? undefined;
+                    // GRN items: if item has skuId (and it exists) → add to grn_items only; else create SKU first then add to grn_items
                     if (input.items?.length) {
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
+
                             if (item.skuId) {
                                 const existingSku = await skuRepository.getSkuById(item.skuId);
-                                skuIdToUse = existingSku ? existingSku.skuId : null;
+                                if (existingSku) {
+                                    skuIdToUse = existingSku.skuId;
+                                }
                             }
+
                             if (!skuIdToUse && item.skuCode && item.skuDescription && item.skuUom) {
                                 try {
                                     const newSku = await skuRepository.createSku({
@@ -154,10 +161,12 @@ export const resolvers = {
                                     logger.error('[grns.resolvers]: Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
                                 }
                             }
+
                             if (!skuIdToUse) {
-                                logger.error('[grns.resolvers]: SKU not found and cannot create (provide skuId or skuCode, skuDescription, skuUom)', { item });
+                                logger.error('[grns.resolvers]: SKU not found and cannot create (provide valid skuId or skuCode, skuDescription, skuUom)', { item });
                                 continue;
                             }
+
                             const created = await grnItemsRepository.createGrnItem({
                                 grnId: grn.id,
                                 skuId: skuIdToUse,
