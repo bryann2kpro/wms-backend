@@ -99,6 +99,9 @@ export const typeDefs = `#graphql
         id: ID
         grnNo: String
         status: String
+        page: Int
+        pageSize: Int
+        pageNumber: Int
     }
 
     type GrnPaginatedResponse {

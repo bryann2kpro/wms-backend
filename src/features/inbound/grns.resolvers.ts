@@ -58,7 +58,7 @@ function transformGrnItem(item: GrnItemsType, skuMap?: Map<string, { skuCode: st
 export const resolvers = {
     Query: {
         grns: async (_: unknown, args: {
-            filter?: GrnFilter;
+            filter?: GrnFilter & { page?: number; pageSize?: number; pageNumber?: number };
             pageSize?: number;
             pageNumber?: number;
         }) => {
@@ -75,9 +75,11 @@ export const resolvers = {
                         filter.status = args.filter.status;
                     }
                 }
+                const pageSize = args.pageSize ?? args.filter?.pageSize;
+                const pageNumber = args.pageNumber ?? args.filter?.pageNumber ?? args.filter?.page;
                 let paginationParams;
-                if (args.pageSize && args.pageNumber) {
-                    paginationParams = { pageSize: args.pageSize, pageNumber: args.pageNumber };
+                if (pageSize != null && pageNumber != null) {
+                    paginationParams = { pageSize, pageNumber };
                 } else {
                     paginationParams = undefined;
                 }
