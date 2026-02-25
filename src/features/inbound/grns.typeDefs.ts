@@ -14,6 +14,7 @@ export const typeDefs = `#graphql
         grnNo: String!
         supplierId: ID!
         supplierDeliveryId: ID
+        supplierDeliveryNo: String
         poNo: String
         status: String!
         receivedAt: String
@@ -63,6 +64,7 @@ export const typeDefs = `#graphql
         grnNo: String!
         supplierId: ID!
         supplierDeliveryId: ID
+        supplierDeliveryNo: String
         poNo: String
         receivedAt: String
         status: String
@@ -72,18 +74,21 @@ export const typeDefs = `#graphql
     }
 
     """
-    Input for updating an existing GRN
+    Input for updating an existing GRN.
+    supplierDeliveryNo and items are accepted for form compatibility; only metadata fields are persisted on update.
     """
     input UpdateGrnInput {
         grnNo: String
         supplierId: ID
         supplierDeliveryId: ID
+        supplierDeliveryNo: String
         poNo: String
         receivedAt: String
         status: String
         approvedBy: ID
         approvedAt: String
         updatedBy: ID
+        items: [CreateGrnItemInput!]
     }
 
     extend type Query {

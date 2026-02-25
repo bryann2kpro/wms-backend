@@ -7,7 +7,8 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository } from '@/composition-root';
+import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { GrnType } from './grns.model';
@@ -93,6 +94,15 @@ export const resolvers = {
         },
     },
     Grn: {
+        supplierDeliveryNo: async (parent: { supplierDeliveryId?: string | null }) => {
+            if (!parent.supplierDeliveryId) return null;
+            const result = await supplierDeliveriesRepository.getSupplierDeliveries(
+                { id: parent.supplierDeliveryId },
+                { pageSize: 1, pageNumber: 1 }
+            );
+            if (result === false || !result.query?.[0]) return null;
+            return result.query[0].supplierDeliveryNo ?? null;
+        },
         items: async (parent: { id: string }) => {
             const result = await grnItemsRepository.getGrnItems({ grnId: parent.id });
             if (result === false) return [];
@@ -119,6 +129,7 @@ export const resolvers = {
                 grnNo: string;
                 supplierId: string; 
                 supplierDeliveryId?: string | null; 
+                supplierDeliveryNo?: string | null;
                 poNo?: string | null; 
                 receivedAt?: string | null; 
                 approvedBy?: string | null; 
@@ -132,31 +143,91 @@ export const resolvers = {
                     if (!createdBy) {
                         throw new Error('createdBy is required (or provide an authenticated user)');
                     }
+                    const receivedAt = input.receivedAt != null ? new Date(input.receivedAt) : null;
+                    const deliveryDate = receivedAt ?? new Date();
+                    const updatedBy = context.user?.id ?? undefined;
+                    const supplierId = 'b3e317c5-4bec-49aa-82f3-0a83115a8e70';
+
+                    let supplierDeliveryId: string | undefined = input.supplierDeliveryId ?? undefined;
+
+                    // When supplierDeliveryNo provided: create Supplier Delivery + Supplier Delivery Items first, then GRN
+                    if (input.supplierDeliveryNo) {
+                        // 1. Create Supplier Delivery
+                        const supplierDelivery = await supplierDeliveriesRepository.createSupplierDelivery({
+                            supplierId,
+                            supplierDeliveryNo: input.supplierDeliveryNo,
+                            deliveryDate,
+                            status: 'RECEIVED_DRAFT',
+                            createdBy,
+                            updatedBy: updatedBy ?? createdBy,
+                        }, context.tx);
+                        supplierDeliveryId = supplierDelivery.id;
+
+                        if(!supplierDeliveryId){
+                            logger.error('[grns.resolvers]: Failed to create supplier delivery');
+                            return false;
+                        }
+
+                        // 2. Resolve SKUs and create Supplier Delivery Items (qtyDelivered = item qty)
+                        if (input.items?.length) {
+                            for (const item of input.items) {
+                                let skuIdToUse: string | null = null;
+                                if (item.skuId) {
+                                    const existingSku = await skuRepository.getSkuById(item.skuId);
+                                    if (existingSku) skuIdToUse = existingSku.skuId;
+                                }
+                                if (!skuIdToUse && item.skuCode && item.skuDescription && item.skuUom) {
+                                    try {
+                                        const newSku = await skuRepository.createSku({
+                                            skuCode: item.skuCode,
+                                            skuDescription: item.skuDescription,
+                                            skuQuantity: '0',
+                                            skuUom: item.skuUom,
+                                            isActive: true,
+                                            createdBy,
+                                            updatedBy: updatedBy ?? createdBy,
+                                        } as Parameters<typeof skuRepository.createSku>[0], context.tx);
+                                        skuIdToUse = newSku.skuId;
+                                    } catch (err) {
+                                        logger.error('[grns.resolvers]: Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
+                                    }
+                                }
+                                if (!skuIdToUse) {
+                                    logger.error('[grns.resolvers]: SKU not found and cannot create', { item });
+                                    continue;
+                                }
+                                await supplierDeliveryItemsRepository.createSupplierDeliveryItem({
+                                    supplierDeliveryId,
+                                    skuId: skuIdToUse,
+                                    qtyDelivered: item.qty,
+                                    createdBy,
+                                    updatedBy: updatedBy ?? createdBy,
+                                }, context.tx);
+                            }
+                        }
+                    }
+
+                    // 3. Create GRN (with supplierDeliveryId when supplierDeliveryNo was provided)
                     const grn = await grnsRepository.createGrn({
                         grnNo: input.grnNo,
-                        // supplierId: input.supplierId,
-                        // for testing purpose,
-                        supplierId: 'b3e317c5-4bec-49aa-82f3-0a83115a8e70',
-                        supplierDeliveryId: input.supplierDeliveryId ?? undefined,
+                        supplierId,
+                        supplierDeliveryId,
                         poNo: input.poNo ?? undefined,
                         createdBy,
-                        updatedBy: context.user?.id ?? undefined,
+                        updatedBy,
                         status: input.status ?? 'Draft',
-                        receivedAt: input.receivedAt != null ? new Date(input.receivedAt) : null,
+                        receivedAt,
                     }, context.tx);
-                    const updatedBy = context.user?.id ?? undefined;
-                    // GRN items: resolve skuId for each item (existing or create new SKU), then batch insert all items
-                    if (input.items?.length) {
-                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
 
+                    // 4. Create GRN items
+                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
+                    if (input.items?.length) {
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
-
                             if (item.skuId) {
                                 const existingSku = await skuRepository.getSkuById(item.skuId);
                                 if (existingSku) skuIdToUse = existingSku.skuId;
                             }
-
                             if (!skuIdToUse && item.skuCode && item.skuDescription && item.skuUom) {
                                 try {
                                     const newSku = await skuRepository.createSku({
@@ -173,12 +244,10 @@ export const resolvers = {
                                     logger.error('[grns.resolvers]: Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
                                 }
                             }
-
                             if (!skuIdToUse) {
-                                logger.error('[grns.resolvers]: SKU not found and cannot create (provide valid skuId or skuCode, skuDescription, skuUom)', { item });
+                                logger.error('[grns.resolvers]: SKU not found and cannot create', { item });
                                 continue;
                             }
-
                             grnItemRows.push({
                                 grnId: grn.id,
                                 skuId: skuIdToUse,
@@ -188,14 +257,12 @@ export const resolvers = {
                                 updatedBy,
                             });
                         }
-
-                        if (grnItemRows.length > 0) {
-                            const created = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
-                            if (created === false) {
-                                logger.error('[grns.resolvers]: Failed to create GRN items batch');
-                            }
+                        const created = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
+                        if (created === false) {
+                            logger.error('[grns.resolvers]: Failed to create GRN items batch');
                         }
                     }
+
                     return transformGrn(grn);
                 } catch (error) {
                     logger.error('[grns.resolvers] createGrn Error:', error);
@@ -217,6 +284,7 @@ export const resolvers = {
                 grnNo?: string | null;
                 supplierId?: string | null;
                 supplierDeliveryId?: string | null;
+                supplierDeliveryNo?: string | null;
                 poNo?: string | null;
                 receivedAt?: string | null;
                 approvedBy?: string | null;
@@ -224,24 +292,126 @@ export const resolvers = {
                 status?: string | null;
                 updatedBy?: string | null;
                 updatedAt?: Date;
+                items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             } }, context: GraphQLContext) => {
                 try {
                     const updatedBy = input.updatedBy ?? context.user?.id;
-                    if(!updatedBy){
+                    if (!updatedBy) {
                         logger.error('[grns.resolvers]: Data updated failed caused by user not found.');
                         return false;
                     }
-                    const updateData: Record<string, unknown> = {
-                        updatedBy,
-                    };
-                    if(input.grnNo !== undefined) updateData.grnNo = input.grnNo;
-                    if(input.supplierId !== undefined) updateData.supplierId = input.supplierId;
-                    if(input.supplierDeliveryId !== undefined) updateData.supplierDeliveryId = input.supplierDeliveryId;
-                    if(input.poNo !== undefined) updateData.poNo = input.poNo;
-                    if(input.receivedAt !== undefined) updateData.receivedAt = input.receivedAt != null ? new Date(input.receivedAt) : null;
-                    if(input.approvedBy !== undefined) updateData.approvedBy = input.approvedBy;
-                    if(input.approvedAt !== undefined) updateData.approvedAt = input.approvedAt != null ? new Date(input.approvedAt) : null;
-                    if(input.status !== undefined) updateData.status = input.status;
+
+                    const grnResult = await grnsRepository.getGrns({ id });
+                    const existingGrn = (grnResult && 'query' in grnResult && grnResult.query?.[0]) ? grnResult.query[0] : null;
+                    if (!existingGrn) {
+                        logger.error('[grns.resolvers]: GRN not found', { id });
+                        return false;
+                    }
+
+                    const updateData: Record<string, unknown> = { updatedBy };
+                    if (input.grnNo !== undefined) updateData.grnNo = input.grnNo;
+                    if (input.supplierId !== undefined) updateData.supplierId = input.supplierId;
+                    if (input.supplierDeliveryId !== undefined) updateData.supplierDeliveryId = input.supplierDeliveryId;
+                    if (input.poNo !== undefined) updateData.poNo = input.poNo;
+                    if (input.receivedAt !== undefined) updateData.receivedAt = input.receivedAt != null ? new Date(input.receivedAt) : null;
+                    if (input.approvedBy !== undefined) updateData.approvedBy = input.approvedBy;
+                    if (input.approvedAt !== undefined) updateData.approvedAt = input.approvedAt != null ? new Date(input.approvedAt) : null;
+                    if (input.status !== undefined) updateData.status = input.status;
+
+                    const deliveryDate = input.receivedAt != null ? new Date(input.receivedAt) : undefined;
+                    let supplierDeliveryId: string | null = existingGrn.supplierDeliveryId ?? null;
+
+                    // Create or update Supplier Delivery (supplierDeliveryNo and deliveryDate from receivedAt)
+                    if (input.supplierDeliveryNo != null) {
+                        if (supplierDeliveryId) {
+                            const deliveryUpdate: Record<string, unknown> = { updatedBy, updatedAt: new Date() };
+                            deliveryUpdate.supplierDeliveryNo = input.supplierDeliveryNo;
+                            if (deliveryDate != null) deliveryUpdate.deliveryDate = deliveryDate;
+                            await supplierDeliveriesRepository.updateSupplierDelivery(supplierDeliveryId, deliveryUpdate, context.tx);
+                        } else {
+                            const supplierId = (input.supplierId ?? existingGrn.supplierId) as string;
+                            const created = await supplierDeliveriesRepository.createSupplierDelivery({
+                                supplierId,
+                                supplierDeliveryNo: input.supplierDeliveryNo,
+                                deliveryDate: deliveryDate ?? new Date(),
+                                status: 'RECEIVED_DRAFT',
+                                createdBy: updatedBy,
+                                updatedBy,
+                            }, context.tx);
+                            supplierDeliveryId = created.id;
+                            updateData.supplierDeliveryId = created.id;
+                        }
+                    } else if (supplierDeliveryId && deliveryDate != null) {
+                        await supplierDeliveriesRepository.updateSupplierDelivery(supplierDeliveryId, {
+                            deliveryDate,
+                            updatedBy,
+                            updatedAt: new Date(),
+                        }, context.tx);
+                    }
+
+                    // Replace GRN items and sync Supplier Delivery Items (skuId, qtyDelivered = item qty)
+                    if (input.items != null && input.items.length > 0) {
+                        const createdBy = existingGrn.createdBy;
+                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
+
+                        for (const item of input.items) {
+                            let skuIdToUse: string | null = null;
+                            if (item.skuId) {
+                                const existingSku = await skuRepository.getSkuById(item.skuId);
+                                if (existingSku) skuIdToUse = existingSku.skuId;
+                            }
+                            if (!skuIdToUse && item.skuCode && item.skuDescription && item.skuUom) {
+                                try {
+                                    const newSku = await skuRepository.createSku({
+                                        skuCode: item.skuCode,
+                                        skuDescription: item.skuDescription,
+                                        skuQuantity: '0',
+                                        skuUom: item.skuUom,
+                                        isActive: true,
+                                        createdBy,
+                                        updatedBy: updatedBy ?? createdBy,
+                                    } as Parameters<typeof skuRepository.createSku>[0], context.tx);
+                                    skuIdToUse = newSku.skuId;
+                                } catch (err) {
+                                    logger.error('[grns.resolvers]: Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
+                                }
+                            }
+                            if (!skuIdToUse) {
+                                logger.error('[grns.resolvers]: SKU not found and cannot create', { item });
+                                continue;
+                            }
+                            grnItemRows.push({
+                                grnId: id,
+                                skuId: skuIdToUse,
+                                qty: item.qty,
+                                remarks: item.remarks ?? undefined,
+                                createdBy,
+                                updatedBy,
+                            });
+                        }
+
+                        await grnItemsRepository.deleteGrnItem({ grnId: id }, context.tx);
+                        if (grnItemRows.length > 0) {
+                            await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
+                        }
+
+                        const effectiveDeliveryId = supplierDeliveryId ?? (updateData.supplierDeliveryId as string | undefined);
+                        if (effectiveDeliveryId) {
+                            await supplierDeliveryItemsRepository.deleteSupplierDeliveryItemsByDeliveryId(effectiveDeliveryId, context.tx);
+                            for (const item of grnItemRows) {
+                                await supplierDeliveryItemsRepository.createSupplierDeliveryItem({
+                                    supplierDeliveryId: effectiveDeliveryId,
+                                    skuId: item.skuId,
+                                    qtyDelivered: item.qty,
+                                    createdBy: item.createdBy,
+                                    updatedBy: item.updatedBy ?? updatedBy,
+                                }, context.tx);
+                            }
+                        }
+                    }
+
+                    const grn = await grnsRepository.updateGrn(id, updateData, context.tx);
+                    if (!grn) return false;
 
                     if (updateData.status === 'Approved') {
                         const grnItems = await grnItemsRepository.getGrnItems({ grnId: id }, context.tx);
@@ -272,10 +442,6 @@ export const resolvers = {
                         }
                     }
 
-                    const grn = await grnsRepository.updateGrn(id, updateData, context.tx);
-                    if(!grn){
-                        return false;
-                    }
                     return transformGrn(grn);
                 } catch (error) {
                     logger.error('[grns.resolvers] Error:', error);
@@ -293,7 +459,18 @@ export const resolvers = {
             },
             async (_: unknown, { id }: { id: string }) => {
                 try {
-                    await grnsRepository.deleteGrn(id);
+                    await db.transaction(async (tx) => {
+                        const deleteGrnItems = await grnItemsRepository.deleteGrnItem({ grnId: id }, tx);
+                        if (deleteGrnItems === false) {
+                            logger.error('[grns.resolvers]: Failed to delete GRN items');
+                            return false;
+                        }
+                        const deleted = await grnsRepository.deleteGrn(id, tx);
+                        if (!deleted) {
+                            logger.error('[grns.resolvers]: Failed to delete GRN');
+                            return false;
+                        }
+                    });
                     return true;
                 } catch (error) {
                     logger.error('[grns.resolvers] Error:', error);

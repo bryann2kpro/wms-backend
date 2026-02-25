@@ -97,12 +97,13 @@ export class GrnsRepositoryClass {
         }
     }
 
-    async deleteGrn(id: string): Promise<boolean> {
-        try{
-            await db.delete(GrnsTable).where(eq(GrnsTable.id, id));
+    async deleteGrn(id: string, tx?: DbTransaction): Promise<boolean> {
+        try {
+            const client = tx ?? db;
+            await client.delete(GrnsTable).where(eq(GrnsTable.id, id));
             logger.info('✅ [GrnsRepository.deleteGrn] GRN deleted successfully');
             return true;
-        }catch(error){
+        } catch (error) {
             logger.error('❌ [GrnsRepository.deleteGrn] Error:', error);
             return false;
         }

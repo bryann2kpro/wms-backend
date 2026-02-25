@@ -74,12 +74,33 @@ export class GrnItemsRepositoryClass {
         }
     }
 
-    async deleteGrnItem(id: string) {
-        try{
-            await db.delete(GrnItemsTable).where(eq(GrnItemsTable.id, id));
-            logger.info('✅ [GrnItemsRepository.deleteGrnItem] GRN Item deleted successfully');
+    /**
+     * Delete GRN item(s). Use id for a single item, or grnId to delete all items for a GRN.
+     * Uses a transaction when no tx is passed so multiple deletes are atomic.
+     */
+    async deleteGrnItem(params: { id?: string; grnId?: string }, tx?: DbTransaction): Promise<boolean> {
+        const run = async (client: DbTransaction) => {
+            if (params.id) {
+                await client.delete(GrnItemsTable).where(eq(GrnItemsTable.id, params.id));
+                logger.info('✅ [GrnItemsRepository.deleteGrnItem] GRN Item deleted successfully');
+            } else if (params.grnId) {
+                await client.delete(GrnItemsTable).where(eq(GrnItemsTable.grnId, params.grnId));
+                logger.info('✅ [GrnItemsRepository.deleteGrnItem] GRN Items deleted successfully', { grnId: params.grnId });
+            } else {
+                throw new Error('deleteGrnItem requires id or grnId');
+            }
+        };
+
+        try {
+            if (tx) {
+                await run(tx);
+            } else {
+                await db.transaction(async (transaction) => {
+                    await run(transaction as DbTransaction);
+                });
+            }
             return true;
-        }catch(error){
+        } catch (error) {
             logger.error('❌ [GrnItemsRepository.deleteGrnItem] Error:', error);
             return false;
         }
