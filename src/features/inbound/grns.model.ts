@@ -39,6 +39,9 @@ export const GrnsTable = MainSchema.table('grns', {
   updatedBy: uuid('updated_by'),
 });
 
+export type GrnType = typeof GrnsTable.$inferSelect;
+export type GrnInsertType = typeof GrnsTable.$inferInsert;
+
 /**
  * GRN Items Table
  * 

@@ -10,6 +10,7 @@ import { typeDefs as skuTypeDefs } from '@/features/master-data/sku.typeDefs';
 import { typeDefs as authTypeDefs } from '@/features/auth/auth.typeDefs';
 import { typeDefs as rbacTypeDefs } from '@/features/rbac/rbac.typeDefs';
 import { typeDefs as auditLogTypeDefs } from '@/features/audit-log/audit.typeDefs';
+import { typeDefs as grnsTypeDefs } from '@/features/inbound/grns.typeDefs';
 
 // Master Data typeDefs
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
@@ -85,7 +86,8 @@ export const typeDefs = [
   baseTypeDefs,
   skuTypeDefs,
   authTypeDefs,
-  rbacTypeDefs,
+  rbacTypeDefs,  
+  grnsTypeDefs,
   // Master Data
   regionTypeDefs,
   deliveryScheduleTypeDefs,
@@ -95,4 +97,5 @@ export const typeDefs = [
   racksTypeDefs,
   reportTypeDefs,
   auditLogTypeDefs,
+
 ];

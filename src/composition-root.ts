@@ -32,6 +32,8 @@ import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repo
 import { RacksRepositoryClass } from '@/features/master-data/racks.repository.js';
 import { AuditLogRepositoryClass } from './features/audit-log/audit.repository';
 import { ReportControllerClass } from './features/report/report.controller';
+import { GrnsRepositoryClass } from './features/inbound/grns.repository';
+import { GrnItemsRepositoryClass } from './features/inbound/grn_items/grns_items.repository';
 
 // ============================================
 // SERVICES / UTILITIES (create first - no dependencies)
@@ -58,6 +60,10 @@ export const outletsRepository = new OutletsRepositoryClass();
 export const suppliersRepository = new SuppliersRepositoryClass();
 export const stockUnitRepository = new StockUnitRepositoryClass();
 export const racksRepository = new RacksRepositoryClass();
+
+// Inbound Repositories
+export const grnsRepository = new GrnsRepositoryClass();
+export const grnItemsRepository = new GrnItemsRepositoryClass();
 
 // ============================================
 // CONTROLLERS (Presentation Layer)
