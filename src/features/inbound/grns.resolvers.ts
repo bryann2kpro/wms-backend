@@ -184,7 +184,7 @@ export const resolvers = {
                                 qty: item.qty,
                                 remarks: item.remarks ?? undefined,
                                 createdBy,
-                                updatedBy: updatedBy ?? undefined,
+                                updatedBy,
                             });
                             if (!created) {
                                 logger.error('[grns.resolvers]: Failed to create GRN item', { skuId: skuIdToUse });
