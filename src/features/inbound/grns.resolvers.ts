@@ -161,7 +161,7 @@ export const resolvers = {
                                     const newSku = await skuRepository.createSku({
                                         skuCode: item.skuCode,
                                         skuDescription: item.skuDescription,
-                                        skuQuantity: item.qty,
+                                        skuQuantity: '0',
                                         skuUom: item.skuUom,
                                         isActive: true,
                                         createdBy,
@@ -170,30 +170,6 @@ export const resolvers = {
                                     skuIdToUse = newSku.skuId;
                                 } catch (err) {
                                     logger.error('[grns.resolvers]: Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
-                                }
-                            } else {
-                                try {
-                                    if (!item.skuId) {
-                                        logger.error('[grns.resolvers]: SKU ID is required to modify SKU amount', { item });
-                                        continue;
-                                    }
-                                    const currentSku = await skuRepository.getSkuById(item.skuId);
-                                    if (!currentSku) {
-                                        logger.error('[grns.resolvers]: SKU not found for quantity update', { skuId: item.skuId });
-                                        continue;
-                                    }
-                                    const currentQty = Number(currentSku.skuQuantity ?? 0);
-                                    const addQty = Number(item.qty) || 0;
-                                    const newQuantity = (currentQty + addQty).toFixed(2);
-                                    const updatedSku = await skuRepository.updateSku(item.skuId, {
-                                        skuQuantity: newQuantity,
-                                        updatedBy: updatedBy ?? createdBy,
-                                    });
-                                    if (!updatedSku) {
-                                        logger.error('[grns.resolvers]: Failed to update SKU quantity', { skuId: item.skuId });
-                                    }
-                                } catch (err) {
-                                    logger.error('[grns.resolvers]: Failed to modify SKU amount', { skuId: item.skuId, err });
                                 }
                             }
 
