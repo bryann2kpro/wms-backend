@@ -125,19 +125,21 @@ export const resolvers = {
                 getEntityId: (result: GrnType | false | null): string | null =>
                     result && typeof result === 'object' && 'id' in result ? result.id : null,
             },
-            async (_: unknown, { input }: { input: { 
-                grnNo: string;
-                supplierId: string; 
-                supplierDeliveryId?: string | null; 
-                supplierDeliveryNo?: string | null;
-                poNo?: string | null; 
-                receivedAt?: string | null; 
-                approvedBy?: string | null; 
-                status?: string | null;
-                createdBy: string;
-                updatedBy?: string | null; 
-                items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
-            } }, context: GraphQLContext) => {
+            async (_: unknown, { input }: {
+                input: {
+                    grnNo: string;
+                    supplierId?: string | null;
+                    supplierDeliveryId?: string | null;
+                    supplierDeliveryNo?: string | null;
+                    poNo?: string | null;
+                    receivedAt?: string | null;
+                    approvedBy?: string | null;
+                    status?: string | null;
+                    createdBy: string;
+                    updatedBy?: string | null;
+                    items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                }
+            }, context: GraphQLContext) => {
                 try {
                     const createdBy = input.createdBy ?? context.user?.id;
                     if (!createdBy) {
@@ -146,6 +148,7 @@ export const resolvers = {
                     const receivedAt = input.receivedAt != null ? new Date(input.receivedAt) : null;
                     const deliveryDate = receivedAt ?? new Date();
                     const updatedBy = context.user?.id ?? undefined;
+                    // for testing purpose,
                     const supplierId = 'b3e317c5-4bec-49aa-82f3-0a83115a8e70';
 
                     let supplierDeliveryId: string | undefined = input.supplierDeliveryId ?? undefined;
@@ -163,7 +166,7 @@ export const resolvers = {
                         }, context.tx);
                         supplierDeliveryId = supplierDelivery.id;
 
-                        if(!supplierDeliveryId){
+                        if (!supplierDeliveryId) {
                             logger.error('[grns.resolvers]: Failed to create supplier delivery');
                             return false;
                         }
@@ -280,20 +283,22 @@ export const resolvers = {
                     return await grnsRepository.getGrns({ id: args.id });
                 },
             },
-            async (_: unknown, { id, input }: { id: string; input: {
-                grnNo?: string | null;
-                supplierId?: string | null;
-                supplierDeliveryId?: string | null;
-                supplierDeliveryNo?: string | null;
-                poNo?: string | null;
-                receivedAt?: string | null;
-                approvedBy?: string | null;
-                approvedAt?: string | null;
-                status?: string | null;
-                updatedBy?: string | null;
-                updatedAt?: Date;
-                items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
-            } }, context: GraphQLContext) => {
+            async (_: unknown, { id, input }: {
+                id: string; input: {
+                    grnNo?: string | null;
+                    supplierId?: string | null;
+                    supplierDeliveryId?: string | null;
+                    supplierDeliveryNo?: string | null;
+                    poNo?: string | null;
+                    receivedAt?: string | null;
+                    approvedBy?: string | null;
+                    approvedAt?: string | null;
+                    status?: string | null;
+                    updatedBy?: string | null;
+                    updatedAt?: Date;
+                    items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                }
+            }, context: GraphQLContext) => {
                 try {
                     const updatedBy = input.updatedBy ?? context.user?.id;
                     if (!updatedBy) {
@@ -460,6 +465,21 @@ export const resolvers = {
             async (_: unknown, { id }: { id: string }) => {
                 try {
                     await db.transaction(async (tx) => {
+                        const grnResult = await grnsRepository.getGrns({ id });
+                        const grn = grnResult && 'query' in grnResult && grnResult.query?.[0] ? grnResult.query[0] : null;
+                        const supplierDeliveryId = grn?.supplierDeliveryId ?? null;
+                        if (supplierDeliveryId) {
+                            const deleteDOItems = await supplierDeliveryItemsRepository.deleteSupplierDeliveryItemsByDeliveryId(supplierDeliveryId, tx);
+                            if (deleteDOItems === false) {
+                                logger.error('[grns.resolvers]: Failed to delete DO items');
+                                return false;
+                            }
+                            const deletedDelivery = await supplierDeliveriesRepository.deleteSupplierDelivery(supplierDeliveryId, tx);
+                            if (deletedDelivery === false) {
+                                logger.error('[grns.resolvers]: Failed to delete supplier delivery');
+                                return false;
+                            }
+                        }
                         const deleteGrnItems = await grnItemsRepository.deleteGrnItem({ grnId: id }, tx);
                         if (deleteGrnItems === false) {
                             logger.error('[grns.resolvers]: Failed to delete GRN items');

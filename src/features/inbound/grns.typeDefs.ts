@@ -62,7 +62,7 @@ export const typeDefs = `#graphql
     """
     input CreateGrnInput {
         grnNo: String!
-        supplierId: ID!
+        supplierId: ID
         supplierDeliveryId: ID
         supplierDeliveryNo: String
         poNo: String
