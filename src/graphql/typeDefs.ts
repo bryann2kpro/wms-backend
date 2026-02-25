@@ -11,6 +11,7 @@ import { typeDefs as authTypeDefs } from '@/features/auth/auth.typeDefs';
 import { typeDefs as rbacTypeDefs } from '@/features/rbac/rbac.typeDefs';
 import { typeDefs as auditLogTypeDefs } from '@/features/audit-log/audit.typeDefs';
 import { typeDefs as grnsTypeDefs } from '@/features/inbound/grns.typeDefs';
+import { typeDefs as supplierDeliveriesTypeDefs } from '@/features/inbound/supplier-deliveries/supplier-deliveries.typeDefs';
 
 // Master Data typeDefs
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
@@ -88,6 +89,7 @@ export const typeDefs = [
   authTypeDefs,
   rbacTypeDefs,  
   grnsTypeDefs,
+  supplierDeliveriesTypeDefs,
   // Master Data
   regionTypeDefs,
   deliveryScheduleTypeDefs,

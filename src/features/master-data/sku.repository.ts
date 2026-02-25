@@ -11,6 +11,7 @@ import { eq, and, like, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
+import type { DbTransaction } from '@/types/db-transaction';
 
 export type SkuType = typeof SkuTable.$inferSelect;
 export type SkuInsertType = typeof SkuTable.$inferInsert;
@@ -33,14 +34,16 @@ export class SkuRepositoryClass {
    * Get SKUs with optional filtering and pagination
    * @param filter - Filter options
    * @param paginationParams - Pagination parameters (optional - if not provided, returns all)
+   * @param tx - Optional transaction for atomic operations
    * @returns Paginated SKUs or all SKUs if pagination not provided
    */
-  async getSku(filter: SkuFilter, paginationParams?: PaginationParams): Promise<PaginatedResponse<any>> {
+  async getSku(filter: SkuFilter, paginationParams?: PaginationParams, tx?: DbTransaction): Promise<PaginatedResponse<any>> {
     try {
       logger.info('ℹ️ [SkuRepository.getSku] Getting SKUs...');
       logger.debug('Filter:', filter);
 
       const whereCondition = [];
+      const client = tx ?? db;
 
       if (Array.isArray(filter.skuId)) {
         whereCondition.push(inArray(SkuTable.skuId, filter.skuId));
@@ -62,7 +65,7 @@ export class SkuRepositoryClass {
         whereCondition.push(eq(SkuTable.isActive, filter.isActive));
       }
 
-      const baseQuery = db
+      const baseQuery = client
         .select()
         .from(SkuTable)
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
@@ -117,11 +120,13 @@ export class SkuRepositoryClass {
 
   /**
    * Get SKU by ID
+   * @param tx - Optional transaction for atomic operations
    */
-  async getSkuById(id: string): Promise<SkuType | null> {
+  async getSkuById(id: string, tx?: DbTransaction): Promise<SkuType | null> {
     try {
       logger.info('ℹ️ [SkuRepository.getSkuById] Getting SKU by ID...');
-      const [sku] = await db
+      const client = tx ?? db;
+      const [sku] = await client
         .select()
         .from(SkuTable)
         .where(eq(SkuTable.skuId, id))
@@ -161,22 +166,24 @@ export class SkuRepositoryClass {
 
   /**
    * Create a new SKU
+   * @param tx - Optional transaction for atomic operations
    */
-  async createSku(data: Omit<SkuInsertType, 'skuId' | 'createdAt' | 'updatedAt'>): Promise<SkuType> {
+  async createSku(data: Omit<SkuInsertType, 'skuId' | 'createdAt' | 'updatedAt'>, tx?: DbTransaction): Promise<SkuType> {
     try {
       logger.info('ℹ️ [SkuRepository.createSku] Creating SKU...');
-      
+
       // Validate supplier IDs reference existing suppliers
       if (data.skuSuppliers && Array.isArray(data.skuSuppliers)) {
         const supplierIds = data.skuSuppliers.map(s => s.supplierId);
         await this.validateSupplierIds(supplierIds);
       }
-      
-      const [sku] = await db
+
+      const client = tx ?? db;
+      const [sku] = await client
         .insert(SkuTable)
         .values(data)
         .returning();
-      
+
       logger.info('✅ [SkuRepository.createSku] SKU created successfully');
       return sku;
     } catch (error) {
@@ -187,8 +194,9 @@ export class SkuRepositoryClass {
 
   /**
    * Update an existing SKU
+   * @param tx - Optional transaction for atomic operations
    */
-  async updateSku(id: string, data: Partial<SkuInsertType>): Promise<SkuType | null> {
+  async updateSku(id: string, data: Partial<SkuInsertType>, tx?: DbTransaction): Promise<SkuType | null> {
     try {
       logger.info('ℹ️ [SkuRepository.updateSku] Updating SKU...');
       
@@ -198,7 +206,8 @@ export class SkuRepositoryClass {
         await this.validateSupplierIds(supplierIds);
       }
       
-      const [sku] = await db
+      const client = tx ?? db;
+      const [sku] = await client
         .update(SkuTable)
         .set({ ...data, updatedAt: new Date() })
         .where(eq(SkuTable.skuId, id))

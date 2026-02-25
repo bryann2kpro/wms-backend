@@ -41,6 +41,9 @@ export const SupplierDeliveriesTable = MainSchema.table('supplier_deliveries', {
   updatedBy: uuid('updated_by'),
 });
 
+export type SupplierDeliveriesType = typeof SupplierDeliveriesTable.$inferSelect;
+export type SupplierDeliveriesInsertType = typeof SupplierDeliveriesTable.$inferInsert;
+
 /**
  * Supplier Delivery Items Table
  * 
@@ -71,3 +74,6 @@ export const SupplierDeliveryItemsTable = MainSchema.table('supplier_delivery_it
   createdBy: uuid('created_by').notNull(),
   updatedBy: uuid('updated_by'),
 });
+
+export type SupplierDeliveryItemType = typeof SupplierDeliveryItemsTable.$inferSelect;
+export type SupplierDeliveryItemInsertType = typeof SupplierDeliveryItemsTable.$inferInsert;

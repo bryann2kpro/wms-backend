@@ -10,6 +10,7 @@ import { eq, and, like } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
 import { pagination, PgQueryType } from '@/util/pagination';
+import type { DbTransaction } from '@/types/db-transaction';
 
 // ============================================
 // FILTER TYPES
@@ -69,9 +70,10 @@ export class GrnsRepositoryClass {
         }
     }
 
-    async createGrn(data: Omit<GrnInsertType, 'id' | 'createdAt' | 'updatedAt'>): Promise<GrnType> {
+    async createGrn(data: Omit<GrnInsertType, 'id' | 'createdAt' | 'updatedAt'>, tx?: DbTransaction): Promise<GrnType> {
         try {
-            const [grn] = await db.insert(GrnsTable).values(data).returning();
+            const client = tx ?? db;
+            const [grn] = await client.insert(GrnsTable).values(data).returning();
             if (!grn) {
                 throw new Error('Failed to create GRN: no row returned');
             }
@@ -83,9 +85,10 @@ export class GrnsRepositoryClass {
         }
     }
 
-    async updateGrn(id: string, data: Partial<GrnInsertType>): Promise<GrnType | null> {
+    async updateGrn(id: string, data: Partial<GrnInsertType>, tx?: DbTransaction): Promise<GrnType | null> {
         try{
-            const [grn] = await db.update(GrnsTable).set({ ...data, updatedAt: new Date() }).where(eq(GrnsTable.id, id)).returning();
+            const client = tx ?? db;
+            const [grn] = await client.update(GrnsTable).set({ ...data, updatedAt: new Date() }).where(eq(GrnsTable.id, id)).returning();
             logger.info('✅ [GrnsRepository.updateGrn] GRN updated successfully');
             return grn;
         }catch(error){

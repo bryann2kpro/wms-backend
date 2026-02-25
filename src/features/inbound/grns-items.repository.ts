@@ -5,10 +5,10 @@
  */
 
 import { db } from '@/db';
-import { GrnItemsTable } from '../grns.model';
-import { SkuTable } from '@/features/master-data/sku.model';
-import { eq, and, like, inArray } from 'drizzle-orm';
+import { GrnItemsTable } from './grns.model';
+import { eq, and } from 'drizzle-orm';
 import { logger } from '@/util/logger';
+import type { DbTransaction } from '@/types/db-transaction';
 
 export type GrnItemsType = typeof GrnItemsTable.$inferSelect;
 export type GrnItemsInsertType = typeof GrnItemsTable.$inferInsert;
@@ -26,7 +26,7 @@ export type GrnItemsFilter = {
 export class GrnItemsRepositoryClass {
     constructor() {}
 
-    async getGrnItems(filter: GrnItemsFilter) {
+    async getGrnItems(filter: GrnItemsFilter, tx?: DbTransaction) {
         try{
             const whereCondition = [];
             if(filter.id){
@@ -39,9 +39,8 @@ export class GrnItemsRepositoryClass {
                 whereCondition.push(eq(GrnItemsTable.skuId, filter.skuId));
             }
 
-            const baseQuery = db.select().from(GrnItemsTable).where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
-
-            const data = await baseQuery;
+            const client = tx ?? db;
+            const data = await client.select().from(GrnItemsTable).where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
             logger.info('✅ [GrnItemsRepository.getGrnItems] GRN Items fetched successfully');
             return data;
         }catch(error){
@@ -50,13 +49,16 @@ export class GrnItemsRepositoryClass {
         }
     }
 
-    async createGrnItem(data: GrnItemsInsertType) {
-        try{
-            const [grnItem] = await db.insert(GrnItemsTable).values(data).returning();
-            logger.info('✅ [GrnItemsRepository.createGrnItem] GRN Item created successfully');
-            return grnItem;
-        }catch(error){
-            logger.error('❌ [GrnItemsRepository.createGrnItem] Error:', error);
+    /** Insert one or more GRN items in one query */
+    async createGrnItems(items: GrnItemsInsertType[], tx?: DbTransaction): Promise<GrnItemsType[] | false> {
+        if (items.length === 0) return [];
+        try {
+            const client = tx ?? db;
+            const inserted = await client.insert(GrnItemsTable).values(items).returning();
+            logger.info('✅ [GrnItemsRepository.createGrnItems] GRN Items created successfully', { count: inserted.length });
+            return inserted;
+        } catch (error) {
+            logger.error('❌ [GrnItemsRepository.createGrnItems] Error:', error);
             return false;
         }
     }

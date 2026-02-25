@@ -13,7 +13,7 @@ import { GraphQLContext } from '@/graphql/context';
 import { GrnType } from './grns.model';
 import { logger } from '@/util/logger';
 import { GrnFilter } from './grns.repository';
-import type { GrnItemsType } from './grn_items/grns_items.repository';
+import type { GrnItemsType } from './grns-items.repository';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -143,18 +143,18 @@ export const resolvers = {
                         updatedBy: context.user?.id ?? undefined,
                         status: input.status ?? 'Draft',
                         receivedAt: input.receivedAt != null ? new Date(input.receivedAt) : null,
-                    });
+                    }, context.tx);
                     const updatedBy = context.user?.id ?? undefined;
-                    // GRN items: if item has skuId (and it exists) → add to grn_items only; else create SKU first then add to grn_items
+                    // GRN items: resolve skuId for each item (existing or create new SKU), then batch insert all items
                     if (input.items?.length) {
+                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
+
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
 
                             if (item.skuId) {
                                 const existingSku = await skuRepository.getSkuById(item.skuId);
-                                if (existingSku) {
-                                    skuIdToUse = existingSku.skuId;
-                                }
+                                if (existingSku) skuIdToUse = existingSku.skuId;
                             }
 
                             if (!skuIdToUse && item.skuCode && item.skuDescription && item.skuUom) {
@@ -167,7 +167,7 @@ export const resolvers = {
                                         isActive: true,
                                         createdBy,
                                         updatedBy: updatedBy ?? createdBy,
-                                    } as Parameters<typeof skuRepository.createSku>[0]);
+                                    } as Parameters<typeof skuRepository.createSku>[0], context.tx);
                                     skuIdToUse = newSku.skuId;
                                 } catch (err) {
                                     logger.error('[grns.resolvers]: Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
@@ -179,7 +179,7 @@ export const resolvers = {
                                 continue;
                             }
 
-                            const created = await grnItemsRepository.createGrnItem({
+                            grnItemRows.push({
                                 grnId: grn.id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
@@ -187,8 +187,12 @@ export const resolvers = {
                                 createdBy,
                                 updatedBy,
                             });
-                            if (!created) {
-                                logger.error('[grns.resolvers]: Failed to create GRN item', { skuId: skuIdToUse });
+                        }
+
+                        if (grnItemRows.length > 0) {
+                            const created = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
+                            if (created === false) {
+                                logger.error('[grns.resolvers]: Failed to create GRN items batch');
                             }
                         }
                     }
@@ -238,7 +242,37 @@ export const resolvers = {
                     if(input.approvedBy !== undefined) updateData.approvedBy = input.approvedBy;
                     if(input.approvedAt !== undefined) updateData.approvedAt = input.approvedAt != null ? new Date(input.approvedAt) : null;
                     if(input.status !== undefined) updateData.status = input.status;
-                    const grn = await grnsRepository.updateGrn(id, updateData);
+
+                    if (updateData.status === 'Approved') {
+                        const grnItems = await grnItemsRepository.getGrnItems({ grnId: id }, context.tx);
+                        if (grnItems === false) {
+                            logger.error('[grns.resolvers]: Failed to get GRN items');
+                            throw new Error('Failed to get GRN items for approval');
+                        }
+                        const qtyBySkuId = new Map<string, number>();
+                        for (const item of grnItems) {
+                            const add = Number(item.qty ?? 0);
+                            qtyBySkuId.set(item.skuId, (qtyBySkuId.get(item.skuId) ?? 0) + add);
+                        }
+                        const skuIds = [...qtyBySkuId.keys()];
+                        if (skuIds.length > 0) {
+                            const { query: skus } = await skuRepository.getSku({ skuId: skuIds }, undefined, context.tx);
+                            const skuMap = new Map(skus.map((s) => [s.skuId, s]));
+                            const updates = skuIds.map(async (skuId) => {
+                                const sku = skuMap.get(skuId);
+                                if (!sku) throw new Error(`SKU not found: ${skuId}`);
+                                const currentQty = Number(sku.skuQuantity ?? 0);
+                                const addQty = qtyBySkuId.get(skuId) ?? 0;
+                                const newQty = (currentQty + addQty).toFixed(2);
+                                const updated = await skuRepository.updateSku(skuId, { skuQuantity: newQty }, context.tx);
+                                if (!updated) throw new Error(`Failed to update SKU quantity: ${skuId}`);
+                                return updated;
+                            });
+                            await Promise.all(updates);
+                        }
+                    }
+
+                    const grn = await grnsRepository.updateGrn(id, updateData, context.tx);
                     if(!grn){
                         return false;
                     }
