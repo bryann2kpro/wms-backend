@@ -24,8 +24,8 @@ export const typeDefs = `#graphql
     skuDescription: String!
     skuPrice: Float
     skuQuantity: Float!
-    skuExpiryDate: String!
-    skuSuppliers: [SkuSupplier!]!
+    skuExpiryDate: String
+    skuSuppliers: [SkuSupplier!]
     skuUom: String!
     isActive: Boolean!
     createdAt: String!
@@ -50,12 +50,12 @@ export const typeDefs = `#graphql
     skuDescription: String!
     skuPrice: Float
     skuQuantity: Float!
-    skuExpiryDate: String!
-    skuSuppliers: [SkuSupplierInput!]!
+    skuExpiryDate: String
+    skuSuppliers: [SkuSupplierInput!]
     skuUom: String!
     isActive: Boolean!
-    createdBy: String!
-    updatedBy: String!
+    createdBy: String
+    updatedBy: String
   }
 
   """
@@ -70,7 +70,7 @@ export const typeDefs = `#graphql
     skuSuppliers: [SkuSupplierInput!]
     skuUom: String
     isActive: Boolean
-    updatedBy: String!
+    updatedBy: String
   }
 
   """

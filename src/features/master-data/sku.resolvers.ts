@@ -49,8 +49,8 @@ function transformSku(sku: {
   skuDescription: string;
   skuPrice: string | null;
   skuQuantity: string;
-  skuExpiryDate: Date;
-  skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }>;
+  skuExpiryDate: Date | null;
+  skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }> | null;
   skuUom: string;
   isActive: boolean;
   createdAt: Date;
@@ -64,9 +64,9 @@ function transformSku(sku: {
     skuDescription: sku.skuDescription,
     skuPrice: sku.skuPrice ? parseFloat(sku.skuPrice) : null,
     skuQuantity: parseFloat(sku.skuQuantity),
-    skuExpiryDate: sku.skuExpiryDate,
+    skuExpiryDate: sku.skuExpiryDate ? sku.skuExpiryDate.toISOString() : null,
     skuUom: sku.skuUom,
-    skuSuppliers: sku.skuSuppliers,
+    skuSuppliers: sku.skuSuppliers ?? [],
     isActive: sku.isActive,
     createdAt: sku.createdAt.toISOString(),
     updatedAt: sku.updatedAt.toISOString(),
@@ -108,7 +108,9 @@ export const resolvers = {
           
           if (args.filter.skuCodes) {
             filter.skuCode = args.filter.skuCodes;
-          } else if (args.filter.skuCode) {
+          } 
+          
+          if (args.filter.skuCode) {
             filter.skuCode = args.filter.skuCode;
           }
           
@@ -204,15 +206,16 @@ export const resolvers = {
       {
         entity: 'SKU',
         action: 'CREATE',
-        getEntityId: (result: SkuType) => result?.skuId ?? null,
+        getEntityId: (result): string | null =>
+          result && typeof result === 'object' && 'skuId' in result ? result.skuId : null,
       }, 
       async (_: unknown, { input }: { input: {
       skuCode: string;
       skuDescription: string;
       skuPrice?: number;
       skuQuantity: number;
-      skuExpiryDate: string | Date;
-      skuSuppliers: Array<{ supplierId: string; originalSkuCode?: string | null }>;
+      skuExpiryDate?: string | Date | null;
+      skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }>;
       skuUom: string;
       isActive: boolean;
       createdBy: string;
@@ -221,28 +224,30 @@ export const resolvers = {
       updatedAt: Date;
     }}, context: GraphQLContext) => {
       try {
-        // Convert date string to Date object if needed
-        if (typeof input.skuExpiryDate === 'string') {
-          input.skuExpiryDate = new Date(input.skuExpiryDate);
+        const createdBy = input.createdBy ?? context.user?.id ?? 'system';
+        const updatedBy = input.updatedBy ?? context.user?.id ?? 'system';
+        // Convert date string to Date object if needed; empty string -> null
+        let expiryDate: Date | null = null;
+        if (input.skuExpiryDate != null && input.skuExpiryDate !== '') {
+          expiryDate = typeof input.skuExpiryDate === 'string' ? new Date(input.skuExpiryDate) : input.skuExpiryDate;
         }
         // Transform skuSuppliers to match the expected format
-        const skuSuppliersData = input.skuSuppliers.map(s => ({
+        const skuSuppliersData = input.skuSuppliers?.map((s) => ({
           supplierId: s.supplierId,
           originalSkuCode: s.originalSkuCode ?? null,
         }));
-
 
         const sku = await skuRepository.createSku({
           skuCode: input.skuCode,
           skuDescription: input.skuDescription,
           skuPrice: input.skuPrice?.toString(),
           skuQuantity: input.skuQuantity.toString(),
-          skuExpiryDate: input.skuExpiryDate,
-          skuSuppliers: skuSuppliersData,
+          skuExpiryDate: expiryDate,
+          skuSuppliers: skuSuppliersData ?? null,
           skuUom: input.skuUom,
           isActive: input.isActive,
-          createdBy: input.createdBy,
-          updatedBy: input.updatedBy,
+          createdBy,
+          updatedBy,
         });
 
         return transformSku(sku);
@@ -269,43 +274,39 @@ export const resolvers = {
       skuDescription?: string;
       skuPrice?: number;
       skuQuantity?: number;
-      skuSuppliers?:  Array<{ supplierId: string; originalSkuCode?: string | null }>;
-      skuExpiryDate?: string | Date;
+      skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }> | null;
+      skuExpiryDate?: string | Date | null;
       skuUom?: string;
       isActive?: boolean;
-      updatedBy: string;
+      updatedBy?: string | null;
     }}, context: GraphQLContext) => {
       try {
-
+        const updatedBy = input.updatedBy ?? context.user?.id ?? 'system';
         const updateData: Record<string, unknown> = {
-          updatedBy: input.updatedBy,
+          updatedBy,
         };
 
         if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
         if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
-        if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice.toString();
-        if (input.skuQuantity !== undefined) updateData.skuQuantity = input.skuQuantity.toString();
-        if (input.skuExpiryDate !== undefined && typeof input.skuExpiryDate === 'string') {
-          // Convert date string to Date object if needed
-          updateData.skuExpiryDate = new Date(input.skuExpiryDate);
+        if (input.skuPrice !== undefined) {
+          updateData.skuPrice = input.skuPrice == null ? null : String(input.skuPrice);
         }
-        if (input.skuSuppliers !== undefined) updateData.skuSuppliers = input.skuSuppliers;
-        if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
-        if (input.isActive !== undefined) updateData.isActive = input.isActive;
-        if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
-        if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
-        if (input.skuPrice !== undefined) updateData.skuPrice = input.skuPrice?.toString() ?? null;
-        if (input.skuQuantity !== undefined) updateData.skuQuantity = input.skuQuantity.toString();
-        if (input.skuExpiryDate !== undefined && typeof input.skuExpiryDate === 'string') {
-          // Convert date string to Date object if needed
-          updateData.skuExpiryDate = new Date(input.skuExpiryDate);
+        if (input.skuQuantity !== undefined) {
+          updateData.skuQuantity = String(input.skuQuantity);
+        }
+        if (input.skuExpiryDate !== undefined) {
+          const raw = input.skuExpiryDate;
+          if (raw === null || raw === '') {
+            updateData.skuExpiryDate = null;
+          } else {
+            updateData.skuExpiryDate = typeof raw === 'string' ? new Date(raw) : raw;
+          }
         }
         if (input.skuSuppliers !== undefined) {
-          // Transform skuSuppliers to match the expected format
-          updateData.skuSuppliers = input.skuSuppliers.map(s => ({
+          updateData.skuSuppliers = input.skuSuppliers?.map((s) => ({
             supplierId: s.supplierId,
             originalSkuCode: s.originalSkuCode ?? null,
-          }));
+          })) ?? null;
         }
         if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
         if (input.isActive !== undefined) updateData.isActive = input.isActive;
@@ -317,8 +318,29 @@ export const resolvers = {
         
       } catch (error) {
         logger.error('[sku.resolvers.updateSku] Error:', error);
-        return false;
+        return null;
       }
     }),
+
+    /**
+     * Delete an SKU by ID (uses repository)
+     */
+    deleteSku: withAudit(
+      {
+        entity: 'SKU',
+        action: 'DELETE',
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => skuRepository.getSkuById(args.id),
+      },
+      async (_: unknown, { id }: { id: string }) => {
+        try {
+          await skuRepository.deleteSku(id);
+          return true;
+        } catch (error) {
+          logger.error('[sku.resolvers.deleteSku] Error:', error);
+          return false;
+        }
+      }
+    ),
   },
 };

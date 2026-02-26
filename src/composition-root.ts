@@ -32,6 +32,12 @@ import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repo
 import { RacksRepositoryClass } from '@/features/master-data/racks.repository.js';
 import { AuditLogRepositoryClass } from './features/audit-log/audit.repository';
 import { ReportControllerClass } from './features/report/report.controller';
+// Inbound Repositories
+import { GrnsRepositoryClass } from './features/inbound/grns.repository';
+import { GrnItemsRepositoryClass } from './features/inbound/grns-items.repository';
+import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplier-deliveries/supplier-delivery-item.repository';
+import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
+
 
 // ============================================
 // SERVICES / UTILITIES (create first - no dependencies)
@@ -58,6 +64,12 @@ export const outletsRepository = new OutletsRepositoryClass();
 export const suppliersRepository = new SuppliersRepositoryClass();
 export const stockUnitRepository = new StockUnitRepositoryClass();
 export const racksRepository = new RacksRepositoryClass();
+
+// Inbound Repositories
+export const grnsRepository = new GrnsRepositoryClass();
+export const grnItemsRepository = new GrnItemsRepositoryClass();
+export const supplierDeliveryItemsRepository = new SupplierDeliveryItemsRepositoryClass();
+export const supplierDeliveriesRepository = new SupplierDeliveriesRepositoryClass();
 
 // ============================================
 // CONTROLLERS (Presentation Layer)

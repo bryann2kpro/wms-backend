@@ -36,6 +36,7 @@ export const StockUnitCode = {
   BOX: 'BOX',
   PACK: 'PCK',
   UNIT: 'UNIT',
+  PACKET: 'PKT',
 } as const;
 
 export type StockUnitCodeType = typeof StockUnitCode[keyof typeof StockUnitCode];
