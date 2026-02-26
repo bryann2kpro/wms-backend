@@ -103,6 +103,30 @@ export const typeDefs = `#graphql
   }
 
   """
+  Input for creating a new user.
+  Password is required; backend hashes it before storing.
+  """
+  input CreateUserInput {
+    email: String!
+    displayName: String!
+    password: String!
+    roleId: ID!
+    contactNo: String
+  }
+
+  """
+  Input for updating an existing user.
+  Only provided fields are updated. To change role, pass roleId; to set new password, pass password.
+  """
+  input UpdateUserInput {
+    displayName: String
+    contactNo: String
+    isActive: Boolean
+    roleId: ID
+    password: String
+  }
+
+  """
   Authentication response with tokens
   """
   type AuthResponse {
@@ -143,5 +167,15 @@ export const typeDefs = `#graphql
     This is a public endpoint (no auth required).
     """
     login(input: LoginInput!): AuthResponse!
+
+    """
+    Create a new user and assign a role. Requires authentication.
+    """
+    createUser(input: CreateUserInput!): User! @auth
+
+    """
+    Update an existing user (displayName, contactNo, isActive, role, or password). Requires authentication.
+    """
+    updateUser(id: ID!, input: UpdateUserInput!): User @auth
   }
 `;

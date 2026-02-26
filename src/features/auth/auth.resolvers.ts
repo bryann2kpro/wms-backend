@@ -1,23 +1,19 @@
 /**
  * Auth GraphQL Resolvers
- * 
+ *
  * @description Resolver functions for authentication and user operations.
- * Uses AuthRepository for data access (proper layer separation).
- * 
+ * All DB access is in AuthRepository (filter, sort, search, pagination in getUsersPaginated).
  * Type definitions are in auth.typeDefs.ts
  */
 
-import { db } from '@/db';
-import { UsersTable } from './auth.model';
-import { UserRole, Role } from '@/features/rbac/rbac.model';
-import { eq, and, inArray, like, asc, desc, SQL } from 'drizzle-orm';
+import type { UserType } from './auth.model';
 import { authRepository, jwtController } from '@/composition-root';
-import { comparePassword } from '@/util/password';
+import { comparePassword, hashPassword } from '@/util/password';
 import { GraphQLError } from 'graphql';
 import { logger } from '@/util/logger';
 
 // ============================================
-// TYPES
+// TYPES (match GraphQL schema)
 // ============================================
 
 type UserFilter = {
@@ -38,46 +34,22 @@ type PaginationInput = {
 };
 
 // ============================================
-// HELPER FUNCTIONS (batch loading to avoid N+1)
+// HELPERS (transform only; no DB)
 // ============================================
 
-/**
- * Batch load roles for multiple users in a single query
- * @param userIds - Array of user IDs to fetch roles for
- * @returns Map of userId -> roles array
- */
-async function getRolesForUsers(userIds: string[]): Promise<Map<string, Array<{ roleId: string; roleName: string }>>> {
-  if (userIds.length === 0) return new Map();
-
-  const results = await db
-    .select({
-      userId: UserRole.userId,
-      roleId: Role.roleId,
-      roleName: Role.roleName,
-    })
-    .from(UserRole)
-    .innerJoin(Role, eq(UserRole.roleId, Role.roleId))
-    .where(and(
-      inArray(UserRole.userId, userIds),
-      eq(UserRole.status, 'active')
-    ));
-
-  // Group results by userId
-  const rolesMap = new Map<string, Array<{ roleId: string; roleName: string }>>();
-  
-  for (const row of results) {
-    const existing = rolesMap.get(row.userId) || [];
+function groupRolesByUserId(
+  rows: Array<{ userId: string; roleId: string; roleName: string }>,
+): Map<string, Array<{ roleId: string; roleName: string }>> {
+  const map = new Map<string, Array<{ roleId: string; roleName: string }>>();
+  for (const row of rows) {
+    const existing = map.get(row.userId) || [];
     existing.push({ roleId: row.roleId, roleName: row.roleName });
-    rolesMap.set(row.userId, existing);
+    map.set(row.userId, existing);
   }
-
-  return rolesMap;
+  return map;
 }
 
-/**
- * Transform user data for GraphQL response
- */
-function transformUser(user: typeof UsersTable.$inferSelect, roles: Array<{ roleId: string; roleName: string }>) {
+function transformUser(user: UserType, roles: Array<{ roleId: string; roleName: string }>) {
   return {
     id: user.id,
     email: user.email,
@@ -99,99 +71,29 @@ function transformUser(user: typeof UsersTable.$inferSelect, roles: Array<{ role
 export const resolvers = {
   Query: {
     /**
-     * Get all users with filtering, sorting, and pagination
+     * Get all users with filtering, sorting, and pagination. DB in repository (getUsersPaginated).
      */
-    users: async (_: unknown, args: { 
-      filter?: UserFilter; 
-      sort?: UserSort; 
-      pagination?: PaginationInput;
-    }) => {
-      const { filter, sort, pagination } = args;
-      
-      // Build WHERE conditions
-      const conditions: SQL[] = [];
-      
-      if (filter?.email) {
-        conditions.push(like(UsersTable.email, `%${filter.email}%`));
-      }
-      if (filter?.displayName) {
-        conditions.push(like(UsersTable.displayName, `%${filter.displayName}%`));
-      }
-      if (filter?.isActive !== undefined) {
-        conditions.push(eq(UsersTable.isActive, filter.isActive));
-      }
-      
-      // If filtering by roleId, we need to get userIds with that role first
-      let userIdsWithRole: string[] | null = null;
-      if (filter?.roleId) {
-        const usersWithRole = await db
-          .select({ userId: UserRole.userId })
-          .from(UserRole)
-          .where(and(
-            eq(UserRole.roleId, filter.roleId),
-            eq(UserRole.status, 'active')
-          ));
-        userIdsWithRole = usersWithRole.map(u => u.userId);
-        
-        if (userIdsWithRole.length === 0) {
-          // No users with this role
-          return {
-            data: [],
-            pagination: {
-              currentPage: pagination?.page || 1,
-              pageSize: pagination?.pageSize || 10,
-              totalCount: 0,
-              totalPages: 0,
-              hasNextPage: false,
-              hasPrevPage: false,
-            },
-          };
-        }
-        conditions.push(inArray(UsersTable.id, userIdsWithRole));
-      }
-      
-      // Build ORDER BY
-      const sortColumn = sort?.field === 'EMAIL' ? UsersTable.email
-        : sort?.field === 'DISPLAY_NAME' ? UsersTable.displayName
-        : sort?.field === 'UPDATED_AT' ? UsersTable.updatedAt
-        : UsersTable.createdAt; // default
-      
-      const sortDirection = sort?.direction === 'DESC' ? desc : asc;
-      
-      // Get total count for pagination
-      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-      const allUsers = await db
-        .select()
-        .from(UsersTable)
-        .where(whereClause);
-      
-      const totalCount = allUsers.length;
-      
-      // Pagination
-      const page = pagination?.page || 1;
-      const pageSize = pagination?.pageSize || 10;
-      const offset = (page - 1) * pageSize;
-      const totalPages = Math.ceil(totalCount / pageSize);
-      
-      // Query with filter, sort, pagination
-      const users = await db
-        .select()
-        .from(UsersTable)
-        .where(whereClause)
-        .orderBy(sortDirection(sortColumn))
-        .limit(pageSize)
-        .offset(offset);
-      
-      // Batch load roles for the paginated users
-      const userIds = users.map(u => u.id);
-      const rolesMap = await getRolesForUsers(userIds);
-      
-      // Transform users with roles
-      const data = users.map(user => {
-        const roles = rolesMap.get(user.id) || [];
+    users: async (_: unknown, args: { filter?: UserFilter; sort?: UserSort; pagination?: PaginationInput }) => {
+      const page = args.pagination?.page ?? 1;
+      const pageSize = args.pagination?.pageSize ?? 10;
+
+      const { users, totalCount } = await authRepository.getUsersPaginated({
+        filter: args.filter,
+        sort: args.sort,
+        page,
+        pageSize,
+      });
+
+      const userIds = users.map((u) => u.id);
+      const rolesRows = await authRepository.getRolesForUserIds(userIds);
+      const rolesMap = groupRolesByUserId(rolesRows);
+
+      const data = users.map((user) => {
+        const roles = rolesMap.get(user.id) ?? [];
         return transformUser(user, roles);
       });
 
+      const totalPages = Math.ceil(totalCount / pageSize);
       return {
         data,
         pagination: {
@@ -286,6 +188,87 @@ export const resolvers = {
           : new Date(Date.now() + 3600000).toISOString(), // 1 hour default
         user: transformUser(user, roles.map(r => ({ roleId: r.roleId, roleName: r.roleName }))),
       };
+    },
+
+    /**
+     * Create a new user and assign role. Uses transaction for user + UserRole.
+     */
+    createUser: async (_: unknown, { input }: { input: { email: string; displayName: string; password: string; roleId: string; contactNo?: string | null } }) => {
+      const { email, displayName, password, roleId, contactNo } = input;
+      logger.info('ℹ️ [GraphQL.createUser] Creating user...', email);
+
+      const existing = await authRepository.getUserByEmail(email);
+      if (existing) {
+        logger.warn('⚠️ [GraphQL.createUser] User with this email already exists:', email);
+        throw new GraphQLError('User with this email already exists', {
+          extensions: { code: 'BAD_USER_INPUT', http: { status: 409 } },
+        });
+      }
+
+      const role = await authRepository.getRoleById(roleId);
+      if (!role) {
+        logger.warn('⚠️ [GraphQL.createUser] Invalid role ID:', roleId);
+        throw new GraphQLError('Invalid role ID', {
+          extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+        });
+      }
+
+      const passwordHash = await hashPassword(password);
+
+      const userData = {
+        email,
+        displayName,
+        passwordHash,
+        contactNo: contactNo ?? null,
+        isActive: true,
+        createdBy: 'system',
+        updatedBy: 'system',
+      };
+      const result = await authRepository.createUserWithRole(userData, roleId);
+
+      const roles = await authRepository.getUserRoles(result.id);
+      logger.info('✅ [GraphQL.createUser] User created:', email);
+      return transformUser(result, roles.map(r => ({ roleId: r.roleId, roleName: r.roleName })));
+    },
+
+    /**
+     * Update user. Optionally update password (hashed) and/or role (replaces current role assignment).
+     */
+    updateUser: async (_: unknown, { id, input }: { id: string; input: { displayName?: string | null; contactNo?: string | null; isActive?: boolean | null; roleId?: string | null; password?: string | null } }) => {
+      logger.info('ℹ️ [GraphQL.updateUser] Updating user:', id);
+
+      const user = await authRepository.getUserById(id);
+      if (!user) {
+        logger.warn('⚠️ [GraphQL.updateUser] User not found:', id);
+        throw new GraphQLError('User not found', {
+          extensions: { code: 'NOT_FOUND', http: { status: 404 } },
+        });
+      }
+
+      if (input.roleId != null && input.roleId !== '') {
+        const role = await authRepository.getRoleById(input.roleId);
+        if (!role) {
+          logger.warn('⚠️ [GraphQL.updateUser] Invalid role ID:', input.roleId);
+          throw new GraphQLError('Invalid role ID', { extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } } });
+        }
+      }
+
+      const updateData: Record<string, unknown> = { updatedBy: 'system' };
+      if (input.displayName !== undefined) updateData.displayName = input.displayName;
+      if (input.contactNo !== undefined) updateData.contactNo = input.contactNo;
+      if (input.isActive !== undefined) updateData.isActive = input.isActive;
+      if (input.password != null && input.password !== '') {
+        updateData.passwordHash = await hashPassword(input.password);
+      }
+
+      const updated = await authRepository.updateUserWithRole(
+        id,
+        updateData as Parameters<typeof authRepository.updateUser>[1],
+        { roleId: input.roleId }
+      );
+      const roles = updated ? await authRepository.getUserRoles(id) : [];
+      logger.info('✅ [GraphQL.updateUser] User updated:', id);
+      return updated ? transformUser(updated, roles.map(r => ({ roleId: r.roleId, roleName: r.roleName }))) : null;
     },
   },
 
