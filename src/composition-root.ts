@@ -30,6 +30,7 @@ import { OutletsRepositoryClass } from '@/features/master-data/outlets.repositor
 import { SuppliersRepositoryClass } from '@/features/master-data/suppliers.repository.js';
 import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repository.js';
 import { RacksRepositoryClass } from '@/features/master-data/racks.repository.js';
+import { WarehousesRepositoryClass } from '@/features/master-data/warehouses.repository.js';
 import { AuditLogRepositoryClass } from './features/audit-log/audit.repository';
 import { ReportControllerClass } from './features/report/report.controller';
 // Inbound Repositories
@@ -64,6 +65,7 @@ export const outletsRepository = new OutletsRepositoryClass();
 export const suppliersRepository = new SuppliersRepositoryClass();
 export const stockUnitRepository = new StockUnitRepositoryClass();
 export const racksRepository = new RacksRepositoryClass();
+export const warehousesRepository = new WarehousesRepositoryClass();
 
 // Inbound Repositories
 export const grnsRepository = new GrnsRepositoryClass();
