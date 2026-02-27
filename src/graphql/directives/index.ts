@@ -91,7 +91,7 @@ function authDirectiveTransformer(schema: GraphQLSchema): GraphQLSchema {
         fieldConfig.resolve = async function (source, args, context: GraphQLContext, info) {
           // Check authentication
           if (!isAuthenticated(context)) {
-            logger.warn(`[GraphQL] Unauthorized access attempt to ${info.parentType.name}.${info.fieldName}`);
+            logger.warn(`⚠️ [GraphQL.authDirectiveTransformer] Unauthorized access attempt to ${info.parentType.name}.${info.fieldName}`);
             throw new AuthenticationError('You must be logged in to access this resource');
           }
 
@@ -124,14 +124,14 @@ function requirePermissionDirectiveTransformer(schema: GraphQLSchema): GraphQLSc
         fieldConfig.resolve = async function (source, args, context: GraphQLContext, info) {
           // First check authentication
           if (!isAuthenticated(context)) {
-            logger.warn(`[GraphQL] Unauthorized access attempt to ${info.parentType.name}.${info.fieldName}`);
+            logger.warn(`⚠️ [GraphQL.requirePermissionDirectiveTransformer] Unauthorized access attempt to ${info.parentType.name}.${info.fieldName}`);
             throw new AuthenticationError('You must be logged in to access this resource');
           }
 
           // Then check permission
           if (!hasPermission(context, module, permission)) {
             logger.warn(
-              `[GraphQL] Forbidden: User ${context.user?.id} attempted to access ${info.parentType.name}.${info.fieldName} ` +
+              `⚠️ [GraphQL.requirePermissionDirectiveTransformer] Forbidden: User ${context.user?.id} attempted to access ${info.parentType.name}.${info.fieldName} ` +
               `(requires ${module}:${permission})`
             );
             throw new ForbiddenError(

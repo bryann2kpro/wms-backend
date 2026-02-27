@@ -102,6 +102,23 @@ export class AuthRepositoryClass {
   }
 
   /**
+   * Batch load users by IDs (for avoiding N+1 in GraphQL)
+   */
+  async getUsersByIds(ids: string[]): Promise<UserType[]> {
+    if (ids.length === 0) return [];
+    try {
+      const users = await db
+        .select()
+        .from(UsersTable)
+        .where(inArray(UsersTable.id, ids));
+      return users;
+    } catch (error) {
+      logger.error('❌ [AuthRepository.getUsersByIds] Error:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get user IDs that have the given role (active assignment). Used for filter by roleId.
    */
   async getUserIdsByRoleId(roleId: string): Promise<string[]> {

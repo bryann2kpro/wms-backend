@@ -157,17 +157,7 @@ export const resolvers = {
                     let supplierDeliveryId: string | undefined = input.supplierDeliveryId ?? undefined;
 
                     // When supplierDeliveryNo provided: create Supplier Delivery + Supplier Delivery Items first, then GRN
-                    if (input.supplierDeliveryNo) {
-                        // Check for duplicate supplier delivery number before creating
-                        const existingDo = await supplierDeliveriesRepository.getSupplierDeliveries(
-                            { supplierDeliveryNo: input.supplierDeliveryNo },
-                            { pageSize: 1, pageNumber: 1 }
-                        );
-                        if (existingDo && existingDo.query?.length > 0) {
-                            throw new GraphQLError('Repeated supplier delivery number found', {
-                                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
-                            });
-                        }
+                    if (input.supplierDeliveryNo) { // TJ: SUPPLIER DELIVERY NO MUST BE PROVIDED
                         // 1. Create Supplier Delivery
                         const supplierDelivery = await supplierDeliveriesRepository.createSupplierDelivery({
                             supplierId,
@@ -176,7 +166,7 @@ export const resolvers = {
                             status: 'RECEIVED_DRAFT',
                             createdBy,
                             updatedBy: updatedBy ?? createdBy,
-                        }, context.tx);
+                        }, context.tx); // TJ: this context.tx is empty!
                         supplierDeliveryId = supplierDelivery.id;
 
                         if (!supplierDeliveryId) {
