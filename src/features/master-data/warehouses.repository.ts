@@ -168,5 +168,53 @@ export class WarehousesRepositoryClass {
       throw error;
     }
   }
+
+  /**
+   * Get or create a warehouse by code (for initialization scripts)
+   */
+  async getOrCreateWarehouseByCode(
+    warehouseCode: string,
+    warehouseName: string,
+    warehouseAddress: string
+  ): Promise<WarehouseType> {
+    try {
+      logger.info("ℹ️ [WarehousesRepository.getOrCreateWarehouseByCode] Ensuring warehouse exists...");
+
+      const existing = await db
+        .select()
+        .from(WarehousesTable)
+        .where(eq(WarehousesTable.warehouseCode, warehouseCode))
+        .limit(1);
+
+      if (existing.length > 0) {
+        logger.info(
+          `✓ Warehouse "${warehouseName}" (${warehouseCode}) already exists`
+        );
+        return existing[0];
+      }
+
+      const [warehouse] = await db
+        .insert(WarehousesTable)
+        .values({
+          warehouseCode,
+          warehouseName,
+          warehouseAddress,
+          createdBy: "system",
+          updatedBy: "system",
+        })
+        .returning();
+
+      logger.info(
+        `✅ Warehouse "${warehouseName}" (${warehouseCode}) created successfully`
+      );
+      return warehouse;
+    } catch (error) {
+      logger.error(
+        "❌ [WarehousesRepository.getOrCreateWarehouseByCode] Error:",
+        error
+      );
+      throw error;
+    }
+  }
 }
 

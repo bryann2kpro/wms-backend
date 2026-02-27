@@ -7,6 +7,7 @@ import { RegionDeliveryScheduleTable, DayOfWeek } from '@/features/master-data/d
 import { StockUnitTable, StockUnitCode } from '@/features/master-data/stock-unit.model';
 import { eq, inArray } from 'drizzle-orm';
 import { SkuTable, SkuInsertType, SkuType } from '@/features/master-data/sku.model';
+import { WarehousesRepositoryClass } from '@/features/master-data/warehouses.repository';
 
 // ============================================
 // REGION INITIALIZATION
@@ -224,6 +225,40 @@ async function initStockUnits(): Promise<void> {
 }
 
 // ============================================
+// WAREHOUSE INITIALIZATION
+// ============================================
+
+/**
+ * Default warehouses for the system
+ */
+const DEFAULT_WAREHOUSES = [
+  {
+    warehouseCode: 'SMEE-WH',
+    warehouseName: 'SME Ederan Warehouse',
+    warehouseAddress: '123 SME Industrial Park, Kuala Lumpur',
+  },
+];
+
+const warehousesRepository = new WarehousesRepositoryClass();
+
+/**
+ * Initialize default warehouses
+ */
+async function initWarehouses(): Promise<void> {
+  logger.info('📦 Initializing warehouses...');
+
+  for (const wh of DEFAULT_WAREHOUSES) {
+    await warehousesRepository.getOrCreateWarehouseByCode(
+      wh.warehouseCode,
+      wh.warehouseName,
+      wh.warehouseAddress,
+    );
+  }
+
+  logger.info('✅ Warehouses initialization complete!');
+}
+
+// ============================================
 // SKU INITIALIZATION
 // ============================================
 
@@ -328,6 +363,8 @@ export async function initMasterData(): Promise<void> {
     
     // Initialize stock units
     await initStockUnits();
+    // Initialize warehouses
+    await initWarehouses();
     // Initialize skus (depends on stock units for skuUom)
     await initSkus();
 
