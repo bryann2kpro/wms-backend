@@ -74,9 +74,7 @@ export class GrnsRepositoryClass {
         try {
             const client = tx ?? db;
             const [grn] = await client.insert(GrnsTable).values(data).returning();
-            if (!grn) {
-                throw new Error('Failed to create GRN: no row returned');
-            }
+
             logger.info('✅ [GrnsRepository.createGrn] GRN created successfully');
             return grn;
         } catch (error) {
@@ -86,12 +84,12 @@ export class GrnsRepositoryClass {
     }
 
     async updateGrn(id: string, data: Partial<GrnInsertType>, tx?: DbTransaction): Promise<GrnType | null> {
-        try{
+        try {
             const client = tx ?? db;
             const [grn] = await client.update(GrnsTable).set({ ...data, updatedAt: new Date() }).where(eq(GrnsTable.id, id)).returning();
             logger.info('✅ [GrnsRepository.updateGrn] GRN updated successfully');
             return grn;
-        }catch(error){
+        } catch (error) {
             logger.error('❌ [GrnsRepository.updateGrn] Error:', error);
             throw error;
         }
