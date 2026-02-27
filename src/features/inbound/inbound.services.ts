@@ -56,5 +56,18 @@ export class InboundServices {
 
         return result;
     }
+
+    // TJ to confirm if this is needed
+    async updateInbound(data: any): Promise<boolean> {
+        // logger.info('ℹ️ [InboundServices.updateInbound] Updating inbound...');
+
+        // const { userId, inboundQty } = data;
+        // if (!userId) {
+        //     logger.error('❌ [InboundServices.updateInbound] User ID is required');
+        //     return false;
+        // }
+
+        return true;
+    }
 }
 
