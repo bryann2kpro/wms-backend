@@ -9,6 +9,7 @@ import { warehousesRepository } from "@/composition-root";
 import { withAudit } from "@/features/audit-log/audit.wrapper";
 import { GraphQLError } from "graphql/error";
 import { logger } from "@/util/logger";
+import { GraphQLContext } from "@/graphql/context";
 
 // ============================================
 // HELPER FUNCTIONS
@@ -63,10 +64,9 @@ export const resolvers = {
             warehouseName: string;
             warehouseCode?: string | null;
             warehouseAddress?: string | null;
-            createdBy: string;
-            updatedBy: string;
           };
-        }
+        },
+        context: GraphQLContext
       ) => {
 
         const createWarehouseSchema = z.object({
@@ -84,8 +84,6 @@ export const resolvers = {
             .optional()
             .nullable()
             .transform((val) => (val === "" ? null : val ?? null)),
-          createdBy: z.uuid("createdBy is required"),
-          updatedBy: z.uuid("updatedBy is required"),
         });
         logger.info("ℹ️ [WarehousesResolvers.createWarehouse] Processing input...");
         logger.debug("🔍 [WarehousesResolvers.createWarehouse] Input:", input);
@@ -100,13 +98,15 @@ export const resolvers = {
         logger.info("ℹ️ [WarehousesResolvers.createWarehouse] Input validated successfully");
         logger.debug("🔍 [WarehousesResolvers.createWarehouse] Data:", data);
         
+        const userId = context.user?.id ?? "system";
+
         logger.info("ℹ️ [WarehousesResolvers.createWarehouse] Creating warehouse...");
         const warehouse = await warehousesRepository.createWarehouse({
           warehouseName: data.warehouseName,
           warehouseCode: data.warehouseCode ?? null,
           warehouseAddress: data.warehouseAddress ?? null,
-          createdBy: data.createdBy,
-          updatedBy: data.updatedBy,
+          createdBy: userId,
+          updatedBy: userId,
         });
         logger.info("✅ [WarehousesResolvers.createWarehouse] Warehouse created successfully");
         return transformWarehouse(warehouse);

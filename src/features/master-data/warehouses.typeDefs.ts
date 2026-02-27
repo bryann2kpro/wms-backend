@@ -14,6 +14,10 @@ export const typeDefs = `#graphql
     warehouseName: String!
     warehouseCode: String
     warehouseAddress: String
+    createdAt: String!
+    updatedAt: String!
+    createdBy: String!
+    updatedBy: String!
   }
 
   """
@@ -23,8 +27,6 @@ export const typeDefs = `#graphql
     warehouseName: String!
     warehouseCode: String
     warehouseAddress: String
-    createdBy: String!
-    updatedBy: String!
   }
 
   extend type Mutation {
