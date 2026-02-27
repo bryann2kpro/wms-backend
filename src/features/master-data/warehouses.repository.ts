@@ -148,5 +148,25 @@ export class WarehousesRepositoryClass {
       throw error;
     }
   }
+
+  /**
+   * Delete a warehouse
+   */
+  async deleteWarehouse(id: string, tx?: DbTransaction): Promise<boolean> {
+    try {
+      const client = tx ?? db;
+      logger.info("ℹ️ [WarehousesRepository.deleteWarehouse] Deleting warehouse...");
+
+      await client
+        .delete(WarehousesTable)
+        .where(eq(WarehousesTable.warehouseId, id));
+
+      logger.info("✅ [WarehousesRepository.deleteWarehouse] Warehouse deleted successfully");
+      return true;
+    } catch (error) {
+      logger.error("❌ [WarehousesRepository.deleteWarehouse] Error:", error);
+      throw error;
+    }
+  }
 }
 

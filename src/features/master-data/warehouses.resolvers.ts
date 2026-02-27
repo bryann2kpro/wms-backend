@@ -269,6 +269,23 @@ export const resolvers = {
         return transformWarehouse(warehouse as any);
       }
     ),
+
+    /**
+     * Delete a warehouse
+     */
+    deleteWarehouse: withAudit(
+      {
+        entity: "Warehouse",
+        action: "DELETE",
+        getEntityId: (_, args) => args.id,
+        getOldData: async (args) => {
+          return await warehousesRepository.getWarehouseById(args.id);
+        },
+      },
+      async (_: unknown, { id }: { id: string }) => {
+        return await warehousesRepository.deleteWarehouse(id);
+      }
+    ),
   },
   Warehouse: {
     /**

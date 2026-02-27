@@ -93,6 +93,12 @@ export const typeDefs = `#graphql
     Requires authentication.
     """
     updateWarehouse(id: ID!, input: UpdateWarehouseInput!): Warehouse @auth
+
+    """
+    Delete a warehouse.
+    Requires authentication.
+    """
+    deleteWarehouse(id: ID!): Boolean! @auth
   }
 `;
 
