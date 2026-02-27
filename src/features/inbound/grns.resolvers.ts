@@ -11,6 +11,7 @@ import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRe
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
+import { GraphQLError } from 'graphql';
 import { GrnType } from './grns.model';
 import { logger } from '@/util/logger';
 import { GrnFilter } from './grns.repository';
@@ -212,6 +213,17 @@ export const resolvers = {
                         }
                     }
 
+                    // Check for duplicate GRN code before creating
+                    const existingResult = await grnsRepository.getGrns(
+                        { grnNo: input.grnNo },
+                        { pageSize: 1, pageNumber: 1 }
+                    );
+                    if (existingResult && existingResult.query?.length > 0) {
+                        throw new GraphQLError('Repeated GRN code found', {
+                            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+                        });
+                    }
+
                     // 3. Create GRN (with supplierDeliveryId when supplierDeliveryNo was provided)
                     const grn = await grnsRepository.createGrn({
                         grnNo: input.grnNo,
@@ -313,6 +325,19 @@ export const resolvers = {
                     if (!existingGrn) {
                         logger.error('[grns.resolvers]: GRN not found', { id });
                         return false;
+                    }
+
+                    if (input.grnNo != null && input.grnNo !== existingGrn.grnNo) {
+                        const existingResult = await grnsRepository.getGrns(
+                            { grnNo: input.grnNo },
+                            { pageSize: 1, pageNumber: 1 }
+                        );
+                        const existingByGrnNo = existingResult && existingResult.query?.[0];
+                        if (existingByGrnNo && existingByGrnNo.id !== id) {
+                            throw new GraphQLError('Repeated GRN code found', {
+                                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+                            });
+                        }
                     }
 
                     const updateData: Record<string, unknown> = { updatedBy };
