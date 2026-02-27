@@ -38,6 +38,7 @@ import { GrnsRepositoryClass } from './features/inbound/grns.repository';
 import { GrnItemsRepositoryClass } from './features/inbound/grns-items.repository';
 import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplier-deliveries/supplier-delivery-item.repository';
 import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
+import { InboundServices } from './features/inbound/inbound.services';
 
 
 // ============================================
@@ -83,3 +84,4 @@ export const healthController = new HealthControllerClass();
 export const uploadController = new UploadControllerClass(uploadService);
 export const auditLogRepository = new AuditLogRepositoryClass();
 export const reportController = new ReportControllerClass();
+export const inboundServices = new InboundServices(grnsRepository, skuRepository);
