@@ -183,6 +183,13 @@
       "when": 1771915357539,
       "tag": "0025_stale_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1772182677073,
+      "tag": "0026_skinny_quasar",
+      "breakpoints": true
     }
   ]
 }
