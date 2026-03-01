@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, inboundServices } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -97,6 +97,16 @@ export const resolvers = {
         },
     },
     Grn: {
+        createdByUser: async (parent: { createdBy?: string | null }) => {
+            if (!parent.createdBy) return null;
+            const user = await authRepository.getUserById(parent.createdBy);
+            return user ? { id: user.id, displayName: user.displayName } : null;
+        },
+        updatedByUser: async (parent: { updatedBy?: string | null }) => {
+            if (!parent.updatedBy) return null;
+            const user = await authRepository.getUserById(parent.updatedBy);
+            return user ? { id: user.id, displayName: user.displayName } : null;
+        },
         supplierDeliveryNo: async (parent: { supplierDeliveryId?: string | null }) => {
             if (!parent.supplierDeliveryId) return null;
             const result = await supplierDeliveriesRepository.getSupplierDeliveries(
@@ -156,9 +166,27 @@ export const resolvers = {
 
                     let supplierDeliveryId: string | undefined = input.supplierDeliveryId ?? undefined;
 
-                    // When supplierDeliveryNo provided: create Supplier Delivery + Supplier Delivery Items first, then GRN
-                    if (input.supplierDeliveryNo) { // TJ: SUPPLIER DELIVERY NO MUST BE PROVIDED
-                        // 1. Create Supplier Delivery
+                    // Check for duplicate GRN code before creating
+                    const existingResult = await grnsRepository.getGrns(
+                        { grnNo: input.grnNo },
+                        { pageSize: 1, pageNumber: 1 }
+                    );
+                    if (existingResult && existingResult.query?.length > 0) {
+                        throw new GraphQLError('Repeated GRN code found', {
+                            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+                        });
+                    }
+
+                    if (input.supplierDeliveryNo) {
+                        const existingDo = await supplierDeliveriesRepository.getSupplierDeliveries(
+                            { supplierDeliveryNo: input.supplierDeliveryNo },
+                            { pageSize: 1, pageNumber: 1 }
+                        );
+                        if (existingDo && existingDo.query?.length > 0) {
+                            throw new GraphQLError('Repeated supplier delivery number found', {
+                                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+                            });
+                        }
                         const supplierDelivery = await supplierDeliveriesRepository.createSupplierDelivery({
                             supplierId,
                             supplierDeliveryNo: input.supplierDeliveryNo,
@@ -212,18 +240,6 @@ export const resolvers = {
                             }
                         }
                     }
-
-                    // Check for duplicate GRN code before creating
-                    const existingResult = await grnsRepository.getGrns(
-                        { grnNo: input.grnNo },
-                        { pageSize: 1, pageNumber: 1 }
-                    );
-                    if (existingResult && existingResult.query?.length > 0) {
-                        throw new GraphQLError('Repeated GRN code found', {
-                            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
-                        });
-                    }
-
                     // 3. Create GRN (with supplierDeliveryId when supplierDeliveryNo was provided)
                     const grn = await grnsRepository.createGrn({
                         grnNo: input.grnNo,

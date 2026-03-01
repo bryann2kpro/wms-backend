@@ -22,9 +22,17 @@ export const typeDefs = `#graphql
         approvedAt: String
         createdAt: String!
         updatedAt: String!
-        createdBy: ID!
-        updatedBy: ID
+        createdByUser: GrnAuditUser
+        updatedByUser: GrnAuditUser
         items: [GrnItem!]!
+    }
+
+    """
+    User info for GRN audit fields (createdBy / updatedBy).
+    """
+    type GrnAuditUser {
+        id: ID!
+        displayName: String!
     }
 
     """
