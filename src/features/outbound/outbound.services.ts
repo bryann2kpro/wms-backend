@@ -4,10 +4,11 @@ import { DbTransaction } from "@/types/db-transaction";
 import { DeliveryOrdersRepositoryClass } from "./delivery-orders.repository";
 import { DeliveryOrderItemInsertType } from "./delivery-orders.model";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
-import { InventoryRepositoryClass } from "../inventory/inventory.repository";
+import { InventoryMovementsRepositoryClass } from "../inventory/inventory.repository";
 import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../master-data/delivery-schedule.repository";
 import { OutletsRepositoryClass } from "../master-data/outlets.repository";
 import { DeliveryOrderType } from "./delivery-orders.model";
+import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
 
 /** Line item input: must have qtyRequired and either skuId or skuCode. */
 export type CreateDeliveryOrderItemInput = {
@@ -29,9 +30,10 @@ export class OutboundServices {
     constructor(
         private readonly deliveryOrderRepository: DeliveryOrdersRepositoryClass,
         private readonly skuRepository: SkuRepositoryClass,
-        private readonly inventoryRepository: InventoryRepositoryClass,
+        private readonly inventoryMovementsRepository: InventoryMovementsRepositoryClass,
         private readonly deliveryScheduleRepository: DeliveryScheduleRepositoryClass,
         private readonly outletsRepository: OutletsRepositoryClass,
+        private readonly purchaseOrdersRepository: PurchaseOrdersRepositoryClass,
     ) {}
 
     /**
@@ -91,10 +93,10 @@ export class OutboundServices {
                 logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Delivery Order Items created successfully');
 
                 // TODO: Step 5 - Update the PO with scheduledDeliveryDate (requires PO repository)
-                // await this.purchaseOrderRepository.updatePurchaseOrder(data.purchaseOrderNo, {
-                //     scheduledDeliveryDate: nextDelivery.deliveryDate,
-                //     updatedBy: data.userId,
-                // }, tx);
+                await this.purchaseOrdersRepository.updatePurchaseOrder(data.purchaseOrderNo, {
+                    scheduledDeliveryDate: nextDelivery.deliveryDate,
+                    updatedBy: data.userId,
+                }, tx);
             });
 
             if (!createdOrder) {
@@ -150,7 +152,7 @@ export class OutboundServices {
     ): Promise<void> {
         if (lines.length === 0) return;
         const skuIds = [...new Set(lines.map((l) => l.skuId))];
-        const balances = await this.inventoryRepository.getBalancesBySkuIds(skuIds, tx);
+        const balances = await this.inventoryMovementsRepository.getBalancesBySkuIds(skuIds, tx);
         const bySkuId = new Map(balances.map((b) => [b.skuId, b]));
 
         const parseNum = (v: string | number): number => (typeof v === "number" ? v : parseFloat(String(v)) || 0);

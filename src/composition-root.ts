@@ -40,12 +40,10 @@ import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplie
 import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
 import { InboundServices } from './features/inbound/inbound.services';
 // Outbound Repositories & Services
-import { TransferOrdersRepositoryClass } from './features/outbound/transfer-orders.repository';
+import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
 import { ExceptionsRepositoryClass } from './features/outbound/exceptions.repository';
 import { OutboundServices } from './features/outbound/outbound.services';
-// Inventory
-import { InventoryRepositoryClass } from './features/inventory/inventory.repository';
 // Inventory Repositories
 import { InventoryMovementsRepositoryClass } from './features/inventory/inventory.repository';
 
@@ -84,7 +82,7 @@ export const supplierDeliveryItemsRepository = new SupplierDeliveryItemsReposito
 export const supplierDeliveriesRepository = new SupplierDeliveriesRepositoryClass();
 
 // Outbound Repositories
-export const transferOrdersRepository = new TransferOrdersRepositoryClass();
+export const purchaseOrdersRepository = new PurchaseOrdersRepositoryClass();
 export const deliveryOrdersRepository = new DeliveryOrdersRepositoryClass();
 export const exceptionsRepository = new ExceptionsRepositoryClass();
 // Inventory Repositories
@@ -97,6 +95,7 @@ export const outboundServices = new OutboundServices(
   inventoryMovementsRepository,
   deliveryScheduleRepository,
   outletsRepository,
+  purchaseOrdersRepository,
 );
 
 // ============================================
