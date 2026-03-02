@@ -1,6 +1,6 @@
 {
-  "id": "502e76d2-0aec-49db-9bcc-185c92435f54",
-  "prevId": "502e76d2-0aec-49db-9bcc-185c92435f54",
+  "id": "aad83bd5-28b3-4677-aa2c-38c872b2bd4a",
+  "prevId": "4a3631ae-1099-4d3d-ba1b-787a4f15f910",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -994,6 +994,90 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "main.inventory_movements": {
+      "name": "inventory_movements",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "sku_id": {
+          "name": "sku_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "movement_type": {
+          "name": "movement_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "balance_after": {
+          "name": "balance_after",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reference_no": {
+          "name": "reference_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "inventory_movements_sku_id_skus_sku_id_fk": {
+          "name": "inventory_movements_sku_id_skus_sku_id_fk",
+          "tableFrom": "inventory_movements",
+          "tableTo": "skus",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "sku_id"
+          ],
+          "columnsTo": [
+            "sku_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2075,14 +2159,14 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
@@ -2140,27 +2224,27 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         },
         "created_by": {
           "name": "created_by",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
         "updated_by": {
           "name": "updated_by",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -2269,14 +2353,14 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
@@ -2290,8 +2374,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "main.transfer_order_items": {
-      "name": "transfer_order_items",
+    "main.purchase_order_items": {
+      "name": "purchase_order_items",
       "schema": "main",
       "columns": {
         "id": {
@@ -2301,20 +2385,20 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "to_id": {
-          "name": "to_id",
-          "type": "uuid",
+        "purchase_order_no": {
+          "name": "purchase_order_no",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "sku_id": {
-          "name": "sku_id",
-          "type": "uuid",
+        "sku_code": {
+          "name": "sku_code",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "qty": {
-          "name": "qty",
+        "qty_required": {
+          "name": "qty_required",
           "type": "numeric(10, 2)",
           "primaryKey": false,
           "notNull": true
@@ -2354,8 +2438,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "main.transfer_orders": {
-      "name": "transfer_orders",
+    "main.purchase_orders": {
+      "name": "purchase_orders",
       "schema": "main",
       "columns": {
         "id": {
@@ -2365,14 +2449,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "netsuite_to_id": {
-          "name": "netsuite_to_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "to_no": {
-          "name": "to_no",
+        "purchase_order_no": {
+          "name": "purchase_order_no",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -2383,15 +2461,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "requested_delivery_date": {
-          "name": "requested_delivery_date",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
         "scheduled_delivery_date": {
           "name": "scheduled_delivery_date",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -2410,33 +2482,33 @@
         },
         "pulled_at": {
           "name": "pulled_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         },
         "created_by": {
           "name": "created_by",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
         "updated_by": {
           "name": "updated_by",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -2445,18 +2517,11 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "transfer_orders_netsuite_to_id_unique": {
-          "name": "transfer_orders_netsuite_to_id_unique",
+        "purchase_orders_purchase_order_no_unique": {
+          "name": "purchase_orders_purchase_order_no_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "netsuite_to_id"
-          ]
-        },
-        "transfer_orders_to_no_unique": {
-          "name": "transfer_orders_to_no_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "to_no"
+            "purchase_order_no"
           ]
         }
       },
