@@ -7,14 +7,14 @@
 import { db } from "@/db";
 import { logger } from "@/util/logger";
 import {
-  TransferOrdersTable,
-  TransferOrderItemsTable,
-  TransferOrderType,
-  TransferOrderInsertType,
-  TransferOrderFilter,
-  TransferOrderItemType,
-  TransferOrderItemInsertType,
-  TransferOrderItemFilter,
+  PurchaseOrdersTable,
+  PurchaseOrderItemsTable,
+  PurchaseOrderType,
+  PurchaseOrderInsertType,
+  PurchaseOrderFilter,
+  PurchaseOrderItemType,
+  PurchaseOrderItemInsertType,
+  PurchaseOrderItemFilter,
 } from "./transfer-orders.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
@@ -29,56 +29,47 @@ export class TransferOrdersRepositoryClass {
   // ============================================
 
   async getTransferOrders(
-    filter: TransferOrderFilter,
+    filter: PurchaseOrderFilter,
     paginationParams: PaginationParams
-  ): Promise<PaginatedResponse<TransferOrderType>> {
+  ): Promise<PaginatedResponse<PurchaseOrderType>> {
     try {
       logger.info("ℹ️ [TransferOrdersRepository.getTransferOrders] Getting transfer orders...");
       const whereCondition: ReturnType<typeof eq>[] = [];
 
       if (Array.isArray(filter.id)) {
-        whereCondition.push(inArray(TransferOrdersTable.id, filter.id));
+        whereCondition.push(inArray(PurchaseOrdersTable.id, filter.id));
       } else if (filter.id) {
-        whereCondition.push(eq(TransferOrdersTable.id, filter.id));
+        whereCondition.push(eq(PurchaseOrdersTable.id, filter.id));
       }
-      if (filter.netsuiteToId) {
-        whereCondition.push(eq(TransferOrdersTable.netsuiteToId, filter.netsuiteToId));
-      }
-      if (filter.toNo) {
-        whereCondition.push(like(TransferOrdersTable.toNo, `%${filter.toNo}%`));
+      if (filter.purchaseOrderNo) {
+        whereCondition.push(like(PurchaseOrdersTable.purchaseOrderNo, `%${filter.purchaseOrderNo}%`));
       }
       if (Array.isArray(filter.outletId)) {
-        whereCondition.push(inArray(TransferOrdersTable.outletId, filter.outletId));
+        whereCondition.push(inArray(PurchaseOrdersTable.outletId, filter.outletId));
       } else if (filter.outletId) {
-        whereCondition.push(eq(TransferOrdersTable.outletId, filter.outletId));
+        whereCondition.push(eq(PurchaseOrdersTable.outletId, filter.outletId));
       }
       if (Array.isArray(filter.status)) {
-        whereCondition.push(inArray(TransferOrdersTable.status, filter.status));
+        whereCondition.push(inArray(PurchaseOrdersTable.status, filter.status));
       } else if (filter.status) {
-        whereCondition.push(eq(TransferOrdersTable.status, filter.status));
-      }
-      if (filter.requestedDeliveryDateFrom) {
-        whereCondition.push(gte(TransferOrdersTable.requestedDeliveryDate, new Date(filter.requestedDeliveryDateFrom)));
-      }
-      if (filter.requestedDeliveryDateTo) {
-        whereCondition.push(lte(TransferOrdersTable.requestedDeliveryDate, new Date(filter.requestedDeliveryDateTo)));
+        whereCondition.push(eq(PurchaseOrdersTable.status, filter.status));
       }
       if (filter.scheduledDeliveryDateFrom) {
-        whereCondition.push(gte(TransferOrdersTable.scheduledDeliveryDate, new Date(filter.scheduledDeliveryDateFrom)));
+        whereCondition.push(gte(PurchaseOrdersTable.scheduledDeliveryDate, new Date(filter.scheduledDeliveryDateFrom)));
       }
       if (filter.scheduledDeliveryDateTo) {
-        whereCondition.push(lte(TransferOrdersTable.scheduledDeliveryDate, new Date(filter.scheduledDeliveryDateTo)));
+        whereCondition.push(lte(PurchaseOrdersTable.scheduledDeliveryDate, new Date(filter.scheduledDeliveryDateTo)));
       }
       if (filter.createdAtFrom) {
-        whereCondition.push(gte(TransferOrdersTable.createdAt, new Date(filter.createdAtFrom)));
+        whereCondition.push(gte(PurchaseOrdersTable.createdAt, new Date(filter.createdAtFrom)));
       }
       if (filter.createdAtTo) {
-        whereCondition.push(lte(TransferOrdersTable.createdAt, new Date(filter.createdAtTo)));
+        whereCondition.push(lte(PurchaseOrdersTable.createdAt, new Date(filter.createdAtTo)));
       }
 
       const baseQuery = db
         .select()
-        .from(TransferOrdersTable)
+        .from(PurchaseOrdersTable)
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
 
       const pageSize = paginationParams.pageSize ?? 10;
@@ -95,12 +86,12 @@ export class TransferOrdersRepositoryClass {
     }
   }
 
-  async createTransferOrder(data: TransferOrderInsertType, tx?: DbTransaction): Promise<TransferOrderType> {
+  async createTransferOrder(data: PurchaseOrderInsertType, tx?: DbTransaction): Promise<PurchaseOrderType> {
     try {
       const dbClient = tx ?? db;
       logger.info("ℹ️ [TransferOrdersRepository.createTransferOrder] Creating transfer order...");
       const [row] = await dbClient
-        .insert(TransferOrdersTable)
+        .insert(PurchaseOrdersTable)
         .values({
           ...data,
           createdAt: new Date(),
@@ -117,16 +108,16 @@ export class TransferOrdersRepositoryClass {
 
   async updateTransferOrder(
     id: string,
-    data: Partial<TransferOrderInsertType>,
+    data: Partial<PurchaseOrderInsertType>,
     tx?: DbTransaction
-  ): Promise<TransferOrderType> {
+  ): Promise<PurchaseOrderType> {
     try {
       const dbClient = tx ?? db;
       logger.info("ℹ️ [TransferOrdersRepository.updateTransferOrder] Updating transfer order...");
       const [row] = await dbClient
-        .update(TransferOrdersTable)
+        .update(PurchaseOrdersTable)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(TransferOrdersTable.id, id))
+        .where(eq(PurchaseOrdersTable.id, id))
         .returning();
       if (!row) throw new Error("[TransferOrdersRepository.updateTransferOrder] Transfer order not found");
       logger.info("✅ [TransferOrdersRepository.updateTransferOrder] Transfer order updated successfully");
@@ -140,7 +131,7 @@ export class TransferOrdersRepositoryClass {
   async deleteTransferOrder(id: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx ?? db;
-      await dbClient.delete(TransferOrdersTable).where(eq(TransferOrdersTable.id, id));
+      await dbClient.delete(PurchaseOrdersTable).where(eq(PurchaseOrdersTable.id, id));
       logger.info("✅ [TransferOrdersRepository.deleteTransferOrder] Transfer order deleted successfully");
       return true;
     } catch (error) {
@@ -154,32 +145,32 @@ export class TransferOrdersRepositoryClass {
   // ============================================
 
   async getTransferOrderItems(
-    filter: TransferOrderItemFilter,
+    filter: PurchaseOrderItemFilter,
     paginationParams: PaginationParams
-  ): Promise<PaginatedResponse<TransferOrderItemType>> {
+  ): Promise<PaginatedResponse<PurchaseOrderItemType>> {
     try {
       logger.info("ℹ️ [TransferOrdersRepository.getTransferOrderItems] Getting transfer order items...");
       const whereCondition: ReturnType<typeof eq>[] = [];
 
       if (Array.isArray(filter.id)) {
-        whereCondition.push(inArray(TransferOrderItemsTable.id, filter.id));
+        whereCondition.push(inArray(PurchaseOrderItemsTable.id, filter.id));
       } else if (filter.id) {
-        whereCondition.push(eq(TransferOrderItemsTable.id, filter.id));
+        whereCondition.push(eq(PurchaseOrderItemsTable.id, filter.id));
       }
-      if (Array.isArray(filter.toId)) {
-        whereCondition.push(inArray(TransferOrderItemsTable.toId, filter.toId));
-      } else if (filter.toId) {
-        whereCondition.push(eq(TransferOrderItemsTable.toId, filter.toId));
+      if (Array.isArray(filter.purchaseOrderNo)) {
+        whereCondition.push(inArray(PurchaseOrderItemsTable.purchaseOrderNo, filter.purchaseOrderNo));
+      } else if (filter.purchaseOrderNo) {
+        whereCondition.push(eq(PurchaseOrderItemsTable.purchaseOrderNo, filter.purchaseOrderNo));
       }
-      if (Array.isArray(filter.skuId)) {
-        whereCondition.push(inArray(TransferOrderItemsTable.skuId, filter.skuId));
-      } else if (filter.skuId) {
-        whereCondition.push(eq(TransferOrderItemsTable.skuId, filter.skuId));
+      if (Array.isArray(filter.skuCode)) {
+        whereCondition.push(inArray(PurchaseOrderItemsTable.skuCode, filter.skuCode));
+      } else if (filter.skuCode) {
+        whereCondition.push(eq(PurchaseOrderItemsTable.skuCode, filter.skuCode));
       }
 
       const baseQuery = db
         .select()
-        .from(TransferOrderItemsTable)
+        .from(PurchaseOrderItemsTable)
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
 
       const pageSize = paginationParams.pageSize ?? 10;
@@ -197,14 +188,14 @@ export class TransferOrdersRepositoryClass {
   }
 
   async createTransferOrderItems(
-    data: TransferOrderItemInsertType[],
+    data: PurchaseOrderItemInsertType[],
     tx?: DbTransaction
-  ): Promise<TransferOrderItemType[]> {
+  ): Promise<PurchaseOrderItemType[]> {
     try {
       const dbClient = tx ?? db;
       logger.info("ℹ️ [TransferOrdersRepository.createTransferOrderItems] Creating transfer order items...");
       const rows = await dbClient
-        .insert(TransferOrderItemsTable)
+        .insert(PurchaseOrderItemsTable)
         .values(
           data.map((item) => ({
             ...item,
@@ -223,16 +214,16 @@ export class TransferOrdersRepositoryClass {
 
   async updateTransferOrderItem(
     id: string,
-    data: Partial<TransferOrderItemInsertType>,
+    data: Partial<PurchaseOrderItemInsertType>,
     tx?: DbTransaction
-  ): Promise<TransferOrderItemType> {
+  ): Promise<PurchaseOrderItemType> {
     try {
       const dbClient = tx ?? db;
       logger.info("ℹ️ [TransferOrdersRepository.updateTransferOrderItem] Updating transfer order item...");
       const [row] = await dbClient
-        .update(TransferOrderItemsTable)
+        .update(PurchaseOrderItemsTable)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(TransferOrderItemsTable.id, id))
+        .where(eq(PurchaseOrderItemsTable.id, id))
         .returning();
       if (!row) throw new Error("[TransferOrdersRepository.updateTransferOrderItem] Transfer order item not found");
       logger.info("✅ [TransferOrdersRepository.updateTransferOrderItem] Transfer order item updated successfully");
@@ -246,7 +237,7 @@ export class TransferOrdersRepositoryClass {
   async deleteTransferOrderItem(id: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx ?? db;
-      await dbClient.delete(TransferOrderItemsTable).where(eq(TransferOrderItemsTable.id, id));
+      await dbClient.delete(PurchaseOrderItemsTable).where(eq(PurchaseOrderItemsTable.id, id));
       logger.info("✅ [TransferOrdersRepository.deleteTransferOrderItem] Transfer order item deleted successfully");
       return true;
     } catch (error) {
@@ -255,14 +246,14 @@ export class TransferOrdersRepositoryClass {
     }
   }
 
-  async deleteTransferOrderItemsByToId(toId: string, tx?: DbTransaction): Promise<boolean> {
+  async deleteTransferOrderItemsByPurchaseOrderNo(purchaseOrderNo: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx ?? db;
-      await dbClient.delete(TransferOrderItemsTable).where(eq(TransferOrderItemsTable.toId, toId));
-      logger.info("✅ [TransferOrdersRepository.deleteTransferOrderItemsByToId] Transfer order items deleted successfully");
+      await dbClient.delete(PurchaseOrderItemsTable).where(eq(PurchaseOrderItemsTable.purchaseOrderNo, purchaseOrderNo));
+      logger.info("✅ [TransferOrdersRepository.deleteTransferOrderItemsByPurchaseOrderNo] Transfer order items deleted successfully");
       return true;
     } catch (error) {
-      logger.error("❌ [TransferOrdersRepository.deleteTransferOrderItemsByToId] Error:", error);
+      logger.error("❌ [TransferOrdersRepository.deleteTransferOrderItemsByPurchaseOrderNo] Error:", error);
       throw error;
     }
   }
