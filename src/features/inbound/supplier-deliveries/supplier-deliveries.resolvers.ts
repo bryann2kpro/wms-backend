@@ -60,6 +60,7 @@ function transformSupplierDeliveryItem(
         itemId: supplierDeliveryItem.itemId ?? null,
         itemName: supplierDeliveryItem.itemName ?? null,
         qtyDelivered: Number(supplierDeliveryItem.qtyDelivered),
+        lossQty: Number(supplierDeliveryItem.lossQty ?? 0),
         qtyOrdered: toNum(supplierDeliveryItem.qtyOrdered ?? undefined),
         qtyToFollow: toNum(supplierDeliveryItem.qtyToFollow ?? undefined),
         remarks: supplierDeliveryItem.remarks ?? null,
@@ -253,6 +254,7 @@ export const resolvers = {
                             itemId?: string | null;
                             itemName?: string | null;
                             qtyDelivered?: number | null;
+                            lossQty?: number | null;
                             qtyOrdered?: number | null;
                             qtyToFollow?: number | null;
                             remarks?: string | null;
@@ -290,6 +292,7 @@ export const resolvers = {
                         if (item.itemId !== undefined) itemUpdateData.itemId = item.itemId;
                         if (item.itemName !== undefined) itemUpdateData.itemName = item.itemName;
                         if (item.qtyDelivered !== undefined) itemUpdateData.qtyDelivered = String(item.qtyDelivered);
+                        if (item.lossQty !== undefined) itemUpdateData.lossQty = String(item.lossQty);
                         if (item.qtyOrdered !== undefined) itemUpdateData.qtyOrdered = item.qtyOrdered != null ? String(item.qtyOrdered) : null;
                         if (item.qtyToFollow !== undefined) itemUpdateData.qtyToFollow = item.qtyToFollow != null ? String(item.qtyToFollow) : null;
                         if (item.remarks !== undefined) itemUpdateData.remarks = item.remarks;
@@ -339,6 +342,7 @@ export const resolvers = {
                         itemId?: string | null;
                         itemName?: string | null;
                         qtyDelivered?: number | null;
+                        lossQty?: number | null;
                         qtyOrdered?: number | null;
                         qtyToFollow?: number | null;
                         remarks?: string | null;
@@ -356,6 +360,7 @@ export const resolvers = {
                 if (input.itemId !== undefined) updateData.itemId = input.itemId;
                 if (input.itemName !== undefined) updateData.itemName = input.itemName;
                 if (input.qtyDelivered !== undefined) updateData.qtyDelivered = String(input.qtyDelivered);
+                if (input.lossQty !== undefined) updateData.lossQty = String(input.lossQty);
                 if (input.qtyOrdered !== undefined) updateData.qtyOrdered = input.qtyOrdered != null ? String(input.qtyOrdered) : null;
                 if (input.qtyToFollow !== undefined) updateData.qtyToFollow = input.qtyToFollow != null ? String(input.qtyToFollow) : null;
                 if (input.remarks !== undefined) updateData.remarks = input.remarks;

@@ -1,0 +1,1 @@
+ALTER TABLE "main"."skus" ALTER COLUMN "loss_quantity" SET DEFAULT '0';

@@ -75,7 +75,8 @@ export class InboundServices {
                                     const newSku = await this.skuRepository.createSku({
                                         skuCode: item.skuCode,
                                         skuDescription: item.skuDescription,
-                                        skuQuantity: '0',
+                                        cartonQuantity: '0',
+                                        lossQuantity: '0',
                                         skuUom: item.skuUom,
                                         isActive: true,
                                         createdBy,
@@ -94,6 +95,7 @@ export class InboundServices {
                                 supplierDeliveryId,
                                 skuId: skuIdToUse,
                                 qtyDelivered: item.qty,
+                                lossQty: item.lossQty ?? '0',
                                 createdBy,
                                 updatedBy,
                             }, tx);
@@ -113,7 +115,7 @@ export class InboundServices {
                 }, tx);
 
                 if (data.items?.length) {
-                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
+                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
                     for (const item of data.items) {
                         let skuIdToUse: string | null = null;
                         if (item.skuId) {
@@ -125,7 +127,8 @@ export class InboundServices {
                                 const newSku = await this.skuRepository.createSku({
                                     skuCode: item.skuCode,
                                     skuDescription: item.skuDescription,
-                                    skuQuantity: '0',
+                                    cartonQuantity: '0',
+                                    lossQuantity: '0',
                                     skuUom: item.skuUom,
                                     isActive: true,
                                     createdBy,
@@ -144,6 +147,7 @@ export class InboundServices {
                             grnId: grn.id,
                             skuId: skuIdToUse,
                             qty: item.qty,
+                            lossQty: item.lossQty ?? '0',
                             remarks: item.remarks ?? undefined,
                             createdBy,
                             updatedBy,
@@ -160,7 +164,7 @@ export class InboundServices {
                 if (inboundQty != null && data.skuId) {
                     logger.info('ℹ️ [InboundServices.createInbound] Updating inventory balance...');
                     await this.skuRepository.updateSku(data.skuId, {
-                        skuQuantity: String(inboundQty),
+                        cartonQuantity: String(inboundQty),
                         updatedBy: userId,
                         updatedAt: new Date(),
                     }, tx);
