@@ -316,6 +316,8 @@ export enum PermissionGroup {
 export type PaginationParams = {
   pageSize?: number;
   pageNumber?: number;
+  sortBy?: string;
+  sortOrder?: string;
 };
 
 /**

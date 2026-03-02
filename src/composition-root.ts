@@ -43,8 +43,8 @@ import { InboundServices } from './features/inbound/inbound.services';
 import { TransferOrdersRepositoryClass } from './features/outbound/transfer-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
 import { ExceptionsRepositoryClass } from './features/outbound/exceptions.repository';
-// Inventory
-import { InventoryRepositoryClass } from './features/inventory/inventory.repository';
+// Inventory Repositories
+import { InventoryMovementsRepositoryClass } from './features/inventory/inventory.repository';
 
 
 // ============================================
@@ -84,8 +84,8 @@ export const supplierDeliveriesRepository = new SupplierDeliveriesRepositoryClas
 export const transferOrdersRepository = new TransferOrdersRepositoryClass();
 export const deliveryOrdersRepository = new DeliveryOrdersRepositoryClass();
 export const exceptionsRepository = new ExceptionsRepositoryClass();
-
-export const inventoryRepository = new InventoryRepositoryClass();
+// Inventory Repositories
+export const inventoryMovementsRepository = new InventoryMovementsRepositoryClass();
 
 // ============================================
 // CONTROLLERS (Presentation Layer)
