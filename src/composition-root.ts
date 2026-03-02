@@ -39,10 +39,15 @@ import { GrnItemsRepositoryClass } from './features/inbound/grns-items.repositor
 import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplier-deliveries/supplier-delivery-item.repository';
 import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
 import { InboundServices } from './features/inbound/inbound.services';
-// Outbound Repositories
+// Outbound Repositories & Services
 import { TransferOrdersRepositoryClass } from './features/outbound/transfer-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
 import { ExceptionsRepositoryClass } from './features/outbound/exceptions.repository';
+import { OutboundServices } from './features/outbound/outbound.services';
+// Inventory
+import { InventoryRepositoryClass } from './features/inventory/inventory.repository';
+// Inventory Repositories
+import { InventoryMovementsRepositoryClass } from './features/inventory/inventory.repository';
 
 
 // ============================================
@@ -82,6 +87,17 @@ export const supplierDeliveriesRepository = new SupplierDeliveriesRepositoryClas
 export const transferOrdersRepository = new TransferOrdersRepositoryClass();
 export const deliveryOrdersRepository = new DeliveryOrdersRepositoryClass();
 export const exceptionsRepository = new ExceptionsRepositoryClass();
+// Inventory Repositories
+export const inventoryMovementsRepository = new InventoryMovementsRepositoryClass();
+
+// Outbound Services
+export const outboundServices = new OutboundServices(
+  deliveryOrdersRepository,
+  skuRepository,
+  inventoryMovementsRepository,
+  deliveryScheduleRepository,
+  outletsRepository,
+);
 
 // ============================================
 // CONTROLLERS (Presentation Layer)

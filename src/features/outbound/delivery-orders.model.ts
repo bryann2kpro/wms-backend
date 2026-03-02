@@ -28,10 +28,10 @@ export const DeliveryOrdersTable = MainSchema.table('delivery_orders', {
 
   status: text('status').notNull().default('CREATED'),
 
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  createdBy: uuid('created_by').notNull(),
-  updatedBy: uuid('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  createdBy: text('created_by').notNull(),
+  updatedBy: text('updated_by'),
 });
 
 /**
@@ -54,10 +54,10 @@ export const DeliveryOrderItemsTable = MainSchema.table('delivery_order_items', 
   qtyPicked: numeric('qty_picked', { precision: 10, scale: 2 }).default('0'),
   qtyPacked: numeric('qty_packed', { precision: 10, scale: 2 }).default('0'),
 
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  createdBy: uuid('created_by').notNull(),
-  updatedBy: uuid('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  createdBy: text('created_by').notNull(),
+  updatedBy: text('updated_by'),
 });
 
 export type DeliveryOrderType = typeof DeliveryOrdersTable.$inferSelect;
