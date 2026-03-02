@@ -12,6 +12,8 @@ import { typeDefs as rbacTypeDefs } from '@/features/rbac/rbac.typeDefs';
 import { typeDefs as auditLogTypeDefs } from '@/features/audit-log/audit.typeDefs';
 import { typeDefs as grnsTypeDefs } from '@/features/inbound/grns.typeDefs';
 import { typeDefs as supplierDeliveriesTypeDefs } from '@/features/inbound/supplier-deliveries/supplier-deliveries.typeDefs';
+import { typeDefs as outboundTypeDefs } from '@/features/outbound/outbound.typeDefs';
+import { typeDefs as inventoryTypeDefs } from '@/features/inventory/inventory.typeDefs';
 
 // Master Data typeDefs
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
@@ -20,6 +22,7 @@ import { typeDefs as outletsTypeDefs } from '@/features/master-data/outlets.type
 import { typeDefs as suppliersTypeDefs } from '@/features/master-data/suppliers.typeDefs';
 import { typeDefs as stockUnitTypeDefs } from '@/features/master-data/stock-unit.typeDefs';
 import { typeDefs as racksTypeDefs } from '@/features/master-data/racks.typeDefs';
+import { typeDefs as warehousesTypeDefs } from '@/features/master-data/warehouses.typeDefs';
 import { typeDefs as reportTypeDefs } from '@/features/report/report.typeDefs';
 
 // Directive type definitions
@@ -90,6 +93,8 @@ export const typeDefs = [
   rbacTypeDefs,  
   grnsTypeDefs,
   supplierDeliveriesTypeDefs,
+  outboundTypeDefs,
+  inventoryTypeDefs,
   // Master Data
   regionTypeDefs,
   deliveryScheduleTypeDefs,
@@ -97,6 +102,7 @@ export const typeDefs = [
   suppliersTypeDefs,
   stockUnitTypeDefs,
   racksTypeDefs,
+  warehousesTypeDefs,
   reportTypeDefs,
   auditLogTypeDefs,
 

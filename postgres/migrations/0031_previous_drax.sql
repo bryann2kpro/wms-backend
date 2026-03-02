@@ -1,0 +1,1 @@
+ALTER TABLE "main"."skus" RENAME COLUMN "sku_quantity" TO "carton_quantity";

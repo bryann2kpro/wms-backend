@@ -41,14 +41,15 @@ function transformSupplier(supplier: {
 }
 
 /**
- * Transform SKU for GraphQL response
+ * Transform SKU for GraphQL response (model has carton_Quantity -> skuQuantity, loss_Quantity -> lossQuantity)
  */
 function transformSku(sku: {
   skuId: string;
   skuCode: string;
   skuDescription: string;
   skuPrice: string | null;
-  skuQuantity: string;
+  cartonQuantity: string;
+  lossQuantity: string;
   skuExpiryDate: Date | null;
   skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }> | null;
   skuUom: string;
@@ -63,7 +64,8 @@ function transformSku(sku: {
     skuCode: sku.skuCode,
     skuDescription: sku.skuDescription,
     skuPrice: sku.skuPrice ? parseFloat(sku.skuPrice) : null,
-    skuQuantity: parseFloat(sku.skuQuantity),
+    skuQuantity: parseFloat(sku.cartonQuantity),
+    lossQuantity: parseFloat(sku.lossQuantity),
     skuExpiryDate: sku.skuExpiryDate ? sku.skuExpiryDate.toISOString() : null,
     skuUom: sku.skuUom,
     skuSuppliers: sku.skuSuppliers ?? [],
@@ -213,7 +215,8 @@ export const resolvers = {
       skuCode: string;
       skuDescription: string;
       skuPrice?: number;
-      skuQuantity: number;
+      cartonQuantity: number;
+      lossQuantity?: number | null;
       skuExpiryDate?: string | Date | null;
       skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }>;
       skuUom: string;
@@ -241,7 +244,8 @@ export const resolvers = {
           skuCode: input.skuCode,
           skuDescription: input.skuDescription,
           skuPrice: input.skuPrice?.toString(),
-          skuQuantity: input.skuQuantity.toString(),
+          cartonQuantity: input.cartonQuantity.toString(),
+          lossQuantity: (input.lossQuantity != null ? input.lossQuantity : 0).toString(),
           skuExpiryDate: expiryDate,
           skuSuppliers: skuSuppliersData ?? null,
           skuUom: input.skuUom,
@@ -274,6 +278,7 @@ export const resolvers = {
       skuDescription?: string;
       skuPrice?: number;
       skuQuantity?: number;
+      lossQuantity?: number | null;
       skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }> | null;
       skuExpiryDate?: string | Date | null;
       skuUom?: string;
@@ -292,7 +297,10 @@ export const resolvers = {
           updateData.skuPrice = input.skuPrice == null ? null : String(input.skuPrice);
         }
         if (input.skuQuantity !== undefined) {
-          updateData.skuQuantity = String(input.skuQuantity);
+          updateData.cartonQuantity = String(input.skuQuantity);
+        }
+        if (input.lossQuantity !== undefined) {
+          updateData.lossQuantity = String(input.lossQuantity);
         }
         if (input.skuExpiryDate !== undefined) {
           const raw = input.skuExpiryDate;

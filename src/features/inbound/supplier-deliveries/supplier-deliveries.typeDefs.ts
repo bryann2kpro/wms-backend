@@ -40,6 +40,7 @@ export const typeDefs = `#graphql
         itemId: String
         itemName: String
         qtyDelivered: Float!
+        lossQty: Float!
         qtyOrdered: Float
         qtyToFollow: Float
         remarks: String
@@ -86,6 +87,7 @@ export const typeDefs = `#graphql
         itemId: String
         itemName: String
         qtyDelivered: Float!
+        lossQty: Float
         qtyOrdered: Float
         qtyToFollow: Float
         remarks: String
@@ -114,6 +116,7 @@ export const typeDefs = `#graphql
         itemId: String
         itemName: String
         qtyDelivered: Float
+        lossQty: Float
         qtyOrdered: Float
         qtyToFollow: Float
         remarks: String

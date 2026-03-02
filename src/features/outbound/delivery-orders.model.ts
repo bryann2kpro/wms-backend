@@ -23,15 +23,15 @@ import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
  */
 export const DeliveryOrdersTable = MainSchema.table('delivery_orders', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
-  doNo: text('do_no').unique().notNull(),
-  toId: uuid('to_id').unique().notNull(),
+  doNo: text('delivery_order_no').unique().notNull(),
+  poNo: text('purchase_order_no').unique().notNull(),
 
   status: text('status').notNull().default('CREATED'),
 
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  createdBy: uuid('created_by').notNull(),
-  updatedBy: uuid('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  createdBy: text('created_by').notNull(),
+  updatedBy: text('updated_by'),
 });
 
 /**
@@ -48,14 +48,34 @@ export const DeliveryOrdersTable = MainSchema.table('delivery_orders', {
  */
 export const DeliveryOrderItemsTable = MainSchema.table('delivery_order_items', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
-  doId: uuid('do_id').notNull(),
+  purchaseOrderNo: text('purchase_order_no').notNull(),
   skuId: uuid('sku_id').notNull(),
   qtyRequired: numeric('qty_required', { precision: 10, scale: 2 }).notNull(),
   qtyPicked: numeric('qty_picked', { precision: 10, scale: 2 }).default('0'),
   qtyPacked: numeric('qty_packed', { precision: 10, scale: 2 }).default('0'),
 
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  createdBy: uuid('created_by').notNull(),
-  updatedBy: uuid('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  createdBy: text('created_by').notNull(),
+  updatedBy: text('updated_by'),
 });
+
+export type DeliveryOrderType = typeof DeliveryOrdersTable.$inferSelect;
+export type DeliveryOrderInsertType = typeof DeliveryOrdersTable.$inferInsert;
+export type DeliveryOrderFilter = {
+  id?: string | string[];
+  doNo?: string;
+  toId?: string | string[];
+  status?: string | string[];
+  createdBy?: string | string[];
+  createdAtFrom?: string;
+  createdAtTo?: string;
+};
+
+export type DeliveryOrderItemType = typeof DeliveryOrderItemsTable.$inferSelect;
+export type DeliveryOrderItemInsertType = typeof DeliveryOrderItemsTable.$inferInsert;
+export type DeliveryOrderItemFilter = {
+  id?: string | string[];
+  doId?: string | string[];
+  skuId?: string | string[];
+};

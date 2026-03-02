@@ -7,6 +7,7 @@ import { RegionDeliveryScheduleTable, DayOfWeek } from '@/features/master-data/d
 import { StockUnitTable, StockUnitCode } from '@/features/master-data/stock-unit.model';
 import { eq, inArray } from 'drizzle-orm';
 import { SkuTable, SkuInsertType, SkuType } from '@/features/master-data/sku.model';
+import { WarehousesRepositoryClass } from '@/features/master-data/warehouses.repository';
 
 // ============================================
 // REGION INITIALIZATION
@@ -224,6 +225,40 @@ async function initStockUnits(): Promise<void> {
 }
 
 // ============================================
+// WAREHOUSE INITIALIZATION
+// ============================================
+
+/**
+ * Default warehouses for the system
+ */
+const DEFAULT_WAREHOUSES = [
+  {
+    warehouseCode: 'SMEE-WH',
+    warehouseName: 'SME Ederan Warehouse',
+    warehouseAddress: '123 SME Industrial Park, Kuala Lumpur',
+  },
+];
+
+const warehousesRepository = new WarehousesRepositoryClass();
+
+/**
+ * Initialize default warehouses
+ */
+async function initWarehouses(): Promise<void> {
+  logger.info('📦 Initializing warehouses...');
+
+  for (const wh of DEFAULT_WAREHOUSES) {
+    await warehousesRepository.getOrCreateWarehouseByCode(
+      wh.warehouseCode,
+      wh.warehouseName,
+      wh.warehouseAddress,
+    );
+  }
+
+  logger.info('✅ Warehouses initialization complete!');
+}
+
+// ============================================
 // SKU INITIALIZATION
 // ============================================
 
@@ -235,7 +270,8 @@ const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] =
     skuCode: 'RAW-E0011',
     skuDescription: 'Empire Sushi Box(Medium) 300PCS/CTN (Local)',
     skuPrice: null,
-    skuQuantity: '0',
+    cartonQuantity: '0',
+    lossQuantity: '0',
     skuExpiryDate: new Date(),
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
@@ -243,7 +279,8 @@ const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] =
     skuCode: 'RAW-E0012',
     skuDescription: 'Empire Sushi Box(Large) 300PCS/CTN (Local)',
     skuPrice: null,
-    skuQuantity: '0',
+    cartonQuantity: '0',
+    lossQuantity: '0',
     skuExpiryDate: new Date(),
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
@@ -251,7 +288,8 @@ const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] =
     skuCode: 'RAW-E0013',
     skuDescription: 'Empire Sushi Box(Small) 300PCS/CTN (Local)',
     skuPrice: null,
-    skuQuantity: '0',
+    cartonQuantity: '0',
+    lossQuantity: '0',
     skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
@@ -259,7 +297,8 @@ const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] =
     skuCode: 'RAW-E0014',
     skuDescription: 'Empire Sushi Box (60PCS/PKT) (Local)',
     skuPrice: null,
-    skuQuantity: '0',
+    cartonQuantity: '0',
+    lossQuantity: '0',
     skuExpiryDate: new Date(),
     skuSuppliers: [],
     skuUomCode: StockUnitCode.PACKET,
@@ -328,6 +367,8 @@ export async function initMasterData(): Promise<void> {
     
     // Initialize stock units
     await initStockUnits();
+    // Initialize warehouses
+    await initWarehouses();
     // Initialize skus (depends on stock units for skuUom)
     await initSkus();
 

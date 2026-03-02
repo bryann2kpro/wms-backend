@@ -23,23 +23,21 @@ import { uuid, text, numeric, timestamp, jsonb } from "drizzle-orm/pg-core";
  * - DO_CREATED: Delivery Order has been created for this TO
  * - CANCELLED: Order cancelled
  */
-export const TransferOrdersTable = MainSchema.table('transfer_orders', {
+export const PurchaseOrdersTable = MainSchema.table('purchase_orders', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
-  netsuiteToId: text('netsuite_to_id').unique().notNull(),
-  toNo: text('to_no').unique().notNull(),
+  purchaseOrderNo: text('purchase_order_no').unique().notNull(),
   outletId: uuid('outlet_id').notNull(),
 
-  requestedDeliveryDate: timestamp('requested_delivery_date'),
-  scheduledDeliveryDate: timestamp('scheduled_delivery_date'),
+  scheduledDeliveryDate: timestamp('scheduled_delivery_date', { withTimezone: true }),
 
   status: text('status').notNull().default('NEW'),
   rawPayload: jsonb('raw_payload'),
 
-  pulledAt: timestamp('pulled_at'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  createdBy: uuid('created_by'),
-  updatedBy: uuid('updated_by'),
+  pulledAt: timestamp('pulled_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
 });
 
 /**
@@ -52,14 +50,38 @@ export const TransferOrdersTable = MainSchema.table('transfer_orders', {
  * @field skuId - Reference to the SKU requested
  * @field qty - Quantity requested
  */
-export const TransferOrderItemsTable = MainSchema.table('transfer_order_items', {
+export const PurchaseOrderItemsTable = MainSchema.table('purchase_order_items', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
-  toId: uuid('to_id').notNull(),
-  skuId: uuid('sku_id').notNull(),
-  qty: numeric('qty', { precision: 10, scale: 2 }).notNull(),
+  purchaseOrderNo: text('purchase_order_no').notNull(),
+  skuCode: text('sku_code').notNull(),
+  qtyRequired: numeric('qty_required', { precision: 10, scale: 2 }).notNull(),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   createdBy: uuid('created_by'),
   updatedBy: uuid('updated_by'),
 });
+
+export type PurchaseOrderType = typeof PurchaseOrdersTable.$inferSelect;
+export type PurchaseOrderInsertType = typeof PurchaseOrdersTable.$inferInsert;
+export type PurchaseOrderFilter = {
+  id?: string | string[];
+  purchaseOrderNo?: string;
+  toNo?: string;
+  outletId?: string | string[];
+  status?: string | string[];
+  requestedDeliveryDateFrom?: string;
+  requestedDeliveryDateTo?: string;
+  scheduledDeliveryDateFrom?: string;
+  scheduledDeliveryDateTo?: string;
+  createdAtFrom?: string;
+  createdAtTo?: string;
+};
+
+export type PurchaseOrderItemType = typeof PurchaseOrderItemsTable.$inferSelect;
+export type PurchaseOrderItemInsertType = typeof PurchaseOrderItemsTable.$inferInsert;
+export type PurchaseOrderItemFilter = {
+  id?: string | string[];
+  purchaseOrderNo?: string | string[];
+  skuCode?: string | string[];
+};
