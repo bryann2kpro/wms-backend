@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, inboundServices } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -39,8 +39,13 @@ function transformGrn(grn: GrnType) {
     }
 }
 
-function transformGrnItem(item: GrnItemsType, skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>) {
+function transformGrnItem(
+    item: GrnItemsType,
+    skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>,
+    warehouseMap?: Map<string, { warehouseName: string | null; warehouseAddress: string | null }>
+) {
     const sku = skuMap?.get(item.skuId);
+    const warehouse = item.warehouseId ? warehouseMap?.get(item.warehouseId) : undefined;
     return {
         id: item.id,
         grnId: item.grnId,
@@ -49,6 +54,9 @@ function transformGrnItem(item: GrnItemsType, skuMap?: Map<string, { skuCode: st
         skuDescription: sku?.skuDescription ?? null,
         qty: item.qty,
         remarks: item.remarks,
+        warehouseId: item.warehouseId ?? null,
+        warehouseName: warehouse?.warehouseName ?? null,
+        warehouseAddress: warehouse?.warehouseAddress ?? null,
         createdAt: item.createdAt?.toISOString?.() ?? item.createdAt,
         updatedAt: item.updatedAt?.toISOString?.() ?? item.updatedAt,
         createdBy: item.createdBy,
@@ -120,6 +128,7 @@ export const resolvers = {
             const result = await grnItemsRepository.getGrnItems({ grnId: parent.id });
             if (result === false) return [];
             const skuIds = [...new Set(result.map((r) => r.skuId))];
+            const warehouseIds = [...new Set(result.map((r) => r.warehouseId).filter((id): id is string => id != null))];
             let skuMap = new Map<string, { skuCode: string | null; skuDescription: string | null }>();
             if (skuIds.length > 0) {
                 const skuResult = await skuRepository.getSku({ skuId: skuIds });
@@ -127,7 +136,20 @@ export const resolvers = {
                     skuMap.set(s.skuId, { skuCode: s.skuCode ?? null, skuDescription: s.skuDescription ?? null });
                 }
             }
-            return result.map((item) => transformGrnItem(item, skuMap));
+            let warehouseMap = new Map<string, { warehouseName: string | null; warehouseAddress: string | null }>();
+            if (warehouseIds.length > 0) {
+                const warehouseResult = await warehousesRepository.getWarehouse(
+                    { warehouseId: warehouseIds },
+                    { pageSize: warehouseIds.length, pageNumber: 1 }
+                );
+                for (const w of warehouseResult.query) {
+                    warehouseMap.set(w.warehouseId, {
+                        warehouseName: w.warehouseName ?? null,
+                        warehouseAddress: w.warehouseAddress ?? null,
+                    });
+                }
+            }
+            return result.map((item) => transformGrnItem(item, skuMap, warehouseMap));
         },
     },
     Mutation: {
@@ -150,7 +172,7 @@ export const resolvers = {
                     status?: string | null;
                     createdBy: string;
                     updatedBy?: string | null;
-                    items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; warehouseId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -253,7 +275,7 @@ export const resolvers = {
                     }, context.tx);
 
                     // 4. Create GRN items
-                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
+                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; warehouseId?: string | null; createdBy: string; updatedBy?: string }> = [];
                     if (input.items?.length) {
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -286,6 +308,7 @@ export const resolvers = {
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 remarks: item.remarks ?? undefined,
+                                warehouseId: item.warehouseId ?? undefined,
                                 createdBy,
                                 updatedBy,
                             });
@@ -326,7 +349,7 @@ export const resolvers = {
                     status?: string | null;
                     updatedBy?: string | null;
                     updatedAt?: Date;
-                    items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; warehouseId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -400,7 +423,7 @@ export const resolvers = {
                     // Replace GRN items and sync Supplier Delivery Items (skuId, qtyDelivered = item qty)
                     if (input.items != null && input.items.length > 0) {
                         const createdBy = existingGrn.createdBy;
-                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
+                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; warehouseId?: string | null; createdBy: string; updatedBy?: string }> = [];
 
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -433,6 +456,7 @@ export const resolvers = {
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 remarks: item.remarks ?? undefined,
+                                warehouseId: item.warehouseId ?? undefined,
                                 createdBy,
                                 updatedBy,
                             });

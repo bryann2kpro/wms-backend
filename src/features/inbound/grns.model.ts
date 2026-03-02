@@ -59,6 +59,7 @@ export const GrnItemsTable = MainSchema.table('grn_items', {
   skuId: uuid('sku_id').notNull(),
   qty: numeric('qty', { precision: 10, scale: 2 }).notNull(),
   remarks: text('remarks'),
+  warehouseId: uuid('warehouse_id'),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

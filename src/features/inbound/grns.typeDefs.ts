@@ -46,6 +46,9 @@ export const typeDefs = `#graphql
         skuDescription: String
         qty: String!
         remarks: String
+        warehouseId: ID
+        warehouseName: String
+        warehouseAddress: String
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -60,6 +63,7 @@ export const typeDefs = `#graphql
         skuId: ID
         qty: String!
         remarks: String
+        warehouseId: ID
         skuCode: String
         skuDescription: String
         skuUom: ID

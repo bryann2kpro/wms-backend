@@ -190,6 +190,13 @@
       "when": 1772182677073,
       "tag": "0026_skinny_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1772414488214,
+      "tag": "0027_real_gorilla_man",
+      "breakpoints": true
     }
   ]
 }
