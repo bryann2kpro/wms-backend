@@ -22,6 +22,7 @@ export const typeDefs = `#graphql
         approvedAt: String
         notes: String
         proofUrl: String
+        warehouse: Warehouse
         createdAt: String!
         updatedAt: String!
         createdByUser: GrnAuditUser
@@ -49,9 +50,7 @@ export const typeDefs = `#graphql
         qty: String!
         lossQty: String!
         remarks: String
-        warehouseId: ID
-        warehouseName: String
-        warehouseAddress: String
+        rack: Rack
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -67,7 +66,7 @@ export const typeDefs = `#graphql
         qty: String!
         lossQty: String
         remarks: String
-        warehouseId: ID
+        rackId: ID
         skuCode: String
         skuDescription: String
         skuUom: ID
@@ -85,6 +84,7 @@ export const typeDefs = `#graphql
         receivedAt: String
         notes: String
         proofUrl: String
+        warehouseId: ID
         status: String
         createdBy: String
         updatedBy: String
@@ -104,6 +104,7 @@ export const typeDefs = `#graphql
         receivedAt: String
         notes: String
         proofUrl: String
+        warehouseId: ID
         status: String
         approvedBy: ID
         approvedAt: String

@@ -108,6 +108,7 @@ export class InboundServices {
                     supplierId: DEFAULT_SUPPLIER_ID,
                     supplierDeliveryId,
                     poNo: data.poNo ?? undefined,
+                    warehouseId: data.warehouseId ?? undefined,
                     createdBy,
                     updatedBy,
                     status: data.status ?? 'Draft',
@@ -115,7 +116,7 @@ export class InboundServices {
                 }, tx);
 
                 if (data.items?.length) {
-                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
+                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; createdBy: string; updatedBy?: string }> = [];
                     for (const item of data.items) {
                         let skuIdToUse: string | null = null;
                         if (item.skuId) {
@@ -149,6 +150,7 @@ export class InboundServices {
                             qty: item.qty,
                             lossQty: item.lossQty ?? '0',
                             remarks: item.remarks ?? undefined,
+                            rackId: item.rackId ?? undefined,
                             createdBy,
                             updatedBy,
                         });
