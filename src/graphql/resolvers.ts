@@ -15,6 +15,7 @@ import { resolvers as rbacResolvers } from '@/features/rbac/rbac.resolvers';
 import { resolvers as auditResolvers } from '@/features/audit-log/audit.resolvers';
 import { resolvers as grnsResolvers } from '@/features/inbound/grns.resolvers';
 import { resolvers as supplierDeliveriesResolvers } from '@/features/inbound/supplier-deliveries/supplier-deliveries.resolvers';
+import { resolvers as outboundResolvers } from '@/features/outbound/outbound.resolvers';
 import { resolvers as inventoryResolvers } from '@/features/inventory/inventory.resolvers';
 // Master Data resolvers
 import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
@@ -96,6 +97,7 @@ export const resolvers = mergeResolvers([
   auditResolvers,
   grnsResolvers,
   supplierDeliveriesResolvers,
+  outboundResolvers,
   inventoryResolvers,
   // Master Data
   regionResolvers,

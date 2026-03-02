@@ -7,21 +7,22 @@ import { SkuRepositoryClass } from "../master-data/sku.repository";
 import { InventoryRepositoryClass } from "../inventory/inventory.repository";
 import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../master-data/delivery-schedule.repository";
 import { OutletsRepositoryClass } from "../master-data/outlets.repository";
+import { DeliveryOrderType } from "./delivery-orders.model";
 
-type CreateDeliveryOrderData = {
+/** Line item input: must have qtyRequired and either skuId or skuCode. */
+export type CreateDeliveryOrderItemInput = {
+    skuId?: string;
+    skuCode?: string;
+    qtyRequired: string | number;
+};
+
+export type CreateDeliveryOrderData = {
     userId: string;
     purchaseOrderNo: string;
     deliveryOrderNo: string;
     outletId: string;
     orderCreatedAt?: Date;
-    items: DeliveryOrderItemInsertType[];
-};
-
-/** Line item for stock check: must have qtyRequired and either skuId or skuCode. */
-type LineItemForStockCheck = {
-    skuId?: string;
-    skuCode?: string;
-    qtyRequired: string | number;
+    items: CreateDeliveryOrderItemInput[];
 };
 
 export class OutboundServices {
@@ -33,13 +34,18 @@ export class OutboundServices {
         private readonly outletsRepository: OutletsRepositoryClass,
     ) {}
 
-    private async createDeliveryOrder(data: CreateDeliveryOrderData) {
+    /**
+     * Creates a delivery order: validates line items, checks stock, computes next delivery date,
+     * then creates the DO and items in a transaction. Returns the created delivery order.
+     */
+    async createDeliveryOrder(data: CreateDeliveryOrderData): Promise<DeliveryOrderType> {
         logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Creating delivery order...');
         try {
             logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Starting Delivery Order Flow...');
             const createdBy = data.userId;
             const updatedBy = data.userId;
-            const deliveryDate = new Date();
+            let createdOrder: DeliveryOrderType | null = null;
+
             await db.transaction(async (tx) => {
                 logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 1: Check if skus are in stock...');
                 const resolvedLines = await this.resolveAndValidateLineItems(data.items, tx);
@@ -70,6 +76,7 @@ export class OutboundServices {
                     createdBy: createdBy,
                     updatedBy: updatedBy,
                 }, tx);
+                createdOrder = deliveryOrder;
                 logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Delivery Order created successfully');
 
                 logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 4: Create Delivery Order Items...');
@@ -80,7 +87,7 @@ export class OutboundServices {
                     createdBy: data.userId,
                     updatedBy: data.userId,
                 }));
-                const deliveryOrderItems = await this.deliveryOrderRepository.createDeliveryOrderItems(itemsToInsert, tx);
+                await this.deliveryOrderRepository.createDeliveryOrderItems(itemsToInsert, tx);
                 logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Delivery Order Items created successfully');
 
                 // TODO: Step 5 - Update the PO with scheduledDeliveryDate (requires PO repository)
@@ -89,7 +96,11 @@ export class OutboundServices {
                 //     updatedBy: data.userId,
                 // }, tx);
             });
-            
+
+            if (!createdOrder) {
+                throw new Error('Delivery order was not created.');
+            }
+            return createdOrder;
         } catch (error) {
             logger.error('❌ [OutboundServices.createDeliveryOrder] Error:', error);
             throw error;
@@ -101,7 +112,7 @@ export class OutboundServices {
      * Returns list of { skuId, qtyRequired, skuCode? } for stock check and downstream use.
      */
     private async resolveAndValidateLineItems(
-        items: (DeliveryOrderItemInsertType | LineItemForStockCheck)[],
+        items: (DeliveryOrderItemInsertType | CreateDeliveryOrderItemInput)[],
         tx?: DbTransaction
     ): Promise<{ skuId: string; qtyRequired: string; skuCode?: string }[]> {
         const resolved: { skuId: string; qtyRequired: string; skuCode?: string }[] = [];
