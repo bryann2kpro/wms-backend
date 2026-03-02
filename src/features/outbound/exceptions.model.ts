@@ -40,8 +40,8 @@ export const ExceptionsTable = MainSchema.table('exceptions', {
   decisionReason: text('decision_reason'),
   notes: text('notes'),
 
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export type ExceptionType = typeof ExceptionsTable.$inferSelect;

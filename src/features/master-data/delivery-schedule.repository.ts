@@ -114,6 +114,93 @@ export class DeliveryScheduleRepositoryClass {
   }
 
   /**
+   * Get all active delivery schedules for a region.
+   * Returns all delivery days (with cutoff info) for the given region.
+   */
+  async getSchedulesByRegion(regionId: string): Promise<DeliveryScheduleWithRegion[]> {
+    try {
+      logger.info('ℹ️ [DeliveryScheduleRepository.getSchedulesByRegion] Getting schedules for region...');
+      const schedules = await db
+        .select({
+          scheduleId: RegionDeliveryScheduleTable.scheduleId,
+          regionId: RegionDeliveryScheduleTable.regionId,
+          dayOfWeek: RegionDeliveryScheduleTable.dayOfWeek,
+          cutoffDaysBefore: RegionDeliveryScheduleTable.cutoffDaysBefore,
+          cutoffTime: RegionDeliveryScheduleTable.cutoffTime,
+          isActive: RegionDeliveryScheduleTable.isActive,
+          createdAt: RegionDeliveryScheduleTable.createdAt,
+          updatedAt: RegionDeliveryScheduleTable.updatedAt,
+          createdBy: RegionDeliveryScheduleTable.createdBy,
+          updatedBy: RegionDeliveryScheduleTable.updatedBy,
+          regionName: RegionTable.regionName,
+          regionCode: RegionTable.regionCode,
+        })
+        .from(RegionDeliveryScheduleTable)
+        .innerJoin(RegionTable, eq(RegionDeliveryScheduleTable.regionId, RegionTable.regionId))
+        .where(
+          and(
+            eq(RegionDeliveryScheduleTable.regionId, regionId),
+            eq(RegionDeliveryScheduleTable.isActive, true)
+          )
+        );
+
+      return schedules.map((s) => ({
+        ...s,
+        dayName: DayOfWeekLabel[s.dayOfWeek] ?? 'Unknown',
+      }));
+    } catch (error) {
+      logger.error('❌ [DeliveryScheduleRepository.getSchedulesByRegion] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the delivery schedule (cutoff) for a region and day of week.
+   * Use when you need the next cutoff for a specific region + day inside a transaction.
+   */
+  async getScheduleByRegionAndDay(
+    regionId: string,
+    dayOfWeek: number,
+  ): Promise<DeliveryScheduleWithRegion | null> {
+    try {
+      const [schedule] = await db
+        .select({
+          scheduleId: RegionDeliveryScheduleTable.scheduleId,
+          regionId: RegionDeliveryScheduleTable.regionId,
+          dayOfWeek: RegionDeliveryScheduleTable.dayOfWeek,
+          cutoffDaysBefore: RegionDeliveryScheduleTable.cutoffDaysBefore,
+          cutoffTime: RegionDeliveryScheduleTable.cutoffTime,
+          isActive: RegionDeliveryScheduleTable.isActive,
+          createdAt: RegionDeliveryScheduleTable.createdAt,
+          updatedAt: RegionDeliveryScheduleTable.updatedAt,
+          createdBy: RegionDeliveryScheduleTable.createdBy,
+          updatedBy: RegionDeliveryScheduleTable.updatedBy,
+          regionName: RegionTable.regionName,
+          regionCode: RegionTable.regionCode,
+        })
+        .from(RegionDeliveryScheduleTable)
+        .innerJoin(RegionTable, eq(RegionDeliveryScheduleTable.regionId, RegionTable.regionId))
+        .where(
+          and(
+            eq(RegionDeliveryScheduleTable.regionId, regionId),
+            eq(RegionDeliveryScheduleTable.dayOfWeek, dayOfWeek),
+            eq(RegionDeliveryScheduleTable.isActive, true)
+          )
+        )
+        .limit(1);
+
+      if (!schedule) return null;
+      return {
+        ...schedule,
+        dayName: DayOfWeekLabel[schedule.dayOfWeek] ?? 'Unknown',
+      };
+    } catch (error) {
+      logger.error('❌ [DeliveryScheduleRepository.getScheduleByRegionAndDay] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get schedule by ID
    */
   async getScheduleById(id: string): Promise<DeliveryScheduleWithRegion | null> {
