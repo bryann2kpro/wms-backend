@@ -43,3 +43,16 @@ export const ExceptionsTable = MainSchema.table('exceptions', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+export type ExceptionType = typeof ExceptionsTable.$inferSelect;
+export type ExceptionInsertType = typeof ExceptionsTable.$inferInsert;
+export type ExceptionFilter = {
+  id?: string | string[];
+  doId?: string | string[];
+  skuId?: string | string[];
+  type?: string | string[];
+  status?: string | string[];
+  reportedBy?: string | string[];
+  reportedAtFrom?: string;
+  reportedAtTo?: string;
+};

@@ -63,3 +63,27 @@ export const TransferOrderItemsTable = MainSchema.table('transfer_order_items', 
   createdBy: uuid('created_by'),
   updatedBy: uuid('updated_by'),
 });
+
+export type TransferOrderType = typeof TransferOrdersTable.$inferSelect;
+export type TransferOrderInsertType = typeof TransferOrdersTable.$inferInsert;
+export type TransferOrderFilter = {
+  id?: string | string[];
+  netsuiteToId?: string;
+  toNo?: string;
+  outletId?: string | string[];
+  status?: string | string[];
+  requestedDeliveryDateFrom?: string;
+  requestedDeliveryDateTo?: string;
+  scheduledDeliveryDateFrom?: string;
+  scheduledDeliveryDateTo?: string;
+  createdAtFrom?: string;
+  createdAtTo?: string;
+};
+
+export type TransferOrderItemType = typeof TransferOrderItemsTable.$inferSelect;
+export type TransferOrderItemInsertType = typeof TransferOrderItemsTable.$inferInsert;
+export type TransferOrderItemFilter = {
+  id?: string | string[];
+  toId?: string | string[];
+  skuId?: string | string[];
+};
