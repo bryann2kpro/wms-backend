@@ -39,6 +39,10 @@ import { GrnItemsRepositoryClass } from './features/inbound/grns-items.repositor
 import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplier-deliveries/supplier-delivery-item.repository';
 import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
 import { InboundServices } from './features/inbound/inbound.services';
+// Outbound Repositories
+import { TransferOrdersRepositoryClass } from './features/outbound/transfer-orders.repository';
+import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
+import { ExceptionsRepositoryClass } from './features/outbound/exceptions.repository';
 
 
 // ============================================
@@ -73,6 +77,11 @@ export const grnsRepository = new GrnsRepositoryClass();
 export const grnItemsRepository = new GrnItemsRepositoryClass();
 export const supplierDeliveryItemsRepository = new SupplierDeliveryItemsRepositoryClass();
 export const supplierDeliveriesRepository = new SupplierDeliveriesRepositoryClass();
+
+// Outbound Repositories
+export const transferOrdersRepository = new TransferOrdersRepositoryClass();
+export const deliveryOrdersRepository = new DeliveryOrdersRepositoryClass();
+export const exceptionsRepository = new ExceptionsRepositoryClass();
 
 // ============================================
 // CONTROLLERS (Presentation Layer)
