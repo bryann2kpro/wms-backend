@@ -12,7 +12,9 @@ export const SkuTable = MainSchema.table('skus', {
   skuCode: text('sku_code').notNull(),
   skuDescription: text('sku_description').notNull(),
   skuPrice: numeric('sku_price', { precision: 6, scale: 2 }),
-  skuQuantity: numeric('sku_quantity', { precision: 6, scale: 2 }).notNull(),
+  cartonQuantity: numeric('carton_quantity', { precision: 6, scale: 2 }).notNull().default('0'),
+  lossQuantity: numeric('loss_quantity', { precision: 6, scale: 2 }).notNull().default('0'),
+
   skuExpiryDate: timestamp('sku_expiry_date', { withTimezone: true }),
   /**
    * SKU Suppliers - Array of supplier references with original SKU codes

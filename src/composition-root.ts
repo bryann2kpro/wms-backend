@@ -84,4 +84,10 @@ export const healthController = new HealthControllerClass();
 export const uploadController = new UploadControllerClass(uploadService);
 export const auditLogRepository = new AuditLogRepositoryClass();
 export const reportController = new ReportControllerClass();
-export const inboundServices = new InboundServices(grnsRepository, skuRepository);
+export const inboundServices = new InboundServices(
+    grnsRepository,
+    skuRepository,
+    supplierDeliveriesRepository,
+    supplierDeliveryItemsRepository,
+    grnItemsRepository,
+);

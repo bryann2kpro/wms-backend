@@ -190,6 +190,41 @@
       "when": 1772182677073,
       "tag": "0026_skinny_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1772414488214,
+      "tag": "0027_real_gorilla_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1772417891143,
+      "tag": "0028_productive_hiroim",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1772418409934,
+      "tag": "0029_wealthy_spiral",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1772418512150,
+      "tag": "0030_rare_nightmare",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1772418570711,
+      "tag": "0031_previous_drax",
+      "breakpoints": true
     }
   ]
 }

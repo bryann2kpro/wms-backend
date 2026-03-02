@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -32,6 +32,8 @@ function transformGrn(grn: GrnType) {
         receivedAt: grn.receivedAt,
         approvedBy: grn.approvedBy,
         approvedAt: grn.approvedAt,
+        notes: grn.notes ?? null,
+        proofUrl: grn.proofUrl ?? null,
         createdAt: grn.createdAt,
         updatedAt: grn.updatedAt,
         createdBy: grn.createdBy,
@@ -39,8 +41,13 @@ function transformGrn(grn: GrnType) {
     }
 }
 
-function transformGrnItem(item: GrnItemsType, skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>) {
+function transformGrnItem(
+    item: GrnItemsType,
+    skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>,
+    warehouseMap?: Map<string, { warehouseName: string | null; warehouseAddress: string | null }>
+) {
     const sku = skuMap?.get(item.skuId);
+    const warehouse = item.warehouseId ? warehouseMap?.get(item.warehouseId) : undefined;
     return {
         id: item.id,
         grnId: item.grnId,
@@ -48,7 +55,11 @@ function transformGrnItem(item: GrnItemsType, skuMap?: Map<string, { skuCode: st
         skuCode: sku?.skuCode ?? null,
         skuDescription: sku?.skuDescription ?? null,
         qty: item.qty,
+        lossQty: item.lossQty ?? '0',
         remarks: item.remarks,
+        warehouseId: item.warehouseId ?? null,
+        warehouseName: warehouse?.warehouseName ?? null,
+        warehouseAddress: warehouse?.warehouseAddress ?? null,
         createdAt: item.createdAt?.toISOString?.() ?? item.createdAt,
         updatedAt: item.updatedAt?.toISOString?.() ?? item.updatedAt,
         createdBy: item.createdBy,
@@ -97,6 +108,16 @@ export const resolvers = {
         },
     },
     Grn: {
+        createdByUser: async (parent: { createdBy?: string | null }) => {
+            if (!parent.createdBy) return null;
+            const user = await authRepository.getUserById(parent.createdBy);
+            return user ? { id: user.id, displayName: user.displayName } : null;
+        },
+        updatedByUser: async (parent: { updatedBy?: string | null }) => {
+            if (!parent.updatedBy) return null;
+            const user = await authRepository.getUserById(parent.updatedBy);
+            return user ? { id: user.id, displayName: user.displayName } : null;
+        },
         supplierDeliveryNo: async (parent: { supplierDeliveryId?: string | null }) => {
             if (!parent.supplierDeliveryId) return null;
             const result = await supplierDeliveriesRepository.getSupplierDeliveries(
@@ -110,6 +131,7 @@ export const resolvers = {
             const result = await grnItemsRepository.getGrnItems({ grnId: parent.id });
             if (result === false) return [];
             const skuIds = [...new Set(result.map((r) => r.skuId))];
+            const warehouseIds = [...new Set(result.map((r) => r.warehouseId).filter((id): id is string => id != null))];
             let skuMap = new Map<string, { skuCode: string | null; skuDescription: string | null }>();
             if (skuIds.length > 0) {
                 const skuResult = await skuRepository.getSku({ skuId: skuIds });
@@ -117,7 +139,20 @@ export const resolvers = {
                     skuMap.set(s.skuId, { skuCode: s.skuCode ?? null, skuDescription: s.skuDescription ?? null });
                 }
             }
-            return result.map((item) => transformGrnItem(item, skuMap));
+            let warehouseMap = new Map<string, { warehouseName: string | null; warehouseAddress: string | null }>();
+            if (warehouseIds.length > 0) {
+                const warehouseResult = await warehousesRepository.getWarehouse(
+                    { warehouseId: warehouseIds },
+                    { pageSize: warehouseIds.length, pageNumber: 1 }
+                );
+                for (const w of warehouseResult.query) {
+                    warehouseMap.set(w.warehouseId, {
+                        warehouseName: w.warehouseName ?? null,
+                        warehouseAddress: w.warehouseAddress ?? null,
+                    });
+                }
+            }
+            return result.map((item) => transformGrnItem(item, skuMap, warehouseMap));
         },
     },
     Mutation: {
@@ -136,11 +171,13 @@ export const resolvers = {
                     supplierDeliveryNo?: string | null;
                     poNo?: string | null;
                     receivedAt?: string | null;
+                    notes?: string | null;
+                    proofUrl?: string | null;
                     approvedBy?: string | null;
                     status?: string | null;
                     createdBy: string;
                     updatedBy?: string | null;
-                    items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; warehouseId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -156,9 +193,27 @@ export const resolvers = {
 
                     let supplierDeliveryId: string | undefined = input.supplierDeliveryId ?? undefined;
 
-                    // When supplierDeliveryNo provided: create Supplier Delivery + Supplier Delivery Items first, then GRN
-                    if (input.supplierDeliveryNo) { // TJ: SUPPLIER DELIVERY NO MUST BE PROVIDED
-                        // 1. Create Supplier Delivery
+                    // Check for duplicate GRN code before creating
+                    const existingResult = await grnsRepository.getGrns(
+                        { grnNo: input.grnNo },
+                        { pageSize: 1, pageNumber: 1 }
+                    );
+                    if (existingResult && existingResult.query?.length > 0) {
+                        throw new GraphQLError('Repeated GRN code found', {
+                            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+                        });
+                    }
+
+                    if (input.supplierDeliveryNo) {
+                        const existingDo = await supplierDeliveriesRepository.getSupplierDeliveries(
+                            { supplierDeliveryNo: input.supplierDeliveryNo },
+                            { pageSize: 1, pageNumber: 1 }
+                        );
+                        if (existingDo && existingDo.query?.length > 0) {
+                            throw new GraphQLError('Repeated supplier delivery number found', {
+                                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+                            });
+                        }
                         const supplierDelivery = await supplierDeliveriesRepository.createSupplierDelivery({
                             supplierId,
                             supplierDeliveryNo: input.supplierDeliveryNo,
@@ -187,7 +242,8 @@ export const resolvers = {
                                         const newSku = await skuRepository.createSku({
                                             skuCode: item.skuCode,
                                             skuDescription: item.skuDescription,
-                                            skuQuantity: '0',
+                                            cartonQuantity: '0',
+                                            lossQuantity: '0',
                                             skuUom: item.skuUom,
                                             isActive: true,
                                             createdBy,
@@ -206,30 +262,21 @@ export const resolvers = {
                                     supplierDeliveryId,
                                     skuId: skuIdToUse,
                                     qtyDelivered: item.qty,
+                                    lossQty: item.lossQty ?? '0',
                                     createdBy,
                                     updatedBy: updatedBy ?? createdBy,
                                 }, context.tx);
                             }
                         }
                     }
-
-                    // Check for duplicate GRN code before creating
-                    const existingResult = await grnsRepository.getGrns(
-                        { grnNo: input.grnNo },
-                        { pageSize: 1, pageNumber: 1 }
-                    );
-                    if (existingResult && existingResult.query?.length > 0) {
-                        throw new GraphQLError('Repeated GRN code found', {
-                            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
-                        });
-                    }
-
                     // 3. Create GRN (with supplierDeliveryId when supplierDeliveryNo was provided)
                     const grn = await grnsRepository.createGrn({
                         grnNo: input.grnNo,
                         supplierId,
                         supplierDeliveryId,
                         poNo: input.poNo ?? undefined,
+                        notes: input.notes ?? undefined,
+                        proofUrl: input.proofUrl ?? undefined,
                         createdBy,
                         updatedBy,
                         status: input.status ?? 'Draft',
@@ -237,7 +284,7 @@ export const resolvers = {
                     }, context.tx);
 
                     // 4. Create GRN items
-                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
+                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; warehouseId?: string | null; createdBy: string; updatedBy?: string }> = [];
                     if (input.items?.length) {
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -250,7 +297,8 @@ export const resolvers = {
                                     const newSku = await skuRepository.createSku({
                                         skuCode: item.skuCode,
                                         skuDescription: item.skuDescription,
-                                        skuQuantity: '0',
+                                        cartonQuantity: '0',
+                                        lossQuantity: '0',
                                         skuUom: item.skuUom,
                                         isActive: true,
                                         createdBy,
@@ -269,7 +317,9 @@ export const resolvers = {
                                 grnId: grn.id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
+                                lossQty: item.lossQty ?? '0',
                                 remarks: item.remarks ?? undefined,
+                                warehouseId: item.warehouseId ?? undefined,
                                 createdBy,
                                 updatedBy,
                             });
@@ -305,12 +355,14 @@ export const resolvers = {
                     supplierDeliveryNo?: string | null;
                     poNo?: string | null;
                     receivedAt?: string | null;
+                    notes?: string | null;
+                    proofUrl?: string | null;
                     approvedBy?: string | null;
                     approvedAt?: string | null;
                     status?: string | null;
                     updatedBy?: string | null;
                     updatedAt?: Date;
-                    items?: Array<{ skuId?: string | null; qty: string; remarks?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; warehouseId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -349,6 +401,8 @@ export const resolvers = {
                     if (input.approvedBy !== undefined) updateData.approvedBy = input.approvedBy;
                     if (input.approvedAt !== undefined) updateData.approvedAt = input.approvedAt != null ? new Date(input.approvedAt) : null;
                     if (input.status !== undefined) updateData.status = input.status;
+                    if (input.notes !== undefined) updateData.notes = input.notes;
+                    if (input.proofUrl !== undefined) updateData.proofUrl = input.proofUrl;
 
                     const deliveryDate = input.receivedAt != null ? new Date(input.receivedAt) : undefined;
                     let supplierDeliveryId: string | null = existingGrn.supplierDeliveryId ?? null;
@@ -384,7 +438,7 @@ export const resolvers = {
                     // Replace GRN items and sync Supplier Delivery Items (skuId, qtyDelivered = item qty)
                     if (input.items != null && input.items.length > 0) {
                         const createdBy = existingGrn.createdBy;
-                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; remarks?: string; createdBy: string; updatedBy?: string }> = [];
+                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; warehouseId?: string | null; createdBy: string; updatedBy?: string }> = [];
 
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -397,7 +451,8 @@ export const resolvers = {
                                     const newSku = await skuRepository.createSku({
                                         skuCode: item.skuCode,
                                         skuDescription: item.skuDescription,
-                                        skuQuantity: '0',
+                                        cartonQuantity: '0',
+                                        lossQuantity: '0',
                                         skuUom: item.skuUom,
                                         isActive: true,
                                         createdBy,
@@ -416,7 +471,9 @@ export const resolvers = {
                                 grnId: id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
+                                lossQty: item.lossQty ?? '0',
                                 remarks: item.remarks ?? undefined,
+                                warehouseId: item.warehouseId ?? undefined,
                                 createdBy,
                                 updatedBy,
                             });
@@ -435,6 +492,7 @@ export const resolvers = {
                                     supplierDeliveryId: effectiveDeliveryId,
                                     skuId: item.skuId,
                                     qtyDelivered: item.qty,
+                                    lossQty: item.lossQty ?? '0',
                                     createdBy: item.createdBy,
                                     updatedBy: item.updatedBy ?? updatedBy,
                                 }, context.tx);
@@ -445,28 +503,37 @@ export const resolvers = {
                     const grn = await grnsRepository.updateGrn(id, updateData, context.tx);
                     if (!grn) return false;
 
+                    // When status is set to Approved: add GRN item qty (net) and lossQty to SKU inventory
                     if (updateData.status === 'Approved') {
                         const grnItems = await grnItemsRepository.getGrnItems({ grnId: id }, context.tx);
                         if (grnItems === false) {
                             logger.error('[grns.resolvers]: Failed to get GRN items');
                             throw new Error('Failed to get GRN items for approval');
                         }
-                        const qtyBySkuId = new Map<string, number>();
+                        // Aggregate per SKU: net received (qty - lossQty) → cartonQuantity, lossQty → lossQuantity
+                        const addQtyBySkuId = new Map<string, number>();
+                        const addLossBySkuId = new Map<string, number>();
                         for (const item of grnItems) {
-                            const add = Number(item.qty ?? 0);
-                            qtyBySkuId.set(item.skuId, (qtyBySkuId.get(item.skuId) ?? 0) + add);
+                            const qty = Number(item.qty ?? 0);
+                            const lossQty = Number((item as { lossQty?: string }).lossQty ?? 0);
+                            const netQty = qty - lossQty;
+                            addQtyBySkuId.set(item.skuId, (addQtyBySkuId.get(item.skuId) ?? 0) + netQty);
+                            addLossBySkuId.set(item.skuId, (addLossBySkuId.get(item.skuId) ?? 0) + lossQty);
                         }
-                        const skuIds = [...qtyBySkuId.keys()];
+                        const skuIds = [...new Set([...addQtyBySkuId.keys(), ...addLossBySkuId.keys()])];
                         if (skuIds.length > 0) {
                             const { query: skus } = await skuRepository.getSku({ skuId: skuIds }, undefined, context.tx);
                             const skuMap = new Map(skus.map((s) => [s.skuId, s]));
                             const updates = skuIds.map(async (skuId) => {
                                 const sku = skuMap.get(skuId);
                                 if (!sku) throw new Error(`SKU not found: ${skuId}`);
-                                const currentQty = Number(sku.skuQuantity ?? 0);
-                                const addQty = qtyBySkuId.get(skuId) ?? 0;
+                                const currentQty = Number(sku.cartonQuantity ?? 0);
+                                const currentLoss = Number(sku.lossQuantity ?? 0);
+                                const addQty = addQtyBySkuId.get(skuId) ?? 0;
+                                const addLoss = addLossBySkuId.get(skuId) ?? 0;
                                 const newQty = (currentQty + addQty).toFixed(2);
-                                const updated = await skuRepository.updateSku(skuId, { skuQuantity: newQty }, context.tx);
+                                const newLoss = (currentLoss + addLoss).toFixed(2);
+                                const updated = await skuRepository.updateSku(skuId, { cartonQuantity: newQty, lossQuantity: newLoss }, context.tx);
                                 if (!updated) throw new Error(`Failed to update SKU quantity: ${skuId}`);
                                 return updated;
                             });

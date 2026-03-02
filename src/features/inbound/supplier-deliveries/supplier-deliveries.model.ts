@@ -65,6 +65,7 @@ export const SupplierDeliveryItemsTable = MainSchema.table('supplier_delivery_it
   itemId: text('item_id'),
   itemName: text('item_name'),
   qtyDelivered: numeric('qty_delivered', { precision: 10, scale: 2 }).notNull(),
+  lossQty: numeric('loss_qty', { precision: 10, scale: 2 }).notNull().default('0'),
   qtyOrdered: numeric('qty_ordered', { precision: 10, scale: 2 }),
   qtyToFollow: numeric('qty_to_follow', { precision: 10, scale: 2 }),
   remarks: text('remarks'),

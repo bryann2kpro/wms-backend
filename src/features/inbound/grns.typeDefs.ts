@@ -20,11 +20,21 @@ export const typeDefs = `#graphql
         receivedAt: String
         approvedBy: ID
         approvedAt: String
+        notes: String
+        proofUrl: String
         createdAt: String!
         updatedAt: String!
-        createdBy: ID!
-        updatedBy: ID
+        createdByUser: GrnAuditUser
+        updatedByUser: GrnAuditUser
         items: [GrnItem!]!
+    }
+
+    """
+    User info for GRN audit fields (createdBy / updatedBy).
+    """
+    type GrnAuditUser {
+        id: ID!
+        displayName: String!
     }
 
     """
@@ -37,7 +47,11 @@ export const typeDefs = `#graphql
         skuCode: String
         skuDescription: String
         qty: String!
+        lossQty: String!
         remarks: String
+        warehouseId: ID
+        warehouseName: String
+        warehouseAddress: String
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -51,7 +65,9 @@ export const typeDefs = `#graphql
     input CreateGrnItemInput {
         skuId: ID
         qty: String!
+        lossQty: String
         remarks: String
+        warehouseId: ID
         skuCode: String
         skuDescription: String
         skuUom: ID
@@ -67,6 +83,8 @@ export const typeDefs = `#graphql
         supplierDeliveryNo: String
         poNo: String
         receivedAt: String
+        notes: String
+        proofUrl: String
         status: String
         createdBy: String
         updatedBy: String
@@ -84,6 +102,8 @@ export const typeDefs = `#graphql
         supplierDeliveryNo: String
         poNo: String
         receivedAt: String
+        notes: String
+        proofUrl: String
         status: String
         approvedBy: ID
         approvedAt: String
