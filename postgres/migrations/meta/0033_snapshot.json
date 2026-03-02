@@ -1,5 +1,5 @@
 {
-  "id": "4a3631ae-1099-4d3d-ba1b-787a4f15f910",
+  "id": "502e76d2-0aec-49db-9bcc-185c92435f54",
   "prevId": "a8058fd5-9031-4842-8e21-c84d2efbb101",
   "version": "7",
   "dialect": "postgresql",
@@ -994,90 +994,6 @@
           ]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "main.inventory_movements": {
-      "name": "inventory_movements",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "sku_id": {
-          "name": "sku_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "movement_type": {
-          "name": "movement_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "quantity": {
-          "name": "quantity",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "balance_after": {
-          "name": "balance_after",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reference_no": {
-          "name": "reference_no",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "inventory_movements_sku_id_skus_sku_id_fk": {
-          "name": "inventory_movements_sku_id_skus_sku_id_fk",
-          "tableFrom": "inventory_movements",
-          "tableTo": "skus",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "sku_id"
-          ],
-          "columnsTo": [
-            "sku_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2173,13 +2089,13 @@
         },
         "created_by": {
           "name": "created_by",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
         "updated_by": {
           "name": "updated_by",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
