@@ -94,7 +94,7 @@ export const inventoryMovementsRepository = new InventoryMovementsRepositoryClas
 export const outboundServices = new OutboundServices(
   deliveryOrdersRepository,
   skuRepository,
-  inventoryRepository,
+  inventoryMovementsRepository,
   deliveryScheduleRepository,
   outletsRepository,
 );
