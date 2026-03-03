@@ -1,13 +1,51 @@
 import { GrnItemsRepositoryClass } from "./grns-items.repository";
 import { GrnsRepositoryClass } from "./grns.repository";
 import { SupplierDeliveryItemsRepositoryClass } from "./supplier-deliveries/supplier-delivery-item.repository";
-import { WarehousesRepositoryClass } from "@/features/master-data/warehouses.repository";
 import { SupplierDeliveriesRepositoryClass } from "./supplier-deliveries/supplier-deliveries.repository";
 import { logger } from "@/util/logger";
 import { db } from "@/db";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
+import type { DbTransaction } from "@/types/db-transaction";
 
 const DEFAULT_SUPPLIER_ID = 'b3e317c5-4bec-49aa-82f3-0a83115a8e70';
+
+/**
+ * Item input for creating a GRN (same shape as CreateGrnItemInput).
+ * Provide skuId to use an existing SKU; or skuCode, skuDescription, skuUom to create a new SKU.
+ */
+export type CreateInboundItemInput = {
+    skuId?: string | null;
+    qty: string;
+    lossQty?: string | null;
+    remarks?: string | null;
+    rackId?: string | null;
+    skuCode?: string | null;
+    skuDescription?: string | null;
+    skuUom?: string | null;
+};
+
+/**
+ * Input for creating an inbound (GRN) – same type and process as createGrn.
+ * When inboundQty and skuId are provided, the SKU's cartonQuantity is updated to inboundQty (in same transaction).
+ */
+export type CreateInboundInput = {
+    userId: string;
+    grnNo: string;
+    supplierId?: string | null;
+    supplierDeliveryId?: string | null;
+    supplierDeliveryNo?: string | null;
+    poNo?: string | null;
+    receivedAt?: string | null;
+    notes?: string | null;
+    proofUrl?: string | null;
+    warehouseId?: string | null;
+    status?: string | null;
+    items?: CreateInboundItemInput[] | null;
+    /** When set with skuId, updates that SKU's carton quantity to this value (in same transaction). */
+    inboundQty?: number | string | null;
+    /** SKU to update when inboundQty is provided. */
+    skuId?: string | null;
+};
 
 export class InboundServices {
     constructor(
@@ -18,21 +56,27 @@ export class InboundServices {
         private readonly grnItemsRepository: GrnItemsRepositoryClass,
     ) {}
 
-    async createInbound(data: any): Promise<boolean> {
+    /**
+     * Create inbound (GRN + items). Same types and process as createGrn:
+     * 1. Check duplicate grnNo
+     * 2. If supplierDeliveryNo: check duplicate, create supplier delivery, create supplier delivery items from items
+     * 3. Create GRN
+     * 4. Create GRN items (resolve/create SKU per item, then batch insert)
+     */
+    async createInbound(data: CreateInboundInput): Promise<boolean> {
         logger.info('ℹ️ [InboundServices.createInbound] Creating inbound...');
 
-        const { userId, inboundQty } = data;
-        if (!userId) {
+        const createdBy = data.userId;
+        if (!createdBy) {
             logger.error('❌ [InboundServices.createInbound] User ID is required');
             return false;
         }
 
-        const result = await db.transaction(async (tx) => {
+        const result = await db.transaction(async (tx: DbTransaction) => {
             try {
                 logger.info('ℹ️ [InboundServices.createInbound] Starting Inbound Flow...');
 
-                const createdBy = userId;
-                const updatedBy = userId;
+                const updatedBy = createdBy;
                 const receivedAt = data.receivedAt != null ? new Date(data.receivedAt) : null;
                 const deliveryDate = receivedAt ?? new Date();
                 let supplierDeliveryId: string | undefined = data.supplierDeliveryId ?? undefined;
@@ -45,6 +89,7 @@ export class InboundServices {
                     throw new Error('Repeated GRN code found');
                 }
 
+                // 2. If supplierDeliveryNo: create supplier delivery + supplier delivery items
                 if (data.supplierDeliveryNo) {
                     const existingDo = await this.supplierDeliveriesRepository.getSupplierDeliveries(
                         { supplierDeliveryNo: data.supplierDeliveryNo },
@@ -65,34 +110,10 @@ export class InboundServices {
 
                     if (data.items?.length) {
                         for (const item of data.items) {
-                            let skuIdToUse: string | null = null;
-                            if (item.skuId) {
-                                const existingSku = await this.skuRepository.getSkuById(item.skuId);
-                                if (existingSku) skuIdToUse = existingSku.skuId;
-                            }
-                            if (!skuIdToUse && item.skuCode && item.skuDescription && item.skuUom) {
-                                try {
-                                    const newSku = await this.skuRepository.createSku({
-                                        skuCode: item.skuCode,
-                                        skuDescription: item.skuDescription,
-                                        cartonQuantity: '0',
-                                        lossQuantity: '0',
-                                        skuUom: item.skuUom,
-                                        isActive: true,
-                                        createdBy,
-                                        updatedBy,
-                                    } as Parameters<typeof this.skuRepository.createSku>[0], tx);
-                                    skuIdToUse = newSku.skuId;
-                                } catch (err) {
-                                    logger.error('[InboundServices] Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
-                                }
-                            }
-                            if (!skuIdToUse) {
-                                logger.error('[InboundServices] SKU not found and cannot create', { item });
-                                continue;
-                            }
+                            const skuIdToUse = await this.resolveOrCreateSkuForItem(item, createdBy, updatedBy, tx);
+                            if (!skuIdToUse) continue;
                             await this.supplierDeliveryItemsRepository.createSupplierDeliveryItem({
-                                supplierDeliveryId,
+                                supplierDeliveryId: supplierDeliveryId!,
                                 skuId: skuIdToUse,
                                 qtyDelivered: item.qty,
                                 lossQty: item.lossQty ?? '0',
@@ -103,47 +124,27 @@ export class InboundServices {
                     }
                 }
 
+                // 3. Create GRN (same payload as createGrn)
                 const grn = await this.grnsRepository.createGrn({
                     grnNo: data.grnNo,
                     supplierId: DEFAULT_SUPPLIER_ID,
                     supplierDeliveryId,
                     poNo: data.poNo ?? undefined,
+                    notes: data.notes ?? undefined,
+                    proofUrl: data.proofUrl ?? undefined,
                     warehouseId: data.warehouseId ?? undefined,
                     createdBy,
                     updatedBy,
                     status: data.status ?? 'Draft',
-                    receivedAt,
+                    receivedAt: receivedAt ?? undefined,
                 }, tx);
 
+                // 4. Create GRN items (same as createGrn)
+                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; createdBy: string; updatedBy?: string }> = [];
                 if (data.items?.length) {
-                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; createdBy: string; updatedBy?: string }> = [];
                     for (const item of data.items) {
-                        let skuIdToUse: string | null = null;
-                        if (item.skuId) {
-                            const existingSku = await this.skuRepository.getSkuById(item.skuId);
-                            if (existingSku) skuIdToUse = existingSku.skuId;
-                        }
-                        if (!skuIdToUse && item.skuCode && item.skuDescription && item.skuUom) {
-                            try {
-                                const newSku = await this.skuRepository.createSku({
-                                    skuCode: item.skuCode,
-                                    skuDescription: item.skuDescription,
-                                    cartonQuantity: '0',
-                                    lossQuantity: '0',
-                                    skuUom: item.skuUom,
-                                    isActive: true,
-                                    createdBy,
-                                    updatedBy,
-                                } as Parameters<typeof this.skuRepository.createSku>[0], tx);
-                                skuIdToUse = newSku.skuId;
-                            } catch (err) {
-                                logger.error('[InboundServices] Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
-                            }
-                        }
-                        if (!skuIdToUse) {
-                            logger.error('[InboundServices] SKU not found and cannot create', { item });
-                            continue;
-                        }
+                        const skuIdToUse = await this.resolveOrCreateSkuForItem(item, createdBy, updatedBy, tx);
+                        if (!skuIdToUse) continue;
                         grnItemRows.push({
                             grnId: grn.id,
                             skuId: skuIdToUse,
@@ -159,15 +160,16 @@ export class InboundServices {
                         const created = await this.grnItemsRepository.createGrnItems(grnItemRows, tx);
                         if (created === false) {
                             logger.error('[InboundServices] Failed to create GRN items batch');
+                            throw new Error('Failed to create GRN items');
                         }
                     }
                 }
 
-                if (inboundQty != null && data.skuId) {
+                if (data.inboundQty != null && data.skuId) {
                     logger.info('ℹ️ [InboundServices.createInbound] Updating inventory balance...');
                     await this.skuRepository.updateSku(data.skuId, {
-                        cartonQuantity: String(inboundQty),
-                        updatedBy: userId,
+                        cartonQuantity: String(data.inboundQty),
+                        updatedBy: createdBy,
                         updatedAt: new Date(),
                     }, tx);
                     logger.info('✅ [InboundServices.createInbound] Inventory balance updated successfully');
@@ -186,8 +188,44 @@ export class InboundServices {
         } else {
             logger.info('✅ [InboundServices.createInbound] Inbound created successfully');
         }
-
         return result;
+    }
+
+    /**
+     * Resolve SKU by skuId or create from skuCode/skuDescription/skuUom (same logic as createGrn).
+     */
+    private async resolveOrCreateSkuForItem(
+        item: CreateInboundItemInput,
+        createdBy: string,
+        updatedBy: string,
+        tx: DbTransaction
+    ): Promise<string | null> {
+        let skuIdToUse: string | null = null;
+        if (item.skuId) {
+            const existingSku = await this.skuRepository.getSkuById(item.skuId, tx);
+            if (existingSku) skuIdToUse = existingSku.skuId;
+        }
+        if (!skuIdToUse && item.skuCode && item.skuDescription && item.skuUom) {
+            try {
+                const newSku = await this.skuRepository.createSku({
+                    skuCode: item.skuCode,
+                    skuDescription: item.skuDescription,
+                    cartonQuantity: '0',
+                    lossQuantity: '0',
+                    skuUom: item.skuUom,
+                    isActive: true,
+                    createdBy,
+                    updatedBy,
+                } as Parameters<typeof this.skuRepository.createSku>[0], tx);
+                skuIdToUse = newSku.skuId;
+            } catch (err) {
+                logger.error('[InboundServices] Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
+            }
+        }
+        if (!skuIdToUse) {
+            logger.error('[InboundServices] SKU not found and cannot create', { item });
+        }
+        return skuIdToUse;
     }
 
     // TJ to confirm if this is needed
