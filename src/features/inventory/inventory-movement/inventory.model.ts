@@ -10,13 +10,13 @@ const InventoryMovementTypeEnum = MainSchema.enum('inventory_movement_type', [
   'DAMAGED', // Found broken item
 ]);
 
-export const InventoryMovementType = {
-  INBOUND: 'INBOUND', // Inventory received from a supplier
-  RESERVED: 'RESERVED', // Inventory reserved for a shipment
-  SHIPMENT: 'SHIPMENT', // Truck left warehouse
-  ADJUSTMENT: 'ADJUSTMENT', // Stock count correction
-  DAMAGED: 'DAMAGED', // Found broken item
-} as const;
+export enum InventoryMovementType {
+  INBOUND = 'INBOUND', // Inventory received from a supplier
+  RESERVED = 'RESERVED', // Inventory reserved for a shipment
+  SHIPMENT = 'SHIPMENT', // Truck left warehouse
+  ADJUSTMENT = 'ADJUSTMENT', // Stock count correction
+  DAMAGED = 'DAMAGED', // Found broken item
+};
 
 /**
  * Inventory Movements Table

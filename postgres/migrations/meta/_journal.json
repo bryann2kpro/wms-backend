@@ -267,6 +267,13 @@
       "when": 1772515603603,
       "tag": "0037_round_jimmy_woo",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1772520782017,
+      "tag": "0038_low_scorpion",
+      "breakpoints": true
     }
   ]
 }

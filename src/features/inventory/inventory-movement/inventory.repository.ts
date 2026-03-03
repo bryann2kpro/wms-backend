@@ -5,7 +5,7 @@
  */
 
 import { db } from '@/db';
-import { InventoryMovementsTable, InventoryMovementType, InventoryMovementTypeEnum } from './inventory.model';
+import { InventoryMovementsTable, InventoryMovementType } from './inventory.model';
 import { eq, and, inArray, like, asc, desc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import type { DbTransaction } from '@/types/db-transaction';
@@ -23,7 +23,7 @@ export type InventoryMovementsInsertType = typeof InventoryMovementsTable.$infer
 export type InventoryMovementsFilter = {
   id?: string;
   skuId?: string | string[];
-  movementType?: string | string[];
+  movementType?: InventoryMovementType | InventoryMovementType[];
   referenceNo?: string;
   reason?: string;
 }
