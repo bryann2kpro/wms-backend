@@ -45,9 +45,8 @@ import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orde
 import { ExceptionsRepositoryClass } from './features/outbound/exceptions.repository';
 import { OutboundServices } from './features/outbound/outbound.services';
 // Inventory
-import { InventoryRepositoryClass } from './features/inventory/inventory.repository';
-// Inventory Repositories
-import { InventoryMovementsRepositoryClass } from './features/inventory/inventory.repository';
+import { InventoryMovementsRepositoryClass } from './features/inventory/inventory-movement/inventory.repository';
+import { InventoryBalancesRepositoryClass } from './features/inventory/inventory-balance/inventory.repository';
 
 
 // ============================================
@@ -89,12 +88,13 @@ export const deliveryOrdersRepository = new DeliveryOrdersRepositoryClass();
 export const exceptionsRepository = new ExceptionsRepositoryClass();
 // Inventory Repositories
 export const inventoryMovementsRepository = new InventoryMovementsRepositoryClass();
+export const inventoryBalancesRepository = new InventoryBalancesRepositoryClass();
 
 // Outbound Services
 export const outboundServices = new OutboundServices(
   deliveryOrdersRepository,
   skuRepository,
-  inventoryMovementsRepository,
+  inventoryBalancesRepository,
   deliveryScheduleRepository,
   outletsRepository,
 );

@@ -4,7 +4,7 @@ import { DbTransaction } from "@/types/db-transaction";
 import { DeliveryOrdersRepositoryClass } from "./delivery-orders.repository";
 import { DeliveryOrderItemInsertType } from "./delivery-orders.model";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
-import { InventoryRepositoryClass } from "../inventory/inventory.repository";
+import { InventoryBalancesRepositoryClass } from "../inventory/inventory-balance/inventory.repository";
 import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../master-data/delivery-schedule.repository";
 import { OutletsRepositoryClass } from "../master-data/outlets.repository";
 import { DeliveryOrderType } from "./delivery-orders.model";
@@ -29,7 +29,7 @@ export class OutboundServices {
     constructor(
         private readonly deliveryOrderRepository: DeliveryOrdersRepositoryClass,
         private readonly skuRepository: SkuRepositoryClass,
-        private readonly inventoryRepository: InventoryRepositoryClass,
+        private readonly inventoryBalancesRepository: InventoryBalancesRepositoryClass,
         private readonly deliveryScheduleRepository: DeliveryScheduleRepositoryClass,
         private readonly outletsRepository: OutletsRepositoryClass,
     ) {}
@@ -150,8 +150,8 @@ export class OutboundServices {
     ): Promise<void> {
         if (lines.length === 0) return;
         const skuIds = [...new Set(lines.map((l) => l.skuId))];
-        const balances = await this.inventoryRepository.getBalancesBySkuIds(skuIds, tx);
-        const bySkuId = new Map(balances.map((b) => [b.skuId, b]));
+        const balances = await this.inventoryBalancesRepository.getInventoryBalanceBySkuIds(skuIds);
+        const bySkuId = new Map(balances?.map((b) => [b.skuId, b]) ?? []);
 
         const parseNum = (v: string | number): number => (typeof v === "number" ? v : parseFloat(String(v)) || 0);
 
