@@ -9,7 +9,7 @@ import { InventoryMovementsTable } from './inventory.model';
 import { eq, and, inArray, like, asc, desc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import type { DbTransaction } from '@/types/db-transaction';
-import { PaginationParams, PaginatedResponse } from '../rbac/rbac.model';
+import { PaginationParams, PaginatedResponse } from '../../rbac/rbac.model';
 import { pagination, PgQueryType } from '@/util/pagination';
 
 export type InventoryMovementsType = typeof InventoryMovementsTable.$inferSelect;
@@ -26,17 +26,11 @@ export type InventoryMovementsFilter = {
   referenceNo?: string;
   reason?: string;
 }
-
-export type InventoryMovementsSort = {
-  field?: 'CREATED_AT' | 'MOVEMENT_TYPE' | 'QUANTITY' | 'BALANCE_AFTER' | 'REFERENCE_NO' | 'REASON' | 'CREATED_BY';
-  direction?: 'ASC' | 'DESC';
-}
-
 export class InventoryMovementsRepositoryClass {
     constructor() {}
 
       /**
-   * Get warehouses with optional filtering and pagination
+   * Get Inventory Movements with optional filtering and pagination
    */
   async getInventoryMovements(
     filter: InventoryMovementsFilter,
@@ -98,7 +92,7 @@ export class InventoryMovementsRepositoryClass {
   }
 
   /**
-   * Get warehouse by ID
+   * Get Inventory Movement by ID
    */
   async getInventoryMovementById(id: string): Promise<InventoryMovementsType | null> {
     try {
@@ -119,7 +113,7 @@ export class InventoryMovementsRepositoryClass {
   /**
    * Create a new inventory movement
    */
-  async createWarehouse(
+  async createInventoryMovement(
     data: Omit<InventoryMovementsInsertType, "id" | "createdAt" | "updatedAt">,
     tx?: DbTransaction
   ): Promise<InventoryMovementsType> {
@@ -135,7 +129,7 @@ export class InventoryMovementsRepositoryClass {
       logger.info("✅ [InventoryMovementsRepository.createInventoryMovement] Inventory Movement created successfully");
       return warehouse;
     } catch (error) {
-      logger.error("❌ [WarehousesRepository.createWarehouse] Error:", error);
+      logger.error("❌ [InventoryMovementsRepository.createInventoryMovement] Error:", error);
       throw error;
     }
   }
@@ -159,4 +153,5 @@ export class InventoryMovementsRepositoryClass {
       throw error;
     }
   }
+  
 }
