@@ -134,12 +134,38 @@ export const typeDefs = `#graphql
         pagination: Pagination!
     }
 
+    """
+    Input for createInbound (same as createGrn flow; userId required; optional inboundQty + skuId to update SKU quantity).
+    """
+    input CreateInboundInput {
+        userId: String!
+        grnNo: String!
+        supplierId: ID
+        supplierDeliveryId: ID
+        supplierDeliveryNo: String
+        poNo: String
+        receivedAt: String
+        notes: String
+        proofUrl: String
+        warehouseId: ID
+        status: String
+        items: [CreateGrnItemInput!]
+        inboundQty: Float
+        skuId: ID
+    }
+
     extend type Mutation {  
         """
         Create a new GRN.
         Requires authentication.
         """
         createGrn(input: CreateGrnInput!): Grn! @auth
+
+        """
+        Create inbound (GRN + items). Same process as createGrn; use userId. Optional inboundQty + skuId to update SKU quantity.
+        Requires authentication.
+        """
+        createInbound(input: CreateInboundInput!): Boolean! @auth
 
         """
         Update an existing GRN.

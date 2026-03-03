@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -177,6 +177,45 @@ export const resolvers = {
         },
     },
     Mutation: {
+        createInbound: async (_: unknown, { input }: { input: {
+            userId: string;
+            grnNo: string;
+            supplierId?: string | null;
+            supplierDeliveryId?: string | null;
+            supplierDeliveryNo?: string | null;
+            poNo?: string | null;
+            receivedAt?: string | null;
+            notes?: string | null;
+            proofUrl?: string | null;
+            warehouseId?: string | null;
+            status?: string | null;
+            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+            inboundQty?: number | null;
+            skuId?: string | null;
+        } }) => {
+            try {
+                const result = await inboundServices.createInbound({
+                    userId: input.userId,
+                    grnNo: input.grnNo,
+                    supplierId: input.supplierId,
+                    supplierDeliveryId: input.supplierDeliveryId,
+                    supplierDeliveryNo: input.supplierDeliveryNo,
+                    poNo: input.poNo,
+                    receivedAt: input.receivedAt,
+                    notes: input.notes,
+                    proofUrl: input.proofUrl,
+                    warehouseId: input.warehouseId,
+                    status: input.status,
+                    items: input.items ?? undefined,
+                    inboundQty: input.inboundQty ?? undefined,
+                    skuId: input.skuId ?? undefined,
+                });
+                return result;
+            } catch (error) {
+                logger.error('[grns.resolvers.createInbound] Error:', error);
+                throw error;
+            }
+        },
         createGrn: withAudit(
             {
                 entity: 'GRN',
