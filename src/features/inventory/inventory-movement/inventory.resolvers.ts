@@ -99,7 +99,7 @@ export const resolvers = {
         )
       );
 
-      const users = await authRepository.getUsersByIds(allUserIds);
+      const users = await authRepository.getUsersByIds(allUserIds as string[]);
       const userMap = new Map(users.map((u) => [u.id, u]));
 
       return {

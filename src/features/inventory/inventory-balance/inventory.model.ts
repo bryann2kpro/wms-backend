@@ -18,9 +18,9 @@ import { SkuTable } from "../../master-data/sku.model";
  */
 export const InventoryBalancesTable = MainSchema.table('inventory_balances', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
-  skuId: uuid('sku_id').unique().notNull().references(() => SkuTable.skuId),
-  onHandQty: numeric('on_hand_qty', { precision: 10, scale: 2 }).notNull().default('0'),
-  lossQty: numeric('loss_qty', { precision: 10, scale: 2 }).notNull().default('0'),
-  reservedQty: numeric('reserved_qty', { precision: 10, scale: 2 }).notNull().default('0'),
+  skuId: uuid('sku_id').unique().notNull().references(() => SkuTable.skuId).unique(),
+  onHandQty: numeric('on_hand_qty', { precision: 12, scale: 2 }).notNull().default('0'),
+  lossQty: numeric('loss_qty', { precision: 12, scale: 2 }).notNull().default('0'),
+  reservedQty: numeric('reserved_qty', { precision: 12, scale: 2 }).notNull().default('0'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

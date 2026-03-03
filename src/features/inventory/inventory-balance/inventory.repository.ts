@@ -2,10 +2,12 @@ import { PaginatedResponse, PaginationParams } from "@/features/rbac/rbac.model"
 import { logger } from "@/util/logger";
 import { eq, inArray, sql, and, max } from "drizzle-orm";
 import { InventoryBalancesTable } from "./inventory.model";
-
-export type InventoryBalancesType = typeof InventoryBalancesTable.$inferSelect;
 import { pagination, PgQueryType } from "@/util/pagination";
 import { db } from "@/db";
+import { DbTransaction } from "@/types/db-transaction";
+
+export type InventoryBalancesType = typeof InventoryBalancesTable.$inferSelect;
+export type InventoryBalancesInsertType = typeof InventoryBalancesTable.$inferInsert;
 
 export type InventoryBalancesFilter = {
   skuId?: string | string[];
@@ -13,7 +15,7 @@ export type InventoryBalancesFilter = {
   recordedDate?: Date;
 }
 
-export class InventoryBalancesRepositoryClass {
+export class InventoryBalanceRepositoryClass {
   constructor() {}
 
   /**
@@ -77,5 +79,34 @@ export class InventoryBalancesRepositoryClass {
       logger.error("❌ [InventoryBalancesRepository.getInventoryBalanceBySkuIds] Error:", error);
       throw error;
     }
+  }
+
+  async upsertInventoryBalance(
+    data: InventoryBalancesInsertType,
+    tx?: DbTransaction  
+  ): Promise<InventoryBalancesType> {
+    try {
+      const client = tx ?? db;
+
+      const [balance] = await client
+        .insert(InventoryBalancesTable)
+        .values(data)
+        .onConflictDoUpdate({
+          target: [InventoryBalancesTable.skuId],
+          set: {
+            onHandQty: data.onHandQty,
+            lossQty: data.lossQty,
+            reservedQty: data.reservedQty,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+
+      logger.info("ℹ️ [InventoryBalancesRepository.upsertInventoryBalance] Inventory balance upserted successfully");
+      return balance;
+    } catch (error) {
+      logger.error("❌ [InventoryBalancesRepository.upsertInventoryBalance] Error:", error);
+      throw error;
+    }    
   }
 }
