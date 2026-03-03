@@ -6,7 +6,7 @@
 
 import { db } from '@/db';
 import { GrnsTable, GrnInsertType, GrnType } from './grns.model';
-import { eq, and, like } from 'drizzle-orm';
+import { eq, and, like, desc, asc } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -19,7 +19,11 @@ export type GrnFilter = {
     id?: string;
     grnNo?: string;
     status?: string;
-}
+    /** Sort field: GRN_NO, UPDATED_AT, CREATED_AT, STATUS, RECEIVED_AT. Default: UPDATED_AT */
+    sortBy?: string;
+    /** ASC or DESC. Default: DESC */
+    sortOrder?: string;
+};
 
 export class GrnsRepositoryClass {
     constructor() { }
@@ -38,7 +42,20 @@ export class GrnsRepositoryClass {
                 whereCondition.push(eq(GrnsTable.status, filter.status));
             }
 
-            const baseQuery = db.select().from(GrnsTable).where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+            const sortOrder = filter.sortOrder?.toUpperCase() === 'ASC' ? asc : desc;
+            const sortBy = (filter.sortBy?.toUpperCase() ?? 'UPDATED_AT') as string;
+            const orderByColumn =
+                sortBy === 'GRN_NO' ? GrnsTable.grnNo
+                : sortBy === 'CREATED_AT' ? GrnsTable.createdAt
+                : sortBy === 'STATUS' ? GrnsTable.status
+                : sortBy === 'RECEIVED_AT' ? GrnsTable.receivedAt
+                : GrnsTable.updatedAt;
+
+            const baseQuery = db
+                .select()
+                .from(GrnsTable)
+                .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+                .orderBy(sortOrder(orderByColumn));
             if (!paginationParams || (!paginationParams.pageSize && !paginationParams.pageNumber)) {
                 const data = await baseQuery;
                 const totalCount = data.length;
