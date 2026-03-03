@@ -94,6 +94,8 @@ export const resolvers = {
         skuCodes?: string[];
         skuDescription?: string;
         isActive?: boolean;
+        sortBy?: string;
+        sortOrder?: string;
       };
       pageSize?: number;
       pageNumber?: number;
@@ -122,6 +124,12 @@ export const resolvers = {
           
           if (args.filter.isActive !== undefined) {
             filter.isActive = args.filter.isActive;
+          }
+          if (args.filter.sortBy != null) {
+            filter.sortBy = args.filter.sortBy;
+          }
+          if (args.filter.sortOrder != null) {
+            filter.sortOrder = args.filter.sortOrder;
           }
         }
 

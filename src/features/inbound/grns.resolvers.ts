@@ -75,14 +75,20 @@ export const resolvers = {
                 const filter: GrnFilter = args.filter || {};
                 if (args.filter) {
                     if (args.filter.id) {
-                        filter.id = args.filter.id;
-                    }
+                        filter.id = args.filter.id
+                    };
                     if (args.filter.grnNo) {
                         filter.grnNo = args.filter.grnNo;
-                    }
+                    };
                     if (args.filter.status) {
                         filter.status = args.filter.status;
-                    }
+                    };
+                    if (args.filter.sortBy != null) {
+                        filter.sortBy = args.filter.sortBy;
+                    };
+                    if (args.filter.sortOrder != null) {
+                        filter.sortOrder = args.filter.sortOrder;
+                    };
                 }
                 const pageSize = args.pageSize ?? args.filter?.pageSize;
                 const pageNumber = args.pageNumber ?? args.filter?.pageNumber ?? args.filter?.page;

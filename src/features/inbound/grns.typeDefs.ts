@@ -123,6 +123,10 @@ export const typeDefs = `#graphql
         page: Int
         pageSize: Int
         pageNumber: Int
+        """Sort field: GRN_NO, UPDATED_AT, CREATED_AT, STATUS, RECEIVED_AT. Default: UPDATED_AT"""
+        sortBy: String
+        """Sort direction: ASC or DESC. Default: DESC (latest first)"""
+        sortOrder: String
     }
 
     type GrnPaginatedResponse {
