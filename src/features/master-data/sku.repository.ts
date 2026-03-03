@@ -197,6 +197,9 @@ export class SkuRepositoryClass {
         .values(data)
         .returning();
 
+      if (!sku) {
+        throw new Error('SKU insert did not return the created row');
+      }
       logger.info('✅ [SkuRepository.createSku] SKU created successfully');
       return sku;
     } catch (error) {
