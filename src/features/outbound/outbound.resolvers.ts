@@ -6,12 +6,13 @@
  */
 
 import { prettifyError, z } from "zod";
-import { outboundServices } from "@/composition-root";
+import { outboundServices, deliveryOrdersRepository, transferOrdersRepository } from "@/composition-root";
 import { withAudit } from "@/features/audit-log/audit.wrapper";
 import { GraphQLContext } from "@/graphql/context";
 import { GraphQLError } from "graphql";
 import { logger } from "@/util/logger";
-import { DeliveryOrderType } from "./delivery-orders.model";
+import { DeliveryOrderType, DeliveryOrderFilter } from "./delivery-orders.model";
+import { PurchaseOrderType, PurchaseOrderFilter } from "./transfer-orders.model";
 
 // ============================================
 // ZOD SCHEMAS (input sanitization)
@@ -58,6 +59,20 @@ function transformDeliveryOrder(order: DeliveryOrderType) {
   };
 }
 
+function transformPurchaseOrder(po: PurchaseOrderType) {
+  return {
+    id: po.id,
+    purchaseOrderNo: po.purchaseOrderNo,
+    outletId: po.outletId,
+    status: po.status,
+    scheduledDeliveryDate: po.scheduledDeliveryDate?.toISOString() ?? null,
+    createdAt: po.createdAt.toISOString(),
+    updatedAt: po.updatedAt?.toISOString() ?? po.createdAt.toISOString(),
+    createdBy: po.createdBy ?? null,
+    updatedBy: po.updatedBy ?? null,
+  };
+}
+
 // ============================================
 // RESOLVERS
 // ============================================
@@ -65,6 +80,87 @@ function transformDeliveryOrder(order: DeliveryOrderType) {
 export const resolvers = {
   Query: {
     _outboundHealth: () => "Outbound GraphQL is available",
+    purchaseOrders: async (
+      _: unknown,
+      args: {
+        filter?: PurchaseOrderFilter & { page?: number; pageSize?: number; pageNumber?: number };
+        pageSize?: number;
+        pageNumber?: number;
+      }
+    ) => {
+      try {
+        const filter: PurchaseOrderFilter = {};
+        if (args.filter) {
+          if (args.filter.id) filter.id = args.filter.id;
+          if (args.filter.purchaseOrderNo) filter.purchaseOrderNo = args.filter.purchaseOrderNo;
+          if (args.filter.outletId) filter.outletId = args.filter.outletId;
+          if (args.filter.status) filter.status = args.filter.status;
+          if (args.filter.requestedDeliveryDateFrom) filter.requestedDeliveryDateFrom = args.filter.requestedDeliveryDateFrom;
+          if (args.filter.requestedDeliveryDateTo) filter.requestedDeliveryDateTo = args.filter.requestedDeliveryDateTo;
+          if (args.filter.scheduledDeliveryDateFrom) filter.scheduledDeliveryDateFrom = args.filter.scheduledDeliveryDateFrom;
+          if (args.filter.scheduledDeliveryDateTo) filter.scheduledDeliveryDateTo = args.filter.scheduledDeliveryDateTo;
+          if (args.filter.createdAtFrom) filter.createdAtFrom = args.filter.createdAtFrom;
+          if (args.filter.createdAtTo) filter.createdAtTo = args.filter.createdAtTo;
+        }
+
+        const pageSize = args.pageSize ?? args.filter?.pageSize;
+        const pageNumber = args.pageNumber ?? args.filter?.pageNumber ?? args.filter?.page;
+
+        const paginationParams = {
+          pageSize: pageSize ?? 10,
+          pageNumber: pageNumber ?? 1,
+        };
+
+        const result = await transferOrdersRepository.getTransferOrders(filter, paginationParams);
+
+        return {
+          query: result.query.map(transformPurchaseOrder),
+          pagination: result.pagination,
+        };
+      } catch (error) {
+        logger.error("❌ [outbound.resolvers.purchaseOrders] Error:", error);
+        return false;
+      }
+    },
+    deliveryOrders: async (
+      _: unknown,
+      args: {
+        filter?: DeliveryOrderFilter & { page?: number; pageSize?: number; pageNumber?: number };
+        pageSize?: number;
+        pageNumber?: number;
+      }
+    ) => {
+      try {
+        const filter: DeliveryOrderFilter = {};
+        if (args.filter) {
+          if (args.filter.id) filter.id = args.filter.id;
+          if (args.filter.doNo) filter.doNo = args.filter.doNo;
+          if (args.filter.toId) filter.toId = args.filter.toId;
+          if (args.filter.status) filter.status = args.filter.status;
+          if (args.filter.createdBy) filter.createdBy = args.filter.createdBy;
+          if (args.filter.createdAtFrom) filter.createdAtFrom = args.filter.createdAtFrom;
+          if (args.filter.createdAtTo) filter.createdAtTo = args.filter.createdAtTo;
+        }
+
+        const pageSize = args.pageSize ?? args.filter?.pageSize;
+        const pageNumber = args.pageNumber ?? args.filter?.pageNumber ?? args.filter?.page;
+
+        const paginationParams = {
+          pageSize: pageSize ?? 10,
+          pageNumber: pageNumber ?? 1,
+        };
+
+        const result = await deliveryOrdersRepository.getDeliveryOrders(filter, paginationParams);
+
+        return {
+          query: result.query.map(transformDeliveryOrder),
+          pagination: result.pagination,
+        };
+      } catch (error) {
+        logger.error("❌ [outbound.resolvers.deliveryOrders] Error:", error);
+        return false;
+      }
+    },
   },
   Mutation: {
     createDeliveryOrder: withAudit<
@@ -122,6 +218,36 @@ export const resolvers = {
         });
 
         logger.info("✅ [outbound.resolvers.createDeliveryOrder] Delivery order created:", deliveryOrder.doNo);
+        return transformDeliveryOrder(deliveryOrder);
+      }
+    ),
+
+    completeDeliveryOrder: withAudit<
+      unknown,
+      { id: string },
+      unknown
+    >(
+      {
+        entity: "DeliveryOrder",
+        action: "UPDATE",
+        getEntityId: (result) =>
+          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
+      },
+      async (_: unknown, { id }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to complete a delivery order", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+
+        logger.info("ℹ️ [outbound.resolvers.completeDeliveryOrder] Completing delivery order...");
+        const deliveryOrder = await outboundServices.completeDeliveryOrder({
+          userId,
+          id,
+        });
+
+        logger.info("✅ [outbound.resolvers.completeDeliveryOrder] Delivery order completed:", deliveryOrder.id);
         return transformDeliveryOrder(deliveryOrder);
       }
     ),

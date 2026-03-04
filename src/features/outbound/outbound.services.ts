@@ -25,6 +25,11 @@ export type CreateDeliveryOrderData = {
     items: CreateDeliveryOrderItemInput[];
 };
 
+export type CompleteDeliveryOrderData = {
+  userId: string;
+  id: string;
+};
+
 export class OutboundServices {
     constructor(
         private readonly deliveryOrderRepository: DeliveryOrdersRepositoryClass,
@@ -103,6 +108,24 @@ export class OutboundServices {
             return createdOrder;
         } catch (error) {
             logger.error('❌ [OutboundServices.createDeliveryOrder] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Marks a delivery order as completed.
+     */
+    async completeDeliveryOrder(data: CompleteDeliveryOrderData): Promise<DeliveryOrderType> {
+        logger.info('ℹ️ [OutboundServices.completeDeliveryOrder] Completing delivery order...');
+        try {
+            const updated = await this.deliveryOrderRepository.updateDeliveryOrder(data.id, {
+                status: 'COMPLETED',
+                updatedBy: data.userId,
+            });
+            logger.info('✅ [OutboundServices.completeDeliveryOrder] Delivery order completed');
+            return updated;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.completeDeliveryOrder] Error:', error);
             throw error;
         }
     }
