@@ -260,6 +260,13 @@
       "when": 1772465841067,
       "tag": "0036_sturdy_sprite",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1772697536676,
+      "tag": "0037_handy_christian_walker",
+      "breakpoints": true
     }
   ]
 }

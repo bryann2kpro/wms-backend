@@ -22,6 +22,11 @@ export const SkuTable = MainSchema.table('skus', {
    * @field originalSkuCode - Original SKU code from supplier (nullable)
    */
   skuSuppliers: jsonb('sku_suppliers').$type<Array<{ supplierId: string; originalSkuCode: string | null }>>(),
+  /**
+   * Optional per-expiry / per-rack batch details for this SKU.
+   * Mirrors the GRN item structure: one entry per expiry date with associated rack IDs.
+   */
+  skuBatches: jsonb('sku_batches').$type<Array<{ expiryDate: string | null; rackIds: string[] }>>(),
   skuUom: uuid('sku_unit_of_measurement').notNull().references(() => StockUnitTable.stockUnitId),
   isActive: boolean('is_active').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
