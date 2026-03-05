@@ -33,11 +33,7 @@ export class PurchaseOrdersRepositoryClass {
     paginationParams: PaginationParams
   ): Promise<PaginatedResponse<PurchaseOrderType>> {
     try {
-<<<<<<< HEAD
       logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrders] Getting purchase orders...");
-=======
-      logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrders] Getting transfer orders...");
->>>>>>> origin
       const whereCondition: ReturnType<typeof eq>[] = [];
 
       if (Array.isArray(filter.id)) {
