@@ -7,7 +7,7 @@
 import { db } from '@/db';
 import { SkuTable } from './sku.model';
 import { SuppliersTable } from './suppliers.model';
-import { eq, and, like, inArray } from 'drizzle-orm';
+import { eq, and, like, inArray, asc, desc } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
@@ -25,6 +25,10 @@ export type SkuFilter = {
   skuCode?: string | string[];
   skuDescription?: string;
   isActive?: boolean;
+  /** Sort field: SKU_CODE, SKU_DESCRIPTION, UPDATED_AT, CREATED_AT. Default: SKU_CODE */
+  sortBy?: string;
+  /** ASC or DESC. Default: ASC */
+  sortOrder?: string;
 };
 
 export class SkuRepositoryClass {
@@ -65,10 +69,19 @@ export class SkuRepositoryClass {
         whereCondition.push(eq(SkuTable.isActive, filter.isActive));
       }
 
+      const sortOrderFn = filter.sortOrder?.toUpperCase() === 'DESC' ? desc : asc;
+      const sortBy = (filter.sortBy?.toUpperCase() ?? 'SKU_CODE') as string;
+      const orderByColumn =
+        sortBy === 'SKU_DESCRIPTION' ? SkuTable.skuDescription
+        : sortBy === 'UPDATED_AT' ? SkuTable.updatedAt
+        : sortBy === 'CREATED_AT' ? SkuTable.createdAt
+        : SkuTable.skuCode;
+
       const baseQuery = client
         .select()
         .from(SkuTable)
-        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+        .orderBy(sortOrderFn(orderByColumn));
 
       // If pagination params not provided, return all data
       if (!paginationParams || (!paginationParams.pageSize && !paginationParams.pageNumber)) {
@@ -184,6 +197,9 @@ export class SkuRepositoryClass {
         .values(data)
         .returning();
 
+      if (!sku) {
+        throw new Error('SKU insert did not return the created row');
+      }
       logger.info('✅ [SkuRepository.createSku] SKU created successfully');
       return sku;
     } catch (error) {

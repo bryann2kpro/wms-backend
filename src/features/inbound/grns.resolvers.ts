@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -34,6 +34,7 @@ function transformGrn(grn: GrnType) {
         approvedAt: grn.approvedAt,
         notes: grn.notes ?? null,
         proofUrl: grn.proofUrl ?? null,
+        warehouseId: grn.warehouseId ?? null,
         createdAt: grn.createdAt,
         updatedAt: grn.updatedAt,
         createdBy: grn.createdBy,
@@ -43,11 +44,9 @@ function transformGrn(grn: GrnType) {
 
 function transformGrnItem(
     item: GrnItemsType,
-    skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>,
-    warehouseMap?: Map<string, { warehouseName: string | null; warehouseAddress: string | null }>
+    skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>
 ) {
     const sku = skuMap?.get(item.skuId);
-    const warehouse = item.warehouseId ? warehouseMap?.get(item.warehouseId) : undefined;
     return {
         id: item.id,
         grnId: item.grnId,
@@ -57,9 +56,7 @@ function transformGrnItem(
         qty: item.qty,
         lossQty: item.lossQty ?? '0',
         remarks: item.remarks,
-        warehouseId: item.warehouseId ?? null,
-        warehouseName: warehouse?.warehouseName ?? null,
-        warehouseAddress: warehouse?.warehouseAddress ?? null,
+        rackId: item.rackId ?? null,
         createdAt: item.createdAt?.toISOString?.() ?? item.createdAt,
         updatedAt: item.updatedAt?.toISOString?.() ?? item.updatedAt,
         createdBy: item.createdBy,
@@ -78,14 +75,20 @@ export const resolvers = {
                 const filter: GrnFilter = args.filter || {};
                 if (args.filter) {
                     if (args.filter.id) {
-                        filter.id = args.filter.id;
-                    }
+                        filter.id = args.filter.id
+                    };
                     if (args.filter.grnNo) {
                         filter.grnNo = args.filter.grnNo;
-                    }
+                    };
                     if (args.filter.status) {
                         filter.status = args.filter.status;
-                    }
+                    };
+                    if (args.filter.sortBy != null) {
+                        filter.sortBy = args.filter.sortBy;
+                    };
+                    if (args.filter.sortOrder != null) {
+                        filter.sortOrder = args.filter.sortOrder;
+                    };
                 }
                 const pageSize = args.pageSize ?? args.filter?.pageSize;
                 const pageNumber = args.pageNumber ?? args.filter?.pageNumber ?? args.filter?.page;
@@ -127,11 +130,25 @@ export const resolvers = {
             if (result === false || !result.query?.[0]) return null;
             return result.query[0].supplierDeliveryNo ?? null;
         },
+        warehouse: async (parent: { warehouseId?: string | null }) => {
+            if (!parent.warehouseId) return null;
+            const warehouse = await warehousesRepository.getWarehouseById(parent.warehouseId);
+            if (!warehouse) return null;
+            return {
+                warehouseId: warehouse.warehouseId,
+                warehouseName: warehouse.warehouseName,
+                warehouseCode: warehouse.warehouseCode ?? null,
+                warehouseAddress: warehouse.warehouseAddress ?? null,
+                createdAt: warehouse.createdAt?.toISOString?.() ?? warehouse.createdAt,
+                updatedAt: warehouse.updatedAt?.toISOString?.() ?? warehouse.updatedAt,
+                createdBy: warehouse.createdBy,
+                updatedBy: warehouse.updatedBy,
+            };
+        },
         items: async (parent: { id: string }) => {
             const result = await grnItemsRepository.getGrnItems({ grnId: parent.id });
             if (result === false) return [];
             const skuIds = [...new Set(result.map((r) => r.skuId))];
-            const warehouseIds = [...new Set(result.map((r) => r.warehouseId).filter((id): id is string => id != null))];
             let skuMap = new Map<string, { skuCode: string | null; skuDescription: string | null }>();
             if (skuIds.length > 0) {
                 const skuResult = await skuRepository.getSku({ skuId: skuIds });
@@ -139,23 +156,66 @@ export const resolvers = {
                     skuMap.set(s.skuId, { skuCode: s.skuCode ?? null, skuDescription: s.skuDescription ?? null });
                 }
             }
-            let warehouseMap = new Map<string, { warehouseName: string | null; warehouseAddress: string | null }>();
-            if (warehouseIds.length > 0) {
-                const warehouseResult = await warehousesRepository.getWarehouse(
-                    { warehouseId: warehouseIds },
-                    { pageSize: warehouseIds.length, pageNumber: 1 }
-                );
-                for (const w of warehouseResult.query) {
-                    warehouseMap.set(w.warehouseId, {
-                        warehouseName: w.warehouseName ?? null,
-                        warehouseAddress: w.warehouseAddress ?? null,
-                    });
-                }
-            }
-            return result.map((item) => transformGrnItem(item, skuMap, warehouseMap));
+            return result.map((item) => transformGrnItem(item, skuMap));
+        },
+    },
+    GrnItem: {
+        rack: async (parent: { rackId?: string | null }) => {
+            if (!parent.rackId) return null;
+            const rack = await racksRepository.getRackById(parent.rackId);
+            if (!rack) return null;
+            return {
+                rackId: rack.rackId,
+                rackRow: rack.rackRow,
+                rackColumn: rack.rackColumn,
+                rackLevel: rack.rackLevel,
+                createdAt: rack.createdAt?.toISOString?.() ?? rack.createdAt,
+                updatedAt: rack.updatedAt?.toISOString?.() ?? rack.updatedAt,
+                createdBy: rack.createdBy,
+                updatedBy: rack.updatedBy,
+            };
         },
     },
     Mutation: {
+        createInbound: async (_: unknown, { input }: { input: {
+            userId: string;
+            grnNo: string;
+            supplierId?: string | null;
+            supplierDeliveryId?: string | null;
+            supplierDeliveryNo?: string | null;
+            poNo?: string | null;
+            receivedAt?: string | null;
+            notes?: string | null;
+            proofUrl?: string | null;
+            warehouseId?: string | null;
+            status?: string | null;
+            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+            inboundQty?: number | null;
+            skuId?: string | null;
+        } }) => {
+            try {
+                const result = await inboundServices.createInbound({
+                    userId: input.userId,
+                    grnNo: input.grnNo,
+                    supplierId: input.supplierId,
+                    supplierDeliveryId: input.supplierDeliveryId,
+                    supplierDeliveryNo: input.supplierDeliveryNo,
+                    poNo: input.poNo,
+                    receivedAt: input.receivedAt,
+                    notes: input.notes,
+                    proofUrl: input.proofUrl,
+                    warehouseId: input.warehouseId,
+                    status: input.status,
+                    items: input.items ?? undefined,
+                    inboundQty: input.inboundQty ?? undefined,
+                    skuId: input.skuId ?? undefined,
+                });
+                return result;
+            } catch (error) {
+                logger.error('[grns.resolvers.createInbound] Error:', error);
+                throw error;
+            }
+        },
         createGrn: withAudit(
             {
                 entity: 'GRN',
@@ -173,11 +233,12 @@ export const resolvers = {
                     receivedAt?: string | null;
                     notes?: string | null;
                     proofUrl?: string | null;
+                    warehouseId?: string | null;
                     approvedBy?: string | null;
                     status?: string | null;
                     createdBy: string;
                     updatedBy?: string | null;
-                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; warehouseId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -277,6 +338,7 @@ export const resolvers = {
                         poNo: input.poNo ?? undefined,
                         notes: input.notes ?? undefined,
                         proofUrl: input.proofUrl ?? undefined,
+                        warehouseId: input.warehouseId ?? undefined,
                         createdBy,
                         updatedBy,
                         status: input.status ?? 'Draft',
@@ -284,7 +346,7 @@ export const resolvers = {
                     }, context.tx);
 
                     // 4. Create GRN items
-                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; warehouseId?: string | null; createdBy: string; updatedBy?: string }> = [];
+                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; createdBy: string; updatedBy?: string }> = [];
                     if (input.items?.length) {
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -319,7 +381,7 @@ export const resolvers = {
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
                                 remarks: item.remarks ?? undefined,
-                                warehouseId: item.warehouseId ?? undefined,
+                                rackId: item.rackId ?? undefined,
                                 createdBy,
                                 updatedBy,
                             });
@@ -357,12 +419,13 @@ export const resolvers = {
                     receivedAt?: string | null;
                     notes?: string | null;
                     proofUrl?: string | null;
+                    warehouseId?: string | null;
                     approvedBy?: string | null;
                     approvedAt?: string | null;
                     status?: string | null;
                     updatedBy?: string | null;
                     updatedAt?: Date;
-                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; warehouseId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -403,6 +466,7 @@ export const resolvers = {
                     if (input.status !== undefined) updateData.status = input.status;
                     if (input.notes !== undefined) updateData.notes = input.notes;
                     if (input.proofUrl !== undefined) updateData.proofUrl = input.proofUrl;
+                    if (input.warehouseId !== undefined) updateData.warehouseId = input.warehouseId;
 
                     const deliveryDate = input.receivedAt != null ? new Date(input.receivedAt) : undefined;
                     let supplierDeliveryId: string | null = existingGrn.supplierDeliveryId ?? null;
@@ -438,7 +502,7 @@ export const resolvers = {
                     // Replace GRN items and sync Supplier Delivery Items (skuId, qtyDelivered = item qty)
                     if (input.items != null && input.items.length > 0) {
                         const createdBy = existingGrn.createdBy;
-                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; warehouseId?: string | null; createdBy: string; updatedBy?: string }> = [];
+                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; createdBy: string; updatedBy?: string }> = [];
 
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -473,7 +537,7 @@ export const resolvers = {
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
                                 remarks: item.remarks ?? undefined,
-                                warehouseId: item.warehouseId ?? undefined,
+                                rackId: item.rackId ?? undefined,
                                 createdBy,
                                 updatedBy,
                             });

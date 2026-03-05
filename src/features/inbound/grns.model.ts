@@ -35,6 +35,7 @@ export const GrnsTable = MainSchema.table('grns', {
 
   notes: text('notes'),
   proofUrl: text('proof_url'),
+  warehouseId: uuid('warehouse_id'),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -63,7 +64,7 @@ export const GrnItemsTable = MainSchema.table('grn_items', {
   qty: numeric('qty', { precision: 10, scale: 2 }).notNull(),
   lossQty: numeric('loss_qty', { precision: 10, scale: 2 }).notNull().default('0'),
   remarks: text('remarks'),
-  warehouseId: uuid('warehouse_id'),
+  rackId: uuid('rack_id'),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
