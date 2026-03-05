@@ -44,8 +44,6 @@ import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orde
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
 import { ExceptionsRepositoryClass } from './features/outbound/exceptions.repository';
 import { OutboundServices } from './features/outbound/outbound.services';
-// Inventory
-import { InventoryRepositoryClass } from './features/inventory/inventory.repository';
 // Inventory Repositories
 import { InventoryMovementsRepositoryClass } from './features/inventory/inventory.repository';
 
@@ -97,6 +95,7 @@ export const outboundServices = new OutboundServices(
   inventoryMovementsRepository,
   deliveryScheduleRepository,
   outletsRepository,
+  purchaseOrdersRepository,
 );
 
 // ============================================
