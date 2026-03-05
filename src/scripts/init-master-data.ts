@@ -272,7 +272,7 @@ const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] =
     skuPrice: null,
     cartonQuantity: '0',
     lossQuantity: '0',
-    skuExpiryDate: new Date(),
+    skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
   },{
@@ -281,7 +281,7 @@ const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] =
     skuPrice: null,
     cartonQuantity: '0',
     lossQuantity: '0',
-    skuExpiryDate: new Date(),
+    skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
   },{
@@ -299,7 +299,7 @@ const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] =
     skuPrice: null,
     cartonQuantity: '0',
     lossQuantity: '0',
-    skuExpiryDate: new Date(),
+    skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.PACKET,
   },

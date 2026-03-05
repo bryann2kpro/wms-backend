@@ -94,6 +94,8 @@ export const resolvers = {
         skuCodes?: string[];
         skuDescription?: string;
         isActive?: boolean;
+        sortBy?: string;
+        sortOrder?: string;
       };
       pageSize?: number;
       pageNumber?: number;
@@ -122,6 +124,12 @@ export const resolvers = {
           
           if (args.filter.isActive !== undefined) {
             filter.isActive = args.filter.isActive;
+          }
+          if (args.filter.sortBy != null) {
+            filter.sortBy = args.filter.sortBy;
+          }
+          if (args.filter.sortOrder != null) {
+            filter.sortOrder = args.filter.sortOrder;
           }
         }
 
@@ -215,26 +223,25 @@ export const resolvers = {
       skuCode: string;
       skuDescription: string;
       skuPrice?: number;
-      cartonQuantity: number;
+      skuQuantity?: number;
+      cartonQuantity?: number;
       lossQuantity?: number | null;
       skuExpiryDate?: string | Date | null;
       skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }>;
       skuUom: string;
       isActive: boolean;
-      createdBy: string;
-      updatedBy: string;
-      createdAt: Date;
-      updatedAt: Date;
+      createdBy?: string | null;
+      updatedBy?: string | null;
     }}, context: GraphQLContext) => {
       try {
         const createdBy = input.createdBy ?? context.user?.id ?? 'system';
         const updatedBy = input.updatedBy ?? context.user?.id ?? 'system';
-        // Convert date string to Date object if needed; empty string -> null
+        // GraphQL schema uses skuQuantity; map to cartonQuantity for DB
+        const cartonQty = input.skuQuantity ?? input.cartonQuantity ?? 0;
         let expiryDate: Date | null = null;
         if (input.skuExpiryDate != null && input.skuExpiryDate !== '') {
           expiryDate = typeof input.skuExpiryDate === 'string' ? new Date(input.skuExpiryDate) : input.skuExpiryDate;
         }
-        // Transform skuSuppliers to match the expected format
         const skuSuppliersData = input.skuSuppliers?.map((s) => ({
           supplierId: s.supplierId,
           originalSkuCode: s.originalSkuCode ?? null,
@@ -244,7 +251,7 @@ export const resolvers = {
           skuCode: input.skuCode,
           skuDescription: input.skuDescription,
           skuPrice: input.skuPrice?.toString(),
-          cartonQuantity: input.cartonQuantity.toString(),
+          cartonQuantity: String(cartonQty),
           lossQuantity: (input.lossQuantity != null ? input.lossQuantity : 0).toString(),
           skuExpiryDate: expiryDate,
           skuSuppliers: skuSuppliersData ?? null,
@@ -257,7 +264,7 @@ export const resolvers = {
         return transformSku(sku);
       } catch (error) {
         logger.error('[sku.resolvers.createSku] Error:', error);
-        return false;
+        throw error;
       }
     }),
 

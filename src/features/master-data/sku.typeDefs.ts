@@ -93,6 +93,10 @@ export const typeDefs = `#graphql
     skuCodes: [String!]
     skuDescription: String
     isActive: Boolean
+    """Sort field: SKU_CODE, SKU_DESCRIPTION, UPDATED_AT, CREATED_AT. Default: SKU_CODE"""
+    sortBy: String
+    """Sort direction: ASC or DESC. Default: ASC"""
+    sortOrder: String
   }
 
   extend type Query {
