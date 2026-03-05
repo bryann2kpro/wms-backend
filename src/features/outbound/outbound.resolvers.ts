@@ -6,7 +6,7 @@
  */
 
 import { prettifyError, z } from "zod";
-import { outboundServices, deliveryOrdersRepository, transferOrdersRepository } from "@/composition-root";
+import { outboundServices, deliveryOrdersRepository, purchaseOrdersRepository } from "@/composition-root";
 import { withAudit } from "@/features/audit-log/audit.wrapper";
 import { GraphQLContext } from "@/graphql/context";
 import { GraphQLError } from "graphql";
@@ -111,7 +111,7 @@ export const resolvers = {
           pageNumber: pageNumber ?? 1,
         };
 
-        const result = await transferOrdersRepository.getTransferOrders(filter, paginationParams);
+        const result = await purchaseOrdersRepository.getPurchaseOrders(filter, paginationParams);
 
         return {
           query: result.query.map(transformPurchaseOrder),
