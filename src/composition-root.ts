@@ -40,7 +40,7 @@ import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplie
 import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
 import { InboundServices } from './features/inbound/inbound.services';
 // Outbound Repositories & Services
-import { TransferOrdersRepositoryClass } from './features/outbound/transfer-orders.repository';
+import { TransferOrdersRepositoryClass } from './features/outbound/purchase-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
 import { ExceptionsRepositoryClass } from './features/outbound/exceptions.repository';
 import { OutboundServices } from './features/outbound/outbound.services';

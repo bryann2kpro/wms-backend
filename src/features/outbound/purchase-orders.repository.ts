@@ -15,7 +15,7 @@ import {
   PurchaseOrderItemType,
   PurchaseOrderItemInsertType,
   PurchaseOrderItemFilter,
-} from "./transfer-orders.model";
+} from "./purchase-orders.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";

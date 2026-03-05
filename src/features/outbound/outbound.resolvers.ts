@@ -12,7 +12,7 @@ import { GraphQLContext } from "@/graphql/context";
 import { GraphQLError } from "graphql";
 import { logger } from "@/util/logger";
 import { DeliveryOrderType, DeliveryOrderFilter } from "./delivery-orders.model";
-import { PurchaseOrderType, PurchaseOrderFilter } from "./transfer-orders.model";
+import { PurchaseOrderType, PurchaseOrderFilter } from "./purchase-orders.model";
 
 // ============================================
 // ZOD SCHEMAS (input sanitization)
