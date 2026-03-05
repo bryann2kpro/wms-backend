@@ -26,7 +26,10 @@ export const typeDefs = `#graphql
     type PurchaseOrder {
         id: ID!
         purchaseOrderNo: String!
-        outletId: ID!
+        """
+        Resolved outlet (master data) for this purchase order. Request with: purchaseOrders { query { outlet { outletName outletCode regionName } } }
+        """
+        outlet: Outlet
         status: String!
         scheduledDeliveryDate: String
         createdAt: String!

@@ -7,8 +7,8 @@
 
 import { prettifyError, z } from "zod";
 import { outboundServices, deliveryOrdersRepository, purchaseOrdersRepository } from "@/composition-root";
+import type { GraphQLContext } from "@/graphql/context";
 import { withAudit } from "@/features/audit-log/audit.wrapper";
-import { GraphQLContext } from "@/graphql/context";
 import { GraphQLError } from "graphql";
 import { logger } from "@/util/logger";
 import { DeliveryOrderType, DeliveryOrderFilter } from "./delivery-orders.model";
@@ -20,7 +20,7 @@ import { PurchaseOrderType, PurchaseOrderFilter } from "./purchase-orders.model"
 
 const createDeliveryOrderItemSchema = z
   .object({
-    skuId: z.string().uuid().optional(),
+    skuId: z.uuid().optional(),
     skuCode: z.string().min(1).optional(),
     qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => String(v)),
   })
@@ -41,6 +41,26 @@ const createDeliveryOrderInputSchema = z.object({
     .array(createDeliveryOrderItemSchema)
     .min(1, "At least one line item is required"),
 });
+
+/** Parses and sanitizes purchase order list filter; strips undefined values. */
+const purchaseOrderFilterSchema = z
+  .object({
+    id: z.union([z.uuid(), z.array(z.uuid())]).optional(),
+    purchaseOrderNo: z.string().min(1).optional(),
+    outletId: z.union([z.uuid(), z.array(z.string().uuid())]).optional(),
+    status: z.union([z.string(), z.array(z.string())]).optional(),
+    requestedDeliveryDateFrom: z.string().optional(),
+    requestedDeliveryDateTo: z.string().optional(),
+    scheduledDeliveryDateFrom: z.string().optional(),
+    scheduledDeliveryDateTo: z.string().optional(),
+    createdAtFrom: z.string().optional(),
+    createdAtTo: z.string().optional(),
+  })
+  .transform((data): PurchaseOrderFilter => {
+    return Object.fromEntries(
+      Object.entries(data).filter(([, v]) => v !== undefined)
+    ) as PurchaseOrderFilter;
+  });
 
 // ============================================
 // HELPERS
@@ -73,11 +93,46 @@ function transformPurchaseOrder(po: PurchaseOrderType) {
   };
 }
 
+/** Maps outlet DB row (with region join) to GraphQL Outlet shape. Used by PurchaseOrder.outlet. */
+function transformOutletForGraphQL(outlet: {
+  outletId: string;
+  outletName: string;
+  outletCode: string;
+  regionId: string | null;
+  regionName: string | null;
+  regionCode: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  updatedBy: string;
+}) {
+  return {
+    outletId: outlet.outletId,
+    outletName: outlet.outletName,
+    outletCode: outlet.outletCode,
+    regionId: outlet.regionId,
+    regionName: outlet.regionName,
+    regionCode: outlet.regionCode,
+    createdAt: outlet.createdAt.toISOString(),
+    updatedAt: outlet.updatedAt.toISOString(),
+    createdBy: outlet.createdBy,
+    updatedBy: outlet.updatedBy,
+  };
+}
+
 // ============================================
 // RESOLVERS
 // ============================================
 
 export const resolvers = {
+  /** Resolves nested fields on PurchaseOrder (e.g. outlet from outletId). Uses DataLoader to batch outlet lookups (avoids N+1). */
+  PurchaseOrder: {
+    outlet: async (parent: { outletId: string }, _args: unknown, context: GraphQLContext) => {
+      const outlet = await context.getOutletLoader().load(parent.outletId);
+      return outlet ? transformOutletForGraphQL(outlet) : null;
+    },
+  },
+
   Query: {
     _outboundHealth: () => "Outbound GraphQL is available",
     purchaseOrders: async (
@@ -89,26 +144,10 @@ export const resolvers = {
       }
     ) => {
       try {
-        const filter: PurchaseOrderFilter = {};
-        if (args.filter) {
-          if (args.filter.id) filter.id = args.filter.id;
-          if (args.filter.purchaseOrderNo) filter.purchaseOrderNo = args.filter.purchaseOrderNo;
-          if (args.filter.outletId) filter.outletId = args.filter.outletId;
-          if (args.filter.status) filter.status = args.filter.status;
-          if (args.filter.requestedDeliveryDateFrom) filter.requestedDeliveryDateFrom = args.filter.requestedDeliveryDateFrom;
-          if (args.filter.requestedDeliveryDateTo) filter.requestedDeliveryDateTo = args.filter.requestedDeliveryDateTo;
-          if (args.filter.scheduledDeliveryDateFrom) filter.scheduledDeliveryDateFrom = args.filter.scheduledDeliveryDateFrom;
-          if (args.filter.scheduledDeliveryDateTo) filter.scheduledDeliveryDateTo = args.filter.scheduledDeliveryDateTo;
-          if (args.filter.createdAtFrom) filter.createdAtFrom = args.filter.createdAtFrom;
-          if (args.filter.createdAtTo) filter.createdAtTo = args.filter.createdAtTo;
-        }
-
-        const pageSize = args.pageSize ?? args.filter?.pageSize;
-        const pageNumber = args.pageNumber ?? args.filter?.pageNumber ?? args.filter?.page;
-
+        const filter = purchaseOrderFilterSchema.parse(args.filter ?? {});
         const paginationParams = {
-          pageSize: pageSize ?? 10,
-          pageNumber: pageNumber ?? 1,
+          pageSize: args.pageSize ?? args.filter?.pageSize ?? 10,
+          pageNumber: args.pageNumber ?? args.filter?.pageNumber ?? args.filter?.page ?? 1,
         };
 
         const result = await purchaseOrdersRepository.getPurchaseOrders(filter, paginationParams);
