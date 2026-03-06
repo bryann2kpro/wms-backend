@@ -6,6 +6,8 @@ import { logger } from "@/util/logger";
 import { db } from "@/db";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
 import type { DbTransaction } from "@/types/db-transaction";
+import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
+import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
 
 const DEFAULT_SUPPLIER_ID = 'b3e317c5-4bec-49aa-82f3-0a83115a8e70';
 
@@ -54,6 +56,7 @@ export class InboundServices {
         private readonly supplierDeliveriesRepository: SupplierDeliveriesRepositoryClass,
         private readonly supplierDeliveryItemsRepository: SupplierDeliveryItemsRepositoryClass,
         private readonly grnItemsRepository: GrnItemsRepositoryClass,
+        private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
     ) {}
 
     /**
@@ -158,6 +161,16 @@ export class InboundServices {
                     }
                     if (grnItemRows.length > 0) {
                         const created = await this.grnItemsRepository.createGrnItems(grnItemRows, tx);
+                        await this.inventoryMovementRepository.createInventoryMovement(grnItemRows.map(item => ({
+                            skuId: item.skuId,
+                            quantity: item.qty,
+                            referenceNo: grn.grnNo,
+                            reason: 'Inbound',
+                            createdBy,
+                            updatedBy,
+                            movementType: InventoryMovementType.INBOUND,
+                        })), tx);
+                        
                         if (created === false) {
                             logger.error('[InboundServices] Failed to create GRN items batch');
                             throw new Error('Failed to create GRN items');
