@@ -31,6 +31,19 @@ export type CompleteDeliveryOrderData = {
   id: string;
 };
 
+export type CreatePurchaseOrderItemInput = {
+  skuCode: string;
+  skuId?: string;
+  qtyRequired: number;
+};
+
+export type CreatePurchaseOrderData = {
+  userId: string;
+  purchaseOrderNo: string;
+  outletId: string;
+  items: CreatePurchaseOrderItemInput[];
+};
+
 export class OutboundServices {
     constructor(
         private readonly deliveryOrderRepository: DeliveryOrdersRepositoryClass,
@@ -110,6 +123,42 @@ export class OutboundServices {
             return createdOrder;
         } catch (error) {
             logger.error('❌ [OutboundServices.createDeliveryOrder] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Creates a purchase order and its line items (for manual PO create from UI).
+     */
+    async createPurchaseOrder(data: CreatePurchaseOrderData): Promise<import("./purchase-orders.model").PurchaseOrderType> {
+        logger.info("ℹ️ [OutboundServices.createPurchaseOrder] Creating purchase order...");
+        try {
+            let created: import("./purchase-orders.model").PurchaseOrderType | null = null;
+            await db.transaction(async (tx) => {
+                created = await this.purchaseOrdersRepository.createPurchaseOrder(
+                    {
+                        purchaseOrderNo: data.purchaseOrderNo,
+                        outletId: data.outletId,
+                        status: "NEW",
+                        createdBy: data.userId,
+                        updatedBy: data.userId,
+                    },
+                    tx
+                );
+                const items = data.items.map((item) => ({
+                    purchaseOrderNo: data.purchaseOrderNo,
+                    skuCode: item.skuCode,
+                    qtyRequired: String(item.qtyRequired),
+                    createdBy: data.userId,
+                    updatedBy: data.userId,
+                }));
+                await this.purchaseOrdersRepository.createPurchaseOrderItems(items, tx);
+            });
+            if (!created) throw new Error("Purchase order was not created.");
+            logger.info("✅ [OutboundServices.createPurchaseOrder] Purchase order created");
+            return created;
+        } catch (error) {
+            logger.error("❌ [OutboundServices.createPurchaseOrder] Error:", error);
             throw error;
         }
     }

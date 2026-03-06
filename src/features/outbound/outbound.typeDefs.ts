@@ -150,7 +150,30 @@ export const typeDefs = `#graphql
         orders: [PurchaseOrder!]!
     }
 
+    """
+    Input for a single line item when creating a purchase order.
+    """
+    input CreatePurchaseOrderLineItemInput {
+        skuCode: String!
+        skuId: ID
+        qtyRequired: Float!
+    }
+
+    """
+    Input for creating a new Purchase Order (manual create from UI).
+    """
+    input CreatePurchaseOrderInput {
+        purchaseOrderNo: String!
+        outletId: ID!
+        items: [CreatePurchaseOrderLineItemInput!]!
+    }
+
     extend type Mutation {
+        """
+        Create a purchase order and its line items. Used when creating POs from the UI.
+        """
+        createPurchaseOrder(input: CreatePurchaseOrderInput!): PurchaseOrder!
+
         """
         Create a delivery order. Validates line items (SKU resolution), checks stock,
         computes next delivery date, then creates the DO and items in a transaction.

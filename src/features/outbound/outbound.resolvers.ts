@@ -70,6 +70,18 @@ const purchaseOrderWeekFilterSchema = z.object({
   status: z.string().optional(),
 });
 
+const createPurchaseOrderLineItemSchema = z.object({
+  skuCode: z.string().min(1, "SKU code is required"),
+  skuId: z.string().uuid().optional(),
+  qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => Number(v)),
+});
+
+const createPurchaseOrderInputSchema = z.object({
+  purchaseOrderNo: z.string().min(1, "Purchase order number is required").trim(),
+  outletId: z.uuid("Outlet ID must be a valid UUID"),
+  items: z.array(createPurchaseOrderLineItemSchema).min(1, "At least one line item is required"),
+});
+
 // ============================================
 // HELPERS
 // ============================================
@@ -289,6 +301,46 @@ export const resolvers = {
     },
   },
   Mutation: {
+    createPurchaseOrder: withAudit<
+      unknown,
+      { input: { purchaseOrderNo: string; outletId: string; items: Array<{ skuCode: string; skuId?: string; qtyRequired: number }> } },
+      unknown
+    >(
+      {
+        entity: "PurchaseOrder",
+        action: "CREATE",
+        getEntityId: (result) =>
+          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
+      },
+      async (_: unknown, { input }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to create a purchase order", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+        const parseResult = createPurchaseOrderInputSchema.safeParse(input);
+        if (!parseResult.success) {
+          const message = prettifyError(parseResult.error);
+          throw new GraphQLError(message, {
+            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
+          });
+        }
+        const data = parseResult.data;
+        const created = await outboundServices.createPurchaseOrder({
+          userId,
+          purchaseOrderNo: data.purchaseOrderNo,
+          outletId: data.outletId,
+          items: data.items.map((item) => ({
+            skuCode: item.skuCode,
+            skuId: item.skuId,
+            qtyRequired: item.qtyRequired,
+          })),
+        });
+        return transformPurchaseOrder(created);
+      }
+    ),
+
     createDeliveryOrder: withAudit<
       unknown,
       {
