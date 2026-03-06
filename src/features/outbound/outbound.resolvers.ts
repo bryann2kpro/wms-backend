@@ -62,7 +62,7 @@ const purchaseOrderFilterSchema = z
     ) as PurchaseOrderFilter;
   });
 
-/** Input for purchaseOrdersByWeek: optional date range (defaults to today through 7 days, UTC). */
+/** Input for purchaseOrdersByWeek: optional date range (defaults to today through 7 days in business timezone). */
 const purchaseOrderWeekFilterSchema = z.object({
   scheduledDeliveryDateFrom: z.string().optional(),
   scheduledDeliveryDateTo: z.string().optional(),
@@ -86,11 +86,16 @@ const createPurchaseOrderInputSchema = z.object({
 // HELPERS
 // ============================================
 
-/** Format a date as DD/MM/YYYY in UTC. */
-function formatDateKeyUTC(d: Date): string {
-  const day = d.getUTCDate();
-  const month = d.getUTCMonth() + 1;
-  const year = d.getUTCFullYear();
+/** Business timezone offset in minutes from UTC (e.g. UTC+8 = 480). */
+const BUSINESS_TZ_OFFSET_MINUTES = 8 * 60;
+
+/** Format a date as DD/MM/YYYY in the business timezone. */
+function formatDateKeyBusinessTZ(d: Date): string {
+  const offsetMs = BUSINESS_TZ_OFFSET_MINUTES * 60_000;
+  const shifted = new Date(d.getTime() + offsetMs);
+  const day = shifted.getUTCDate();
+  const month = shifted.getUTCMonth() + 1;
+  const year = shifted.getUTCFullYear();
   return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
 }
 
@@ -101,13 +106,33 @@ function getDayBoundsUTC(d: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
-/** Default week: from today (UTC) through 7 days (today + 6). Returns [fromDate, toDate] inclusive. */
-function getDefaultWeekRangeUTC(): [Date, Date] {
+/** Get start/end of a day in the business timezone, returned as UTC Date objects. */
+function getDayBoundsInBusinessTZ(d: Date): { start: Date; end: Date } {
+  const offsetMs = BUSINESS_TZ_OFFSET_MINUTES * 60_000;
+  const shifted = new Date(d.getTime() + offsetMs);
+
+  const startShifted = new Date(
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate(), 0, 0, 0, 0)
+  );
+  const endShifted = new Date(
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate(), 23, 59, 59, 999)
+  );
+
+  return {
+    start: new Date(startShifted.getTime() - offsetMs),
+    end: new Date(endShifted.getTime() - offsetMs),
+  };
+}
+
+/**
+ * Default week: from "today" through 7 days (today + 6) in the business timezone.
+ * Returns [fromDate, toDate] inclusive, as UTC Date objects.
+ */
+function getDefaultWeekRangeInBusinessTZ(): [Date, Date] {
   const now = new Date();
-  const { start } = getDayBoundsUTC(now);
-  const endDay = new Date(start);
-  endDay.setUTCDate(endDay.getUTCDate() + 6);
-  const { end } = getDayBoundsUTC(endDay);
+  const { start } = getDayBoundsInBusinessTZ(now);
+  const endAnchor = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const { end } = getDayBoundsInBusinessTZ(endAnchor);
   return [start, end];
 }
 
@@ -221,8 +246,11 @@ export const resolvers = {
           fromDate.setUTCHours(0, 0, 0, 0);
           toDate.setUTCHours(23, 59, 59, 999);
         } else {
-          [fromDate, toDate] = getDefaultWeekRangeUTC();
+          [fromDate, toDate] = getDefaultWeekRangeInBusinessTZ();
         }
+
+        console.log('fromDate', fromDate);
+        console.log('toDate', toDate);
 
         const repoFilter: Partial<PurchaseOrderFilter> = {};
         if (filter.outletId) repoFilter.outletId = filter.outletId;
@@ -237,7 +265,7 @@ export const resolvers = {
         const byDate = new Map<string, PurchaseOrderType[]>();
         for (const po of orders) {
           if (po.scheduledDeliveryDate) {
-            const key = formatDateKeyUTC(po.scheduledDeliveryDate);
+            const key = formatDateKeyBusinessTZ(po.scheduledDeliveryDate);
             if (!byDate.has(key)) byDate.set(key, []);
             byDate.get(key)!.push(po);
           }
@@ -246,7 +274,7 @@ export const resolvers = {
         const entries: Array<{ date: string; orders: PurchaseOrderType[] }> = [];
         const cursor = new Date(fromDate);
         while (cursor <= toDate) {
-          const key = formatDateKeyUTC(cursor);
+          const key = formatDateKeyBusinessTZ(cursor);
           entries.push({ date: key, orders: byDate.get(key) ?? [] });
           cursor.setUTCDate(cursor.getUTCDate() + 1);
         }
