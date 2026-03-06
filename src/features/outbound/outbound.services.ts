@@ -8,6 +8,7 @@ import { InventoryBalanceRepositoryClass } from "../inventory/inventory-balance/
 import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../master-data/delivery-schedule.repository";
 import { OutletsRepositoryClass } from "../master-data/outlets.repository";
 import { DeliveryOrderType } from "./delivery-orders.model";
+import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
 
 /** Line item input: must have qtyRequired and either skuId or skuCode. */
 export type CreateDeliveryOrderItemInput = {
@@ -32,6 +33,7 @@ export class OutboundServices {
         private readonly inventoryBalanceRepository: InventoryBalanceRepositoryClass,
         private readonly deliveryScheduleRepository: DeliveryScheduleRepositoryClass,
         private readonly outletsRepository: OutletsRepositoryClass,
+        private readonly purchaseOrdersRepository: PurchaseOrdersRepositoryClass,
     ) {}
 
     /**
@@ -91,10 +93,10 @@ export class OutboundServices {
                 logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Delivery Order Items created successfully');
 
                 // TODO: Step 5 - Update the PO with scheduledDeliveryDate (requires PO repository)
-                // await this.purchaseOrderRepository.updatePurchaseOrder(data.purchaseOrderNo, {
-                //     scheduledDeliveryDate: nextDelivery.deliveryDate,
-                //     updatedBy: data.userId,
-                // }, tx);
+                await this.purchaseOrdersRepository.updatePurchaseOrder(data.purchaseOrderNo, {
+                    scheduledDeliveryDate: nextDelivery.deliveryDate,
+                    updatedBy: data.userId,
+                }, tx);
             });
 
             if (!createdOrder) {

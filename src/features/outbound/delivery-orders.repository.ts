@@ -44,11 +44,11 @@ export class DeliveryOrdersRepositoryClass {
       if (filter.doNo) {
         whereCondition.push(like(DeliveryOrdersTable.doNo, `%${filter.doNo}%`));
       }
-      if (Array.isArray(filter.toId)) {
-        whereCondition.push(inArray(DeliveryOrdersTable.toId, filter.toId));
-      } else if (filter.toId) {
-        whereCondition.push(eq(DeliveryOrdersTable.toId, filter.toId));
-      }
+      // if (Array.isArray(filter.purchaseOrderNo)) {
+      //   whereCondition.push(inArray(DeliveryOrdersTable.purchaseOrderNo, filter.purchaseOrderNo));
+      // } else if (filter.purchaseOrderNo) {
+      //   whereCondition.push(eq(DeliveryOrdersTable.purchaseOrderNo, filter.purchaseOrderNo));
+      // }
       if (Array.isArray(filter.status)) {
         whereCondition.push(inArray(DeliveryOrdersTable.status, filter.status));
       } else if (filter.status) {
@@ -78,7 +78,7 @@ export class DeliveryOrdersRepositoryClass {
       const data = await paginatedQuery.query;
 
       logger.info("✅ [DeliveryOrdersRepository.getDeliveryOrders] Delivery orders fetched successfully");
-      return { query: data, pagination: paginatedQuery.pagination };
+      return { query: data as DeliveryOrderType[], pagination: paginatedQuery.pagination };
     } catch (error) {
       logger.error("❌ [DeliveryOrdersRepository.getDeliveryOrders] Error:", error);
       throw error;
@@ -156,16 +156,11 @@ export class DeliveryOrdersRepositoryClass {
       } else if (filter.id) {
         whereCondition.push(eq(DeliveryOrderItemsTable.id, filter.id));
       }
-      if (Array.isArray(filter.doId)) {
-        whereCondition.push(inArray(DeliveryOrderItemsTable.doId, filter.doId));
-      } else if (filter.doId) {
-        whereCondition.push(eq(DeliveryOrderItemsTable.doId, filter.doId));
-      }
-      if (Array.isArray(filter.skuId)) {
-        whereCondition.push(inArray(DeliveryOrderItemsTable.skuId, filter.skuId));
-      } else if (filter.skuId) {
-        whereCondition.push(eq(DeliveryOrderItemsTable.skuId, filter.skuId));
-      }
+      // if (Array.isArray(filter.doId)) {
+      //   whereCondition.push(inArray(DeliveryOrderItemsTable.deliveryOrderNo, filter.deliveryOrderNo));
+      // } else if (filter.deliveryOrderNo) {
+      //   whereCondition.push(eq(DeliveryOrderItemsTable.deliveryOrderNo, filter.deliveryOrderNo));
+      // }
 
       const baseQuery = db
         .select()
@@ -179,7 +174,7 @@ export class DeliveryOrdersRepositoryClass {
       const data = await paginatedQuery.query;
 
       logger.info("✅ [DeliveryOrdersRepository.getDeliveryOrderItems] Delivery order items fetched successfully");
-      return { query: data, pagination: paginatedQuery.pagination };
+      return { query: data as DeliveryOrderItemType[], pagination: paginatedQuery.pagination };
     } catch (error) {
       logger.error("❌ [DeliveryOrdersRepository.getDeliveryOrderItems] Error:", error);
       throw error;
@@ -245,14 +240,14 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
-  async deleteDeliveryOrderItemsByDoId(doId: string, tx?: DbTransaction): Promise<boolean> {
+  async deleteDeliveryOrderItemsByDeliveryOrderNo(deliveryOrderNo: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx ?? db;
-      await dbClient.delete(DeliveryOrderItemsTable).where(eq(DeliveryOrderItemsTable.doId, doId));
-      logger.info("✅ [DeliveryOrdersRepository.deleteDeliveryOrderItemsByDoId] Delivery order items deleted successfully");
+      await dbClient.delete(DeliveryOrderItemsTable).where(eq(DeliveryOrderItemsTable.purchaseOrderNo, deliveryOrderNo));
+      logger.info("✅ [DeliveryOrdersRepository.deleteDeliveryOrderItemsByDeliveryOrderNo] Delivery order items deleted successfully");
       return true;
     } catch (error) {
-      logger.error("❌ [DeliveryOrdersRepository.deleteDeliveryOrderItemsByDoId] Error:", error);
+      logger.error("❌ [DeliveryOrdersRepository.deleteDeliveryOrderItemsByDeliveryOrderNo] Error:", error);
       throw error;
     }
   }
