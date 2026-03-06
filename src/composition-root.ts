@@ -98,6 +98,7 @@ export const outboundServices = new OutboundServices(
   deliveryScheduleRepository,
   outletsRepository,
   purchaseOrdersRepository,
+  inventoryMovementRepository,
 );
 
 // ============================================
@@ -116,4 +117,5 @@ export const inboundServices = new InboundServices(
     supplierDeliveriesRepository,
     supplierDeliveryItemsRepository,
     grnItemsRepository,
+    inventoryMovementRepository,
 );
