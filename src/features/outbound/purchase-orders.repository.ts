@@ -86,6 +86,56 @@ export class PurchaseOrdersRepositoryClass {
     }
   }
 
+  /**
+   * Returns all purchase orders whose scheduledDeliveryDate falls within [fromDate, toDate] (inclusive).
+   * No pagination; used for week view grouped by date.
+   */
+  async getPurchaseOrdersByScheduledDateRange(
+    fromDate: Date,
+    toDate: Date,
+    filter?: Partial<PurchaseOrderFilter>
+  ): Promise<PurchaseOrderType[]> {
+    try {
+      logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrdersByScheduledDateRange] Getting POs by date range...");
+      const whereCondition: ReturnType<typeof eq>[] = [
+        gte(PurchaseOrdersTable.scheduledDeliveryDate, fromDate),
+        lte(PurchaseOrdersTable.scheduledDeliveryDate, toDate),
+      ];
+
+      if (filter) {
+        if (Array.isArray(filter.id)) {
+          whereCondition.push(inArray(PurchaseOrdersTable.id, filter.id));
+        } else if (filter.id) {
+          whereCondition.push(eq(PurchaseOrdersTable.id, filter.id));
+        }
+        if (filter.purchaseOrderNo) {
+          whereCondition.push(like(PurchaseOrdersTable.purchaseOrderNo, `%${filter.purchaseOrderNo}%`));
+        }
+        if (Array.isArray(filter.outletId)) {
+          whereCondition.push(inArray(PurchaseOrdersTable.outletId, filter.outletId));
+        } else if (filter.outletId) {
+          whereCondition.push(eq(PurchaseOrdersTable.outletId, filter.outletId));
+        }
+        if (Array.isArray(filter.status)) {
+          whereCondition.push(inArray(PurchaseOrdersTable.status, filter.status));
+        } else if (filter.status) {
+          whereCondition.push(eq(PurchaseOrdersTable.status, filter.status));
+        }
+      }
+
+      const data = await db
+        .select()
+        .from(PurchaseOrdersTable)
+        .where(and(...whereCondition));
+
+      logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrdersByScheduledDateRange] Fetched successfully");
+      return data;
+    } catch (error) {
+      logger.error("❌ [PurchaseOrdersRepository.getPurchaseOrdersByScheduledDateRange] Error:", error);
+      throw error;
+    }
+  }
+
   async createPurchaseOrder(data: PurchaseOrderInsertType, tx?: DbTransaction): Promise<PurchaseOrderType> {
     try {
       const dbClient = tx ?? db;

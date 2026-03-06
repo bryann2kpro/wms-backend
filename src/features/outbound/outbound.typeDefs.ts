@@ -71,6 +71,13 @@ export const typeDefs = `#graphql
         Get purchase orders with optional filters and pagination.
         """
         purchaseOrders(filter: PurchaseOrderFilterInput, pageSize: Int, pageNumber: Int): PurchaseOrderPaginatedResponse
+
+        """
+        Get purchase orders for a week, grouped by date (scheduled delivery date, UTC).
+        Default: from today (UTC) through 7 days. Override with filter.scheduledDeliveryDateFrom / scheduledDeliveryDateTo.
+        Returns one entry per day; dates use DD/MM/YYYY (UTC). Frontend can key by date: Object.fromEntries(result.map(e => [e.date, e.orders])).
+        """
+        purchaseOrdersByWeek(filter: PurchaseOrderWeekFilterInput): [PurchaseOrdersByDateEntry!]!
     }
 
     """
@@ -122,6 +129,25 @@ export const typeDefs = `#graphql
     type PurchaseOrderPaginatedResponse {
         query: [PurchaseOrder!]!
         pagination: Pagination!
+    }
+
+    """
+    Optional filter for purchaseOrdersByWeek. When omitted, week is today (UTC) through 7 days.
+    Dates are ISO strings (e.g. YYYY-MM-DD or full ISO); range is inclusive.
+    """
+    input PurchaseOrderWeekFilterInput {
+        scheduledDeliveryDateFrom: String
+        scheduledDeliveryDateTo: String
+        outletId: ID
+        status: String
+    }
+
+    """
+    One day's worth of purchase orders for the week view. date is DD/MM/YYYY (UTC).
+    """
+    type PurchaseOrdersByDateEntry {
+        date: String!
+        orders: [PurchaseOrder!]!
     }
 
     extend type Mutation {

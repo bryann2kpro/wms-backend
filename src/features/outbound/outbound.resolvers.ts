@@ -62,9 +62,42 @@ const purchaseOrderFilterSchema = z
     ) as PurchaseOrderFilter;
   });
 
+/** Input for purchaseOrdersByWeek: optional date range (defaults to today through 7 days, UTC). */
+const purchaseOrderWeekFilterSchema = z.object({
+  scheduledDeliveryDateFrom: z.string().optional(),
+  scheduledDeliveryDateTo: z.string().optional(),
+  outletId: z.string().uuid().optional(),
+  status: z.string().optional(),
+});
+
 // ============================================
 // HELPERS
 // ============================================
+
+/** Format a date as DD/MM/YYYY in UTC. */
+function formatDateKeyUTC(d: Date): string {
+  const day = d.getUTCDate();
+  const month = d.getUTCMonth() + 1;
+  const year = d.getUTCFullYear();
+  return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
+}
+
+/** Get start of day UTC and end of day UTC for a given date. */
+function getDayBoundsUTC(d: Date): { start: Date; end: Date } {
+  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
+  return { start, end };
+}
+
+/** Default week: from today (UTC) through 7 days (today + 6). Returns [fromDate, toDate] inclusive. */
+function getDefaultWeekRangeUTC(): [Date, Date] {
+  const now = new Date();
+  const { start } = getDayBoundsUTC(now);
+  const endDay = new Date(start);
+  endDay.setUTCDate(endDay.getUTCDate() + 6);
+  const { end } = getDayBoundsUTC(endDay);
+  return [start, end];
+}
 
 function transformDeliveryOrder(order: DeliveryOrderType) {
   return {
@@ -159,6 +192,60 @@ export const resolvers = {
       } catch (error) {
         logger.error("❌ [outbound.resolvers.purchaseOrders] Error:", error);
         return false;
+      }
+    },
+
+    purchaseOrdersByWeek: async (
+      _: unknown,
+      args: { filter?: { scheduledDeliveryDateFrom?: string; scheduledDeliveryDateTo?: string; outletId?: string; status?: string } }
+    ) => {
+      try {
+        const filter = purchaseOrderWeekFilterSchema.parse(args.filter ?? {});
+        let fromDate: Date;
+        let toDate: Date;
+        if (filter.scheduledDeliveryDateFrom && filter.scheduledDeliveryDateTo) {
+          fromDate = new Date(filter.scheduledDeliveryDateFrom);
+          toDate = new Date(filter.scheduledDeliveryDateTo);
+          fromDate.setUTCHours(0, 0, 0, 0);
+          toDate.setUTCHours(23, 59, 59, 999);
+        } else {
+          [fromDate, toDate] = getDefaultWeekRangeUTC();
+        }
+
+        const repoFilter: Partial<PurchaseOrderFilter> = {};
+        if (filter.outletId) repoFilter.outletId = filter.outletId;
+        if (filter.status) repoFilter.status = filter.status;
+
+        const orders = await purchaseOrdersRepository.getPurchaseOrdersByScheduledDateRange(
+          fromDate,
+          toDate,
+          Object.keys(repoFilter).length > 0 ? repoFilter : undefined
+        );
+
+        const byDate = new Map<string, PurchaseOrderType[]>();
+        for (const po of orders) {
+          if (po.scheduledDeliveryDate) {
+            const key = formatDateKeyUTC(po.scheduledDeliveryDate);
+            if (!byDate.has(key)) byDate.set(key, []);
+            byDate.get(key)!.push(po);
+          }
+        }
+
+        const entries: Array<{ date: string; orders: PurchaseOrderType[] }> = [];
+        const cursor = new Date(fromDate);
+        while (cursor <= toDate) {
+          const key = formatDateKeyUTC(cursor);
+          entries.push({ date: key, orders: byDate.get(key) ?? [] });
+          cursor.setUTCDate(cursor.getUTCDate() + 1);
+        }
+
+        return entries.map((e) => ({
+          date: e.date,
+          orders: e.orders.map(transformPurchaseOrder),
+        }));
+      } catch (error) {
+        logger.error("❌ [outbound.resolvers.purchaseOrdersByWeek] Error:", error);
+        throw error;
       }
     },
     deliveryOrders: async (
