@@ -112,15 +112,6 @@ export class OutboundServices {
                 }));
                 await this.deliveryOrderRepository.createDeliveryOrderItems(itemsToInsert, tx);
 
-                await this.inventoryMovementRepository.createInventoryMovement(itemsToInsert.map(item => ({
-                    skuId: item.skuId,
-                    quantity: item.qtyRequired,
-                    referenceNo: data.purchaseOrderNo,
-                    reason: 'Delivery Order',
-                    createdBy: data.userId,
-                    updatedBy: data.userId,
-                    movementType: InventoryMovementType.RESERVED,
-                })), tx);
                 logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Delivery Order Items created successfully');
 
                 // TODO: Step 5 - Update the PO with scheduledDeliveryDate (requires PO repository)
@@ -166,6 +157,15 @@ export class OutboundServices {
                     updatedBy: data.userId,
                 }));
                 await this.purchaseOrdersRepository.createPurchaseOrderItems(items, tx);
+                await this.inventoryMovementRepository.createInventoryMovement(data.items.map(item => ({
+                    skuId: item.skuId ?? '',
+                    quantity: String(item.qtyRequired),
+                    referenceNo: data.purchaseOrderNo,
+                    reason: 'Purchase Order',
+                    createdBy: data.userId,
+                    updatedBy: data.userId,
+                    movementType: InventoryMovementType.RESERVED,
+                })), tx);
             });
             if (!created) throw new Error("Purchase order was not created.");
             logger.info("✅ [OutboundServices.createPurchaseOrder] Purchase order created");
