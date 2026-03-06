@@ -114,70 +114,119 @@ export class InventoryMovementRepositoryClass {
     }
   }
   /**
-   * Create a new inventory movement
+   * Create one or multiple inventory movements
    */
   async createInventoryMovement(
-    data: InventoryMovementsInsertType,
+    data: InventoryMovementsInsertType | InventoryMovementsInsertType[],
     tx?: DbTransaction
-  ): Promise<InventoryMovementsType> {
+  ): Promise<InventoryMovementsType | InventoryMovementsType[]> {
     try {
       const client = tx ?? db;
-      logger.info("ℹ️ [InventoryMovementsRepository.createInventoryMovement] Creating inventory movement...");
+      logger.info("ℹ️ [InventoryMovementsRepository.createInventoryMovement] Creating inventory movement(s)...");
 
-      const [existingBalance] =
-        (await this.inventoryBalanceRepository.getInventoryBalanceBySkuIds([data.skuId as string])) ?? [];
+      const movements = Array.isArray(data) ? data : [data];
 
-      const currentOnHand = Number(existingBalance?.onHandQty ?? "0");
-      const currentLoss = Number(existingBalance?.lossQty ?? "0");
-      const currentReserved = Number(existingBalance?.reservedQty ?? "0");
-      const quantity = Number(data.quantity ?? "0");
-
-      let newOnHand = currentOnHand;
-      let newLoss = currentLoss;
-      let newReserved = currentReserved;
-
-      switch (data.movementType) {
-        case InventoryMovementType.INBOUND:
-          newOnHand += quantity;
-          break;
-        case InventoryMovementType.RESERVED:
-          newReserved += quantity;
-          break;
-        case InventoryMovementType.SHIPMENT:
-          newReserved -= quantity;
-          newOnHand -= quantity;
-          break;  
-        case InventoryMovementType.ADJUSTMENT:
-          newOnHand += quantity;
-          break;
-        case InventoryMovementType.DAMAGED:
-          newOnHand -= quantity;
-          newLoss += quantity;
-          break;
+      if (movements.length === 0) {
+        return Array.isArray(data) ? [] : (null as unknown as InventoryMovementsType);
       }
 
-      const balanceAfter = newOnHand;
+      const skuIds = Array.from(
+        new Set(movements.map((movement) => movement.skuId as string)),
+      );
 
-      await this.inventoryBalanceRepository.upsertInventoryBalance({
-        skuId: data.skuId,
-        onHandQty: newOnHand.toString(),
-        lossQty: newLoss.toString(),
-        reservedQty: newReserved.toString(),
-        updatedAt: new Date(),
+      const existingBalances =
+        (await this.inventoryBalanceRepository.getInventoryBalanceBySkuIds(
+          skuIds,
+        )) ?? [];
+
+      const balanceMap = new Map<
+        string,
+        { onHand: number; loss: number; reserved: number }
+      >();
+
+      for (const balance of existingBalances) {
+        const skuId = balance.skuId as string;
+        balanceMap.set(skuId, {
+          onHand: Number(balance.onHandQty ?? "0"),
+          loss: Number(balance.lossQty ?? "0"),
+          reserved: Number(balance.reservedQty ?? "0"),
+        });
+      }
+
+      const movementsWithBalanceAfter = movements.map((movement) => {
+        const skuId = movement.skuId as string;
+
+        const current =
+          balanceMap.get(skuId) ??
+          {
+            onHand: 0,
+            loss: 0,
+            reserved: 0,
+          };
+
+        let { onHand, loss, reserved } = current;
+        const quantity = Number(movement.quantity ?? "0");
+
+        switch (movement.movementType) {
+          case InventoryMovementType.INBOUND:
+            onHand += quantity;
+            break;
+          case InventoryMovementType.RESERVED:
+            reserved += quantity;
+            break;
+          case InventoryMovementType.SHIPMENT:
+            reserved -= quantity;
+            onHand -= quantity;
+            break;
+          case InventoryMovementType.ADJUSTMENT:
+            onHand += quantity;
+            break;
+          case InventoryMovementType.DAMAGED:
+            onHand -= quantity;
+            loss += quantity;
+            break;
+        }
+
+        balanceMap.set(skuId, { onHand, loss, reserved });
+
+        const balanceAfter = onHand;
+
+        return {
+          ...movement,
+          balanceAfter: balanceAfter.toString(),
+        };
       });
 
-      const [inventoryMovement] = await client
+      for (const [skuId, { onHand, loss, reserved }] of balanceMap.entries()) {
+        await this.inventoryBalanceRepository.upsertInventoryBalance(
+          {
+            skuId,
+            onHandQty: onHand.toString(),
+            lossQty: loss.toString(),
+            reservedQty: reserved.toString(),
+            updatedAt: new Date(),
+          },
+          tx,
+        );
+      }
+
+      const inventoryMovements = await client
         .insert(InventoryMovementsTable)
-        .values({
-          ...data,
-          balanceAfter: balanceAfter.toString(),
-        })
+        .values(movementsWithBalanceAfter)
         .returning();
 
-      logger.info("✅ [InventoryMovementsRepository.createInventoryMovement] Inventory Movement created successfully");
-      return inventoryMovement;
+      logger.info(
+        "✅ [InventoryMovementsRepository.createInventoryMovement] Inventory Movement(s) created successfully",
+      );
+
+      return Array.isArray(data)
+        ? inventoryMovements
+        : inventoryMovements[0];
     } catch (error) {
-      logger.error("❌ [InventoryMovementsRepository.createInventoryMovement] Error:", error);
+      logger.error(
+        "❌ [InventoryMovementsRepository.createInventoryMovement] Error:",
+        error,
+      );
       throw error;
     }
   }

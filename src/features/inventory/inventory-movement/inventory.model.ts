@@ -38,7 +38,7 @@ export const InventoryMovementsTable = MainSchema.table('inventory_movements', {
   skuId: uuid('sku_id').notNull().references(() => SkuTable.skuId),
   movementType: InventoryMovementTypeEnum('movement_type').notNull(),
   quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull(),
-  balanceAfter: numeric('balance_after', { precision: 12, scale: 2 }).notNull(),
+  balanceAfter: numeric('balance_after', { precision: 12, scale: 2 }).default('0'),
   referenceNo: text('reference_no'),
   reason: text('reason'),
   createdAt: timestamp('created_at').defaultNow().notNull(),

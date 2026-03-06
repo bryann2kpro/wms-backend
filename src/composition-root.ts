@@ -88,7 +88,7 @@ export const deliveryOrdersRepository = new DeliveryOrdersRepositoryClass();
 export const exceptionsRepository = new ExceptionsRepositoryClass();
 // Inventory Repositories
 export const inventoryBalancesRepository = new InventoryBalanceRepositoryClass();
-export const inventoryMovementsRepository = new InventoryMovementRepositoryClass(inventoryBalancesRepository);
+export const inventoryMovementRepository = new InventoryMovementRepositoryClass(inventoryBalancesRepository);
 
 // Outbound Services
 export const outboundServices = new OutboundServices(
@@ -115,4 +115,5 @@ export const inboundServices = new InboundServices(
     supplierDeliveriesRepository,
     supplierDeliveryItemsRepository,
     grnItemsRepository,
+    inventoryMovementRepository,
 );

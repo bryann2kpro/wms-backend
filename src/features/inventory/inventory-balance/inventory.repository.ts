@@ -82,31 +82,39 @@ export class InventoryBalanceRepositoryClass {
   }
 
   async upsertInventoryBalance(
-    data: InventoryBalancesInsertType,
-    tx?: DbTransaction  
-  ): Promise<InventoryBalancesType> {
+    data: InventoryBalancesInsertType | InventoryBalancesInsertType[],
+    tx?: DbTransaction,
+  ): Promise<InventoryBalancesType | InventoryBalancesType[]> {
     try {
       const client = tx ?? db;
+      const items = Array.isArray(data) ? data : [data];
 
-      const [balance] = await client
-        .insert(InventoryBalancesTable)
-        .values(data)
-        .onConflictDoUpdate({
-          target: [InventoryBalancesTable.skuId],
-          set: {
-            onHandQty: data.onHandQty,
-            lossQty: data.lossQty,
-            reservedQty: data.reservedQty,
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
+      const results: InventoryBalancesType[] = [];
 
-      logger.info("ℹ️ [InventoryBalancesRepository.upsertInventoryBalance] Inventory balance upserted successfully");
-      return balance;
+      for (const item of items) {
+        const [balance] = await client
+          .insert(InventoryBalancesTable)
+          .values(item)
+          .onConflictDoUpdate({
+            target: [InventoryBalancesTable.skuId],
+            set: {
+              onHandQty: item.onHandQty,
+              lossQty: item.lossQty,
+              reservedQty: item.reservedQty,
+              updatedAt: new Date(),
+            },
+          })
+          .returning();
+
+        results.push(balance);
+      }
+
+      logger.info("ℹ️ [InventoryBalancesRepository.upsertInventoryBalance] Inventory balance(s) upserted successfully");
+
+      return Array.isArray(data) ? results : results[0];
     } catch (error) {
       logger.error("❌ [InventoryBalancesRepository.upsertInventoryBalance] Error:", error);
       throw error;
-    }    
+    }
   }
 }
