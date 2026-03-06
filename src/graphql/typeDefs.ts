@@ -13,7 +13,8 @@ import { typeDefs as auditLogTypeDefs } from '@/features/audit-log/audit.typeDef
 import { typeDefs as grnsTypeDefs } from '@/features/inbound/grns.typeDefs';
 import { typeDefs as supplierDeliveriesTypeDefs } from '@/features/inbound/supplier-deliveries/supplier-deliveries.typeDefs';
 import { typeDefs as outboundTypeDefs } from '@/features/outbound/outbound.typeDefs';
-import { typeDefs as inventoryTypeDefs } from '@/features/inventory/inventory.typeDefs';
+import { typeDefs as inventoryTypeDefs } from '@/features/inventory/inventory-movement/inventory.typeDefs';
+import { typeDefs as inventoryBalanceTypeDefs } from '@/features/inventory/inventory-balance/inventory.typeDefs';
 
 // Master Data typeDefs
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
@@ -95,6 +96,7 @@ export const typeDefs = [
   supplierDeliveriesTypeDefs,
   outboundTypeDefs,
   inventoryTypeDefs,
+  inventoryBalanceTypeDefs,
   // Master Data
   regionTypeDefs,
   deliveryScheduleTypeDefs,

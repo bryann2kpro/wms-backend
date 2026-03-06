@@ -11,7 +11,7 @@ export const typeDefs = `#graphql
   """
   type InventoryMovement {
     id: ID!
-    skuId: ID
+    skuId: ID!
     movementType: String!
     quantity: String!
     balanceAfter: String!

@@ -4,11 +4,13 @@ import { DbTransaction } from "@/types/db-transaction";
 import { DeliveryOrdersRepositoryClass } from "./delivery-orders.repository";
 import { DeliveryOrderItemInsertType } from "./delivery-orders.model";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
-import { InventoryMovementsRepositoryClass } from "../inventory/inventory.repository";
+import { InventoryBalanceRepositoryClass } from "../inventory/inventory-balance/inventory.repository";
 import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../master-data/delivery-schedule.repository";
 import { OutletsRepositoryClass } from "../master-data/outlets.repository";
 import { DeliveryOrderType } from "./delivery-orders.model";
 import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
+import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
+import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 
 /** Line item input: must have qtyRequired and either skuId or skuCode. */
 export type CreateDeliveryOrderItemInput = {
@@ -30,10 +32,11 @@ export class OutboundServices {
     constructor(
         private readonly deliveryOrderRepository: DeliveryOrdersRepositoryClass,
         private readonly skuRepository: SkuRepositoryClass,
-        private readonly inventoryMovementsRepository: InventoryMovementsRepositoryClass,
+        private readonly inventoryBalanceRepository: InventoryBalanceRepositoryClass,
         private readonly deliveryScheduleRepository: DeliveryScheduleRepositoryClass,
         private readonly outletsRepository: OutletsRepositoryClass,
         private readonly purchaseOrdersRepository: PurchaseOrdersRepositoryClass,
+        private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
     ) {}
 
     /**
@@ -48,7 +51,7 @@ export class OutboundServices {
             const updatedBy = data.userId;
             let createdOrder: DeliveryOrderType | null = null;
 
-            await db.transaction(async (tx) => {
+            await db.transaction(async (tx: DbTransaction) => {
                 logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 1: Check if skus are in stock...');
                 const resolvedLines = await this.resolveAndValidateLineItems(data.items, tx);
                 await this.assertSufficientStock(resolvedLines, tx);
@@ -90,6 +93,16 @@ export class OutboundServices {
                     updatedBy: data.userId,
                 }));
                 await this.deliveryOrderRepository.createDeliveryOrderItems(itemsToInsert, tx);
+
+                await this.inventoryMovementRepository.createInventoryMovement(itemsToInsert.map(item => ({
+                    skuId: item.skuId,
+                    quantity: item.qtyRequired,
+                    referenceNo: data.purchaseOrderNo,
+                    reason: 'Delivery Order',
+                    createdBy: data.userId,
+                    updatedBy: data.userId,
+                    movementType: InventoryMovementType.RESERVED,
+                })), tx);
                 logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Delivery Order Items created successfully');
 
                 // TODO: Step 5 - Update the PO with scheduledDeliveryDate (requires PO repository)
@@ -152,8 +165,8 @@ export class OutboundServices {
     ): Promise<void> {
         if (lines.length === 0) return;
         const skuIds = [...new Set(lines.map((l) => l.skuId))];
-        const balances = await this.inventoryMovementsRepository.getBalancesBySkuIds(skuIds, tx);
-        const bySkuId = new Map(balances.map((b) => [b.skuId, b]));
+        const balances = await this.inventoryBalanceRepository.getInventoryBalanceBySkuIds(skuIds);
+        const bySkuId = new Map(balances?.map((b) => [b.skuId, b]) ?? []);
 
         const parseNum = (v: string | number): number => (typeof v === "number" ? v : parseFloat(String(v)) || 0);
 

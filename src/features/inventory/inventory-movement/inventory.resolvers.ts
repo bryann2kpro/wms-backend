@@ -5,8 +5,9 @@
  * Uses AuditLogRepository for data access.
  */
 
-import { authRepository, inventoryMovementsRepository, warehousesRepository } from '@/composition-root';
+import { authRepository, inventoryMovementRepository, warehousesRepository } from '@/composition-root';
 import { InventoryMovementsFilter } from './inventory.repository';
+import { InventoryMovementType } from './inventory.model';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -52,8 +53,8 @@ export const resolvers = {
           id?: string;
           skuId?: string;
           skuIds?: string[];
-          movementType?: string;
-          movementTypes?: string[];
+          movementType?: InventoryMovementType;
+          movementTypes?: InventoryMovementType[];
           referenceNo?: string;
           reason?: string;
         };
@@ -85,7 +86,7 @@ export const resolvers = {
         }
       }
 
-      const result = await inventoryMovementsRepository.getInventoryMovements(filter, {
+      const result = await inventoryMovementRepository.getInventoryMovements(filter, {
         pageSize: args.pageSize,
         pageNumber: args.pageNumber,
         sortBy: args.sortBy,
@@ -99,7 +100,7 @@ export const resolvers = {
         )
       );
 
-      const users = await authRepository.getUsersByIds(allUserIds);
+      const users = await authRepository.getUsersByIds(allUserIds as string[]);
       const userMap = new Map(users.map((u) => [u.id, u]));
 
       return {
