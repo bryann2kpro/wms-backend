@@ -5,8 +5,11 @@
  * The context is created for each request and provides authenticated user info.
  */
 
+import DataLoader from 'dataloader';
 import { Request } from 'express';
-import { authRepository } from '@/composition-root';
+import { authRepository, outletsRepository, regionRepository } from '@/composition-root';
+import type { OutletWithRegion } from '@/features/master-data/outlets.repository';
+import type { RegionType } from '@/features/master-data/region.model';
 import { UserType } from '@/features/auth/auth.model';
 import { UserRoleType } from '@/features/auth/auth.repository';
 import { DbTransaction } from '@/types/db-transaction';
@@ -35,6 +38,12 @@ export interface UserRole {
   status: string;
 }
 
+/** DataLoader for batching outlet lookups by ID (avoids N+1 when resolving PurchaseOrder.outlet). */
+export type OutletLoader = DataLoader<string, OutletWithRegion | null>;
+
+/** DataLoader for batching region lookups by ID (avoids N+1 when resolving Outlet.region). */
+export type RegionLoader = DataLoader<string, RegionType | null>;
+
 export interface GraphQLContext {
   /** The authenticated user, or null if not authenticated */
   user: UserType | null;
@@ -48,6 +57,10 @@ export interface GraphQLContext {
   req: Request;
   /** Optional database transaction for atomic operations */
   tx?: DbTransaction;
+  /** Batched outlet-by-ID loader (per request). Use when resolving PurchaseOrder.outlet. */
+  getOutletLoader: () => OutletLoader;
+  /** Batched region-by-ID loader (per request). Use when resolving Outlet.region. */
+  getRegionLoader: () => RegionLoader;
 }
 
 // ============================================
@@ -61,13 +74,43 @@ export interface GraphQLContext {
  * @param req - Express request object
  * @returns GraphQL context with user info
  */
+/** Creates the outlet DataLoader. One instance per request so batches are request-scoped. */
+function createOutletLoader(): OutletLoader {
+  return new DataLoader<string, OutletWithRegion | null>(async (ids) => {
+    const uniqueIds = [...new Set(ids)];
+    const result = await outletsRepository.getOutlet(
+      { outletId: uniqueIds },
+      { pageSize: Math.max(uniqueIds.length, 100), pageNumber: 1 }
+    );
+    const byId = new Map(result.query.map((o) => [o.outletId, o]));
+    return ids.map((id) => byId.get(id) ?? null);
+  });
+}
+
+/** Creates the region DataLoader. One instance per request so batches are request-scoped. */
+function createRegionLoader(): RegionLoader {
+  return new DataLoader<string, RegionType | null>(async (ids) => {
+    const uniqueIds = [...new Set(ids)];
+    const result = await regionRepository.getRegion(
+      { regionId: uniqueIds },
+      { pageSize: Math.max(uniqueIds.length, 100), pageNumber: 1 }
+    );
+    const byId = new Map(result.query.map((r: RegionType) => [r.regionId, r]));
+    return ids.map((id) => byId.get(id) ?? null);
+  });
+}
+
 export async function createContext({ req }: { req: Request }): Promise<GraphQLContext> {
+  const outletLoader = createOutletLoader();
+  const regionLoader = createRegionLoader();
   const context: GraphQLContext = {
     user: null,
     userPermissions: [],
     isSuperAdmin: false,
     userRoles: [],
     req,
+    getOutletLoader: () => outletLoader,
+    getRegionLoader: () => regionLoader,
   };
 
   // Extract token from Authorization header

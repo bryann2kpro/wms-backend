@@ -14,8 +14,18 @@ export const typeDefs = `#graphql
     outletName: String!
     outletCode: String!
     regionId: ID
+    """
+    Flattened region name (from JOIN). For full region object, use 'region' field.
+    """
     regionName: String
+    """
+    Flattened region code (from JOIN). For full region object, use 'region' field.
+    """
     regionCode: String
+    """
+    Full region object. Resolved via DataLoader to avoid N+1.
+    """
+    region: Region
     createdAt: String!
     updatedAt: String!
     createdBy: String!

@@ -8,6 +8,7 @@ import { SkuRepositoryClass } from "../master-data/sku.repository";
 import type { DbTransaction } from "@/types/db-transaction";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
+import { GrnItemRacksTable } from "./grns.model";
 
 const DEFAULT_SUPPLIER_ID = 'b3e317c5-4bec-49aa-82f3-0a83115a8e70';
 
@@ -21,6 +22,8 @@ export type CreateInboundItemInput = {
     lossQty?: string | null;
     remarks?: string | null;
     rackId?: string | null;
+    rackIds?: string[] | null;
+    expiryDate?: string | null;
     skuCode?: string | null;
     skuDescription?: string | null;
     skuUom?: string | null;
@@ -143,43 +146,64 @@ export class InboundServices {
                 }, tx);
 
                 // 4. Create GRN items (same as createGrn)
-                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; createdBy: string; updatedBy?: string }> = [];
+                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; createdBy: string; updatedBy?: string }> = [];
                 if (data.items?.length) {
                     for (const item of data.items) {
                         const skuIdToUse = await this.resolveOrCreateSkuForItem(item, createdBy, updatedBy, tx);
                         if (!skuIdToUse) continue;
+                        const rackIds = item.rackIds && item.rackIds.length > 0
+                            ? item.rackIds
+                            : (item.rackId ? [item.rackId] : []);
                         grnItemRows.push({
                             grnId: grn.id,
                             skuId: skuIdToUse,
                             qty: item.qty,
                             lossQty: item.lossQty ?? '0',
                             remarks: item.remarks ?? undefined,
-                            rackId: item.rackId ?? undefined,
+                            rackId: rackIds[0] ?? undefined,
+                            expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                             createdBy,
                             updatedBy,
                         });
                     }
                     if (grnItemRows.length > 0) {
-                        const created = await this.grnItemsRepository.createGrnItems(grnItemRows, tx);
-                        await this.inventoryMovementRepository.createInventoryMovement(grnItemRows.map(item => ({
-                            skuId: item.skuId,
-                            quantity: item.qty,
-                            referenceNo: grn.grnNo,
-                            reason: 'Inbound',
-                            createdBy,
-                            updatedBy,
-                            movementType: InventoryMovementType.INBOUND,
-                        })), tx);
-                        
-                        if (created === false) {
+                        const createdItems = await this.grnItemsRepository.createGrnItems(grnItemRows, tx);
+                        if (createdItems === false) {
                             logger.error('[InboundServices] Failed to create GRN items batch');
                             throw new Error('Failed to create GRN items');
+                        } else if (createdItems.length && data.items) {
+                            const rackRows: { grnItemId: string; rackId: string }[] = [];
+                            createdItems.forEach((createdItem, index) => {
+                                const source = data.items![index];
+                                const rackIds = (source.rackIds && source.rackIds.length > 0)
+                                    ? source.rackIds
+                                    : (source.rackId ? [source.rackId] : []);
+                                for (const rackId of rackIds) {
+                                    if (rackId) {
+                                        rackRows.push({ grnItemId: createdItem.id, rackId });
+                                    }
+                                }
+                            });
+                            if (rackRows.length > 0) {
+                                await tx.insert(GrnItemRacksTable).values(rackRows);
+                            }
                         }
                     }
                 }
 
                 if (data.inboundQty != null && data.skuId) {
                     logger.info('ℹ️ [InboundServices.createInbound] Updating inventory balance...');
+
+                    await this.inventoryMovementRepository.createInventoryMovement(grnItemRows.map(item => ({
+                        skuId: item.skuId,
+                        quantity: item.qty,
+                        referenceNo: grn.grnNo,
+                        reason: 'Inbound',
+                        createdBy,
+                        updatedBy,
+                        movementType: InventoryMovementType.INBOUND,
+                    })), tx);
+
                     await this.skuRepository.updateSku(data.skuId, {
                         cartonQuantity: String(data.inboundQty),
                         updatedBy: createdBy,

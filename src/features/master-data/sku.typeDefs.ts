@@ -26,6 +26,11 @@ export const typeDefs = `#graphql
     skuQuantity: Float!
     lossQuantity: Float!
     skuExpiryDate: String
+    """
+    Optional per-expiry / per-rack batch details for this SKU.
+    Each entry represents a distinct expiry date and the rack IDs where that batch is stored.
+    """
+    skuBatches: [SkuBatch!]
     skuSuppliers: [SkuSupplier!]
     skuUom: String!
     isActive: Boolean!
@@ -52,6 +57,7 @@ export const typeDefs = `#graphql
     skuPrice: Float
     skuQuantity: Float!
     skuExpiryDate: String
+    skuBatches: [SkuBatchInput!]
     skuSuppliers: [SkuSupplierInput!]
     skuUom: String!
     isActive: Boolean!
@@ -69,6 +75,7 @@ export const typeDefs = `#graphql
     skuQuantity: Float
     lossQuantity: Float
     skuExpiryDate: String
+    skuBatches: [SkuBatchInput!]
     skuSuppliers: [SkuSupplierInput!]
     skuUom: String
     isActive: Boolean
@@ -97,6 +104,22 @@ export const typeDefs = `#graphql
     sortBy: String
     """Sort direction: ASC or DESC. Default: ASC"""
     sortOrder: String
+  }
+
+  """
+  Per-expiry / per-rack batch details for a SKU.
+  """
+  type SkuBatch {
+    expiryDate: String
+    rackIds: [ID!]
+  }
+
+  """
+  Input type for per-expiry / per-rack batch details when creating or updating a SKU.
+  """
+  input SkuBatchInput {
+    expiryDate: String
+    rackIds: [ID!]
   }
 
   extend type Query {

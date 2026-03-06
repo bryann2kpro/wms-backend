@@ -12,10 +12,11 @@ import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { GraphQLError } from 'graphql';
-import { GrnType } from './grns.model';
+import { GrnType, GrnItemRacksTable } from './grns.model';
 import { logger } from '@/util/logger';
 import { GrnFilter } from './grns.repository';
 import type { GrnItemsType } from './grns-items.repository';
+import { inArray } from 'drizzle-orm';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -44,9 +45,12 @@ function transformGrn(grn: GrnType) {
 
 function transformGrnItem(
     item: GrnItemsType,
-    skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>
+    skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>,
+    rackMap?: Map<string, string[]>
 ) {
     const sku = skuMap?.get(item.skuId);
+    const rackIds = rackMap?.get(item.id) ?? (item.rackId ? [item.rackId] : []);
+    const primaryRackId = rackIds[0] ?? null;
     return {
         id: item.id,
         grnId: item.grnId,
@@ -56,7 +60,9 @@ function transformGrnItem(
         qty: item.qty,
         lossQty: item.lossQty ?? '0',
         remarks: item.remarks,
-        rackId: item.rackId ?? null,
+        rackId: primaryRackId,
+        rackIds,
+        expiryDate: (item as any).expiryDate?.toISOString?.() ?? (item as any).expiryDate ?? null,
         createdAt: item.createdAt?.toISOString?.() ?? item.createdAt,
         updatedAt: item.updatedAt?.toISOString?.() ?? item.updatedAt,
         createdBy: item.createdBy,
@@ -156,7 +162,22 @@ export const resolvers = {
                     skuMap.set(s.skuId, { skuCode: s.skuCode ?? null, skuDescription: s.skuDescription ?? null });
                 }
             }
-            return result.map((item) => transformGrnItem(item, skuMap));
+
+            const grnItemIds = result.map((r) => r.id);
+            let rackMap = new Map<string, string[]>();
+            if (grnItemIds.length > 0) {
+                const rackLinks = await db
+                    .select()
+                    .from(GrnItemRacksTable)
+                    .where(inArray(GrnItemRacksTable.grnItemId, grnItemIds));
+                for (const link of rackLinks) {
+                    const current = rackMap.get(link.grnItemId) ?? [];
+                    current.push(link.rackId);
+                    rackMap.set(link.grnItemId, current);
+                }
+            }
+
+            return result.map((item) => transformGrnItem(item, skuMap, rackMap));
         },
     },
     GrnItem: {
@@ -238,7 +259,7 @@ export const resolvers = {
                     status?: string | null;
                     createdBy: string;
                     updatedBy?: string | null;
-                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -346,7 +367,7 @@ export const resolvers = {
                     }, context.tx);
 
                     // 4. Create GRN items
-                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; createdBy: string; updatedBy?: string }> = [];
+                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; createdBy: string; updatedBy?: string }> = [];
                     if (input.items?.length) {
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -375,20 +396,40 @@ export const resolvers = {
                                 logger.error('[grns.resolvers]: SKU not found and cannot create', { item });
                                 continue;
                             }
+                            const rackIds = item.rackIds && item.rackIds.length > 0
+                                ? item.rackIds
+                                : (item.rackId ? [item.rackId] : []);
                             grnItemRows.push({
                                 grnId: grn.id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
                                 remarks: item.remarks ?? undefined,
-                                rackId: item.rackId ?? undefined,
+                                rackId: rackIds[0] ?? undefined,
+                                expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                                 createdBy,
                                 updatedBy,
                             });
                         }
-                        const created = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
-                        if (created === false) {
+                        const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
+                        if (createdItems === false) {
                             logger.error('[grns.resolvers]: Failed to create GRN items batch');
+                        } else if (createdItems.length && input.items) {
+                            const rackRows: { grnItemId: string; rackId: string }[] = [];
+                            createdItems.forEach((createdItem, index) => {
+                                const source = input.items![index];
+                                const rackIds = (source.rackIds && source.rackIds.length > 0)
+                                    ? source.rackIds
+                                    : (source.rackId ? [source.rackId] : []);
+                                for (const rackId of rackIds) {
+                                    if (rackId) {
+                                        rackRows.push({ grnItemId: createdItem.id, rackId });
+                                    }
+                                }
+                            });
+                            if (rackRows.length > 0) {
+                                await db.insert(GrnItemRacksTable).values(rackRows);
+                            }
                         }
                     }
 
@@ -425,7 +466,7 @@ export const resolvers = {
                     status?: string | null;
                     updatedBy?: string | null;
                     updatedAt?: Date;
-                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -502,7 +543,7 @@ export const resolvers = {
                     // Replace GRN items and sync Supplier Delivery Items (skuId, qtyDelivered = item qty)
                     if (input.items != null && input.items.length > 0) {
                         const createdBy = existingGrn.createdBy;
-                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; createdBy: string; updatedBy?: string }> = [];
+                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; createdBy: string; updatedBy?: string }> = [];
 
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -531,21 +572,51 @@ export const resolvers = {
                                 logger.error('[grns.resolvers]: SKU not found and cannot create', { item });
                                 continue;
                             }
+                            const rackIds = item.rackIds && item.rackIds.length > 0
+                                ? item.rackIds
+                                : (item.rackId ? [item.rackId] : []);
                             grnItemRows.push({
                                 grnId: id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
                                 remarks: item.remarks ?? undefined,
-                                rackId: item.rackId ?? undefined,
+                                rackId: rackIds[0] ?? undefined,
+                                expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                                 createdBy,
                                 updatedBy,
                             });
                         }
 
+                        // Delete existing rack mappings for this GRN's items
+                        const existingItems = await grnItemsRepository.getGrnItems({ grnId: id }, context.tx);
+                        if (existingItems && existingItems.length > 0) {
+                            const existingIds = existingItems.map((i) => i.id);
+                            await db
+                                .delete(GrnItemRacksTable)
+                                .where(inArray(GrnItemRacksTable.grnItemId, existingIds));
+                        }
+
                         await grnItemsRepository.deleteGrnItem({ grnId: id }, context.tx);
                         if (grnItemRows.length > 0) {
-                            await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
+                            const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
+                            if (createdItems && createdItems !== false && input.items) {
+                                const rackRows: { grnItemId: string; rackId: string }[] = [];
+                                createdItems.forEach((createdItem, index) => {
+                                    const source = input.items![index];
+                                    const rackIds = (source.rackIds && source.rackIds.length > 0)
+                                        ? source.rackIds
+                                        : (source.rackId ? [source.rackId] : []);
+                                    for (const rackId of rackIds) {
+                                        if (rackId) {
+                                            rackRows.push({ grnItemId: createdItem.id, rackId });
+                                        }
+                                    }
+                                });
+                                if (rackRows.length > 0) {
+                                    await db.insert(GrnItemRacksTable).values(rackRows);
+                                }
+                            }
                         }
 
                         const effectiveDeliveryId = supplierDeliveryId ?? (updateData.supplierDeliveryId as string | undefined);

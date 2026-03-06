@@ -50,7 +50,12 @@ export const typeDefs = `#graphql
         qty: String!
         lossQty: String!
         remarks: String
+        """Primary rack (first rackId if multiple are provided)."""
         rack: Rack
+        """All rack IDs associated with this GRN item."""
+        rackIds: [ID!]
+        """Optional expiry date for this GRN item."""
+        expiryDate: String
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -66,7 +71,12 @@ export const typeDefs = `#graphql
         qty: String!
         lossQty: String
         remarks: String
+        """Deprecated: use rackIds instead."""
         rackId: ID
+        """All rack IDs associated with this GRN item."""
+        rackIds: [ID!]
+        """Optional expiry date for this GRN item."""
+        expiryDate: String
         skuCode: String
         skuDescription: String
         skuUom: ID

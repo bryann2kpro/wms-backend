@@ -65,9 +65,29 @@ export const GrnItemsTable = MainSchema.table('grn_items', {
   lossQty: numeric('loss_qty', { precision: 10, scale: 2 }).notNull().default('0'),
   remarks: text('remarks'),
   rackId: uuid('rack_id'),
+  /**
+   * Optional expiry date for this GRN item.
+   * Multiple GRN items may exist for the same SKU with different expiry dates.
+   */
+  expiryDate: timestamp('expiry_date'),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   createdBy: uuid('created_by').notNull(),
   updatedBy: uuid('updated_by'),
 });
+
+/**
+ * GRN Item Racks Join Table
+ *
+ * @description Maps GRN items to one or more racks.
+ * A single GRN item can be associated with multiple rack locations.
+ */
+export const GrnItemRacksTable = MainSchema.table('grn_item_racks', {
+  id: uuid('id').defaultRandom().notNull().primaryKey(),
+  grnItemId: uuid('grn_item_id').notNull(),
+  rackId: uuid('rack_id').notNull(),
+});
+
+export type GrnItemRackType = typeof GrnItemRacksTable.$inferSelect;
+export type GrnItemRackInsertType = typeof GrnItemRacksTable.$inferInsert;

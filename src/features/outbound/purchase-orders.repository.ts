@@ -1,7 +1,7 @@
 /**
- * Transfer Orders Repository
+ * Purchase Orders Repository
  *
- * @description Data access layer for Transfer Orders and Transfer Order Items.
+ * @description Data access layer for Purchase Orders and Purchase Order Items.
  */
 
 import { db } from "@/db";
@@ -25,7 +25,7 @@ export class PurchaseOrdersRepositoryClass {
   constructor() {}
 
   // ============================================
-  // Transfer Orders
+  // Purchase Orders
   // ============================================
 
   async getPurchaseOrders(
@@ -33,7 +33,7 @@ export class PurchaseOrdersRepositoryClass {
     paginationParams: PaginationParams
   ): Promise<PaginatedResponse<PurchaseOrderType>> {
     try {
-      logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrders] Getting transfer orders...");
+      logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrders] Getting purchase orders...");
       const whereCondition: ReturnType<typeof eq>[] = [];
 
       if (Array.isArray(filter.id)) {
@@ -78,7 +78,7 @@ export class PurchaseOrdersRepositoryClass {
       const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
       const data = await paginatedQuery.query;
 
-      logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrders] Transfer orders fetched successfully");
+      logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrders] Purchase orders fetched successfully");
       return { query: data, pagination: paginatedQuery.pagination };
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.getPurchaseOrders] Error:", error);
@@ -86,10 +86,60 @@ export class PurchaseOrdersRepositoryClass {
     }
   }
 
+  /**
+   * Returns all purchase orders whose scheduledDeliveryDate falls within [fromDate, toDate] (inclusive).
+   * No pagination; used for week view grouped by date.
+   */
+  async getPurchaseOrdersByScheduledDateRange(
+    fromDate: Date,
+    toDate: Date,
+    filter?: Partial<PurchaseOrderFilter>
+  ): Promise<PurchaseOrderType[]> {
+    try {
+      logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrdersByScheduledDateRange] Getting POs by date range...");
+      const whereCondition: ReturnType<typeof eq>[] = [
+        gte(PurchaseOrdersTable.scheduledDeliveryDate, fromDate),
+        lte(PurchaseOrdersTable.scheduledDeliveryDate, toDate),
+      ];
+
+      if (filter) {
+        if (Array.isArray(filter.id)) {
+          whereCondition.push(inArray(PurchaseOrdersTable.id, filter.id));
+        } else if (filter.id) {
+          whereCondition.push(eq(PurchaseOrdersTable.id, filter.id));
+        }
+        if (filter.purchaseOrderNo) {
+          whereCondition.push(like(PurchaseOrdersTable.purchaseOrderNo, `%${filter.purchaseOrderNo}%`));
+        }
+        if (Array.isArray(filter.outletId)) {
+          whereCondition.push(inArray(PurchaseOrdersTable.outletId, filter.outletId));
+        } else if (filter.outletId) {
+          whereCondition.push(eq(PurchaseOrdersTable.outletId, filter.outletId));
+        }
+        if (Array.isArray(filter.status)) {
+          whereCondition.push(inArray(PurchaseOrdersTable.status, filter.status));
+        } else if (filter.status) {
+          whereCondition.push(eq(PurchaseOrdersTable.status, filter.status));
+        }
+      }
+
+      const data = await db
+        .select()
+        .from(PurchaseOrdersTable)
+        .where(and(...whereCondition));
+
+      logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrdersByScheduledDateRange] Fetched successfully");
+      return data;
+    } catch (error) {
+      logger.error("❌ [PurchaseOrdersRepository.getPurchaseOrdersByScheduledDateRange] Error:", error);
+      throw error;
+    }
+  }
+
   async createPurchaseOrder(data: PurchaseOrderInsertType, tx?: DbTransaction): Promise<PurchaseOrderType> {
     try {
       const dbClient = tx ?? db;
-      logger.info("ℹ️ [PurchaseOrdersRepository.createPurchaseOrder] Creating transfer order...");
+      logger.info("ℹ️ [PurchaseOrdersRepository.createPurchaseOrder] Creating purchase order...");
       const [row] = await dbClient
         .insert(PurchaseOrdersTable)
         .values({
@@ -98,7 +148,7 @@ export class PurchaseOrdersRepositoryClass {
           updatedAt: new Date(),
         })
         .returning();
-      logger.info("✅ [PurchaseOrdersRepository.createPurchaseOrder] Transfer order created successfully");
+      logger.info("✅ [PurchaseOrdersRepository.createPurchaseOrder] Purchase order created successfully");
       return row;
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.createPurchaseOrder] Error:", error);
@@ -113,14 +163,14 @@ export class PurchaseOrdersRepositoryClass {
   ): Promise<PurchaseOrderType> {
     try {
       const dbClient = tx ?? db;
-      logger.info("ℹ️ [PurchaseOrdersRepository.updatePurchaseOrder] Updating transfer order...");
+      logger.info("ℹ️ [PurchaseOrdersRepository.updatePurchaseOrder] Updating purchase order...");
       const [row] = await dbClient
         .update(PurchaseOrdersTable)
         .set({ ...data, updatedAt: new Date() })
         .where(eq(PurchaseOrdersTable.id, id))
         .returning();
-      if (!row) throw new Error("[PurchaseOrdersRepository.updatePurchaseOrder] Transfer order not found");
-      logger.info("✅ [PurchaseOrdersRepository.updatePurchaseOrder] Transfer order updated successfully");
+      if (!row) throw new Error("[PurchaseOrdersRepository.updatePurchaseOrder] Purchase order not found");
+      logger.info("✅ [PurchaseOrdersRepository.updatePurchaseOrder] Purchase order updated successfully");
       return row;
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.updatePurchaseOrder] Error:", error);
@@ -132,7 +182,7 @@ export class PurchaseOrdersRepositoryClass {
     try {
       const dbClient = tx ?? db;
       await dbClient.delete(PurchaseOrdersTable).where(eq(PurchaseOrdersTable.id, id));
-      logger.info("✅ [PurchaseOrdersRepository.deletePurchaseOrder] Transfer order deleted successfully");
+      logger.info("✅ [PurchaseOrdersRepository.deletePurchaseOrder] Purchase order deleted successfully");
       return true;
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.deletePurchaseOrder] Error:", error);
@@ -141,7 +191,7 @@ export class PurchaseOrdersRepositoryClass {
   }
 
   // ============================================
-  // Transfer Order Items
+  // Purchase Order Items
   // ============================================
 
   async getPurchaseOrderItems(
@@ -149,7 +199,7 @@ export class PurchaseOrdersRepositoryClass {
     paginationParams: PaginationParams
   ): Promise<PaginatedResponse<PurchaseOrderItemType>> {
     try {
-      logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrderItems] Getting transfer order items...");
+      logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrderItems] Getting purchase order items...");
       const whereCondition: ReturnType<typeof eq>[] = [];
 
       if (Array.isArray(filter.id)) {
@@ -179,7 +229,7 @@ export class PurchaseOrdersRepositoryClass {
       const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
       const data = await paginatedQuery.query;
 
-      logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrderItems] Transfer order items fetched successfully");
+      logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrderItems] Purchase order items fetched successfully");
       return { query: data, pagination: paginatedQuery.pagination };
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.getPurchaseOrderItems] Error:", error);
@@ -193,7 +243,7 @@ export class PurchaseOrdersRepositoryClass {
   ): Promise<PurchaseOrderItemType[]> {
     try {
       const dbClient = tx ?? db;
-      logger.info("ℹ️ [PurchaseOrdersRepository.createPurchaseOrderItems] Creating transfer order items...");
+      logger.info("ℹ️ [PurchaseOrdersRepository.createPurchaseOrderItems] Creating purchase order items...");
       const rows = await dbClient
         .insert(PurchaseOrderItemsTable)
         .values(
@@ -204,7 +254,7 @@ export class PurchaseOrdersRepositoryClass {
           }))
         )
         .returning();
-      logger.info("✅ [PurchaseOrdersRepository.createPurchaseOrderItems] Transfer order items created successfully");
+      logger.info("✅ [PurchaseOrdersRepository.createPurchaseOrderItems] Purchase order items created successfully");
       return rows;
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.createPurchaseOrderItems] Error:", error);
@@ -219,14 +269,14 @@ export class PurchaseOrdersRepositoryClass {
   ): Promise<PurchaseOrderItemType> {
     try {
       const dbClient = tx ?? db;
-      logger.info("ℹ️ [PurchaseOrdersRepository.updatePurchaseOrderItem] Updating transfer order item...");
+      logger.info("ℹ️ [PurchaseOrdersRepository.updatePurchaseOrderItem] Updating purchase order item...");
       const [row] = await dbClient
         .update(PurchaseOrderItemsTable)
         .set({ ...data, updatedAt: new Date() })
         .where(eq(PurchaseOrderItemsTable.id, id))
         .returning();
-      if (!row) throw new Error("[PurchaseOrdersRepository.updatePurchaseOrderItem] Transfer order item not found");
-      logger.info("✅ [PurchaseOrdersRepository.updatePurchaseOrderItem] Transfer order item updated successfully");
+      if (!row) throw new Error("[PurchaseOrdersRepository.updatePurchaseOrderItem] Purchase order item not found");
+      logger.info("✅ [PurchaseOrdersRepository.updatePurchaseOrderItem] Purchase order item updated successfully");
       return row;
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.updatePurchaseOrderItem] Error:", error);
@@ -238,7 +288,7 @@ export class PurchaseOrdersRepositoryClass {
     try {
       const dbClient = tx ?? db;
       await dbClient.delete(PurchaseOrderItemsTable).where(eq(PurchaseOrderItemsTable.id, id));
-      logger.info("✅ [PurchaseOrdersRepository.deletePurchaseOrderItem] Transfer order item deleted successfully");
+      logger.info("✅ [PurchaseOrdersRepository.deletePurchaseOrderItem] Purchase order item deleted successfully");
       return true;
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.deletePurchaseOrderItem] Error:", error);
@@ -250,7 +300,7 @@ export class PurchaseOrdersRepositoryClass {
     try {
       const dbClient = tx ?? db;
       await dbClient.delete(PurchaseOrderItemsTable).where(eq(PurchaseOrderItemsTable.purchaseOrderNo, purchaseOrderNo));
-      logger.info("✅ [PurchaseOrdersRepository.deletePurchaseOrderItemsByPurchaseOrderNo] Transfer order items deleted successfully");
+      logger.info("✅ [PurchaseOrdersRepository.deletePurchaseOrderItemsByPurchaseOrderNo] Purchase order items deleted successfully");
       return true;
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.deletePurchaseOrderItemsByPurchaseOrderNo] Error:", error);
