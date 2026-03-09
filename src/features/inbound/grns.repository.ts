@@ -6,7 +6,8 @@
 
 import { db } from '@/db';
 import { GrnsTable, GrnInsertType, GrnType } from './grns.model';
-import { eq, and, like, desc, asc } from 'drizzle-orm';
+import { SupplierDeliveriesTable } from './supplier-deliveries/supplier-deliveries.model';
+import { eq, and, or, like, ilike, desc, asc, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -18,6 +19,8 @@ import type { DbTransaction } from '@/types/db-transaction';
 export type GrnFilter = {
     id?: string;
     grnNo?: string;
+    /** Search across GRN number, PO reference, and Supplier DO (case-insensitive). */
+    search?: string;
     status?: string;
     /** Sort field: GRN_NO, UPDATED_AT, CREATED_AT, STATUS, RECEIVED_AT. Default: UPDATED_AT */
     sortBy?: string;
@@ -34,10 +37,25 @@ export class GrnsRepositoryClass {
             if (filter.id) {
                 whereCondition.push(eq(GrnsTable.id, filter.id));
             }
-            if (filter.grnNo) {
+            if (filter.grnNo && !filter.search) {
                 whereCondition.push(like(GrnsTable.grnNo, `%${filter.grnNo}%`));
             }
-
+            if (filter.search) {
+                const term = `%${filter.search.trim()}%`;
+                const searchConds = [
+                    ilike(GrnsTable.grnNo, term),
+                    ilike(GrnsTable.poNo, term),
+                ];
+                const matchingSdIds = await db
+                    .select({ id: SupplierDeliveriesTable.id })
+                    .from(SupplierDeliveriesTable)
+                    .where(ilike(SupplierDeliveriesTable.supplierDeliveryNo, term));
+                const sdIds = matchingSdIds.map((r) => r.id).filter(Boolean);
+                if (sdIds.length > 0) {
+                    searchConds.push(inArray(GrnsTable.supplierDeliveryId, sdIds));
+                }
+                whereCondition.push(or(...searchConds)!);
+            }
             if (filter.status) {
                 whereCondition.push(eq(GrnsTable.status, filter.status));
             }

@@ -129,6 +129,8 @@ export const typeDefs = `#graphql
     input GrnFilterInput {
         id: ID
         grnNo: String
+        """Search across GRN number, PO reference, and Supplier DO (case-insensitive)."""
+        search: String
         status: String
         page: Int
         pageSize: Int
