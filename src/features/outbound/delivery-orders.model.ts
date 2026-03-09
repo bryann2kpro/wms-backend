@@ -24,7 +24,8 @@ import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
 export const DeliveryOrdersTable = MainSchema.table('delivery_orders', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
   doNo: text('delivery_order_no').unique().notNull(),
-  poNo: text('purchase_order_no').unique().notNull(),
+  purchaseOrderId: uuid('purchase_order_id').unique().notNull(),
+  poNo: text('purchase_order_no').notNull(),
 
   status: text('status').notNull().default('CREATED'),
 
@@ -48,6 +49,7 @@ export const DeliveryOrdersTable = MainSchema.table('delivery_orders', {
  */
 export const DeliveryOrderItemsTable = MainSchema.table('delivery_order_items', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
+  purchaseOrderId: uuid('purchase_order_id').notNull(),
   purchaseOrderNo: text('purchase_order_no').notNull(),
   skuId: uuid('sku_id').notNull(),
   qtyRequired: numeric('qty_required', { precision: 10, scale: 2 }).notNull(),

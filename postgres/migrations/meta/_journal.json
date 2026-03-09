@@ -288,6 +288,13 @@
       "when": 1772524835887,
       "tag": "0040_handy_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1773025775170,
+      "tag": "0041_jittery_human_cannonball",
+      "breakpoints": true
     }
   ]
 }
