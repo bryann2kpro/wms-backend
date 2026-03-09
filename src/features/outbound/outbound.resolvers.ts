@@ -11,7 +11,8 @@ import type { GraphQLContext } from "@/graphql/context";
 import { withAudit } from "@/features/audit-log/audit.wrapper";
 import { GraphQLError } from "graphql";
 import { logger } from "@/util/logger";
-import { DeliveryOrderType, DeliveryOrderFilter } from "./delivery-orders.model";
+import { DeliveryOrderType, DeliveryOrderFilter, DeliveryOrderItemFilter } from "./delivery-orders.model";
+import { DeliveryOrderItemWithDetails } from "./delivery-orders.repository";
 import { PurchaseOrderType, PurchaseOrderFilter } from "./purchase-orders.model";
 
 // ============================================
@@ -166,6 +167,29 @@ function transformOutletForGraphQL(outlet: {
   };
 }
 
+function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetails) {
+  return {
+    id: item.id,
+    purchaseOrderId: item.purchaseOrderId,
+    purchaseOrderNo: item.purchaseOrderNo,
+    skuId: item.skuId,
+    qtyRequired: item.qtyRequired,
+    qtyPicked: item.qtyPicked ?? "0",
+    qtyPacked: item.qtyPacked ?? "0",
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+    createdBy: item.createdBy,
+    updatedBy: item.updatedBy ?? null,
+    skuCode: item.skuCode ?? null,
+    skuDescription: item.skuDescription ?? null,
+    doNo: item.doNo ?? null,
+    doStatus: item.doStatus ?? null,
+    onHandQty: item.onHandQty ?? "0",
+    lossQty: item.lossQty ?? "0",
+    reservedQty: item.reservedQty ?? "0",
+  };
+}
+
 // ============================================
 // RESOLVERS
 // ============================================
@@ -303,6 +327,55 @@ export const resolvers = {
         return false;
       }
     },
+
+    deliveryOrderItems: async (
+      _: unknown,
+      args: {
+        filter?: {
+          id?: string;
+          purchaseOrderNo?: string;
+          doNo?: string;
+          doStatus?: string;
+          search?: string;
+        };
+        pageSize?: number;
+        pageNumber?: number;
+      }
+    ) => {
+      try {
+        logger.info("ℹ️ [outbound.resolvers.deliveryOrderItems] Getting delivery order items...");
+        const filter: DeliveryOrderItemFilter & {
+          purchaseOrderNo?: string;
+          doNo?: string;
+          doStatus?: string;
+          search?: string;
+        } = {};
+
+        if (args.filter) {
+          if (args.filter.id) filter.id = args.filter.id;
+          if (args.filter.purchaseOrderNo) filter.purchaseOrderNo = args.filter.purchaseOrderNo;
+          if (args.filter.doNo) filter.doNo = args.filter.doNo;
+          if (args.filter.doStatus) filter.doStatus = args.filter.doStatus;
+          if (args.filter.search) filter.search = args.filter.search;
+        }
+
+        const paginationParams = {
+          pageSize: args.pageSize ?? 10,
+          pageNumber: args.pageNumber ?? 1,
+        };
+
+        const result = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(filter, paginationParams);
+
+        logger.info("✅ [outbound.resolvers.deliveryOrderItems] Delivery order items fetched:", result.query.length);
+        return {
+          query: result.query.map(transformDeliveryOrderItemWithDetails),
+          pagination: result.pagination,
+        };
+      } catch (error) {
+        logger.error("❌ [outbound.resolvers.deliveryOrderItems] Error:", error);
+        throw error;
+      }
+    },
   },
   Mutation: {
     createPurchaseOrder: withAudit<
@@ -372,6 +445,44 @@ export const resolvers = {
 
         logger.info("✅ [outbound.resolvers.completeDeliveryOrder] Delivery order completed:", deliveryOrder.id);
         return transformDeliveryOrder(deliveryOrder);
+      }
+    ),
+
+    markDeliveryOrderItemPicked: withAudit<
+      unknown,
+      { id: string; qtyPicked: string },
+      unknown
+    >(
+      {
+        entity: "DeliveryOrderItem",
+        action: "UPDATE",
+        getEntityId: (result) =>
+          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
+      },
+      async (_: unknown, { id, qtyPicked }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to mark item as picked", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+
+        logger.info("ℹ️ [outbound.resolvers.markDeliveryOrderItemPicked] Marking item as picked...");
+        await deliveryOrdersRepository.markItemAsPicked(id, qtyPicked, userId);
+
+        const result = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(
+          { id },
+          { pageSize: 1, pageNumber: 1 }
+        );
+
+        if (!result.query.length) {
+          throw new GraphQLError("Delivery order item not found", {
+            extensions: { code: "NOT_FOUND", http: { status: 404 } },
+          });
+        }
+
+        logger.info("✅ [outbound.resolvers.markDeliveryOrderItemPicked] Item marked as picked:", id);
+        return transformDeliveryOrderItemWithDetails(result.query[0]);
       }
     ),
   },

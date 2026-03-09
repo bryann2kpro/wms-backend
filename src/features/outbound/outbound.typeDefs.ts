@@ -21,6 +21,56 @@ export const typeDefs = `#graphql
     }
 
     """
+    Delivery Order Item with SKU and inventory details - for work queue views
+    """
+    type DeliveryOrderItemWithDetails {
+        id: ID!
+        purchaseOrderId: ID!
+        purchaseOrderNo: String!
+        skuId: ID!
+        qtyRequired: String!
+        qtyPicked: String
+        qtyPacked: String
+        createdAt: String!
+        updatedAt: String!
+        createdBy: ID!
+        updatedBy: ID
+        "SKU code from master data"
+        skuCode: String
+        "SKU description from master data"
+        skuDescription: String
+        "Delivery order number"
+        doNo: String
+        "Delivery order status"
+        doStatus: String
+        "On-hand quantity from inventory balance"
+        onHandQty: String
+        "Loss quantity from inventory balance"
+        lossQty: String
+        "Reserved quantity from inventory balance"
+        reservedQty: String
+    }
+
+    """
+    Paginated response for delivery order items with details
+    """
+    type DeliveryOrderItemWithDetailsPaginatedResponse {
+        query: [DeliveryOrderItemWithDetails!]!
+        pagination: Pagination!
+    }
+
+    """
+    Filter parameters for querying delivery order items with details
+    """
+    input DeliveryOrderItemFilterInput {
+        id: ID
+        purchaseOrderNo: String
+        doNo: String
+        doStatus: String
+        search: String
+    }
+
+    """
     Purchase Order - transfer/purchase order pulled from NetSuite.
     """
     type PurchaseOrder {
@@ -66,6 +116,12 @@ export const typeDefs = `#graphql
         Get delivery orders with optional filters and pagination.
         """
         deliveryOrders(filter: DeliveryOrderFilterInput, pageSize: Int, pageNumber: Int): DeliveryOrderPaginatedResponse
+
+        """
+        Get delivery order items with SKU and inventory details.
+        Used for work queue views where staff need to see item details.
+        """
+        deliveryOrderItems(filter: DeliveryOrderItemFilterInput, pageSize: Int, pageNumber: Int): DeliveryOrderItemWithDetailsPaginatedResponse
 
         """
         Get purchase orders with optional filters and pagination.
@@ -184,5 +240,11 @@ export const typeDefs = `#graphql
         Mark a delivery order as completed.
         """
         completeDeliveryOrder(id: ID!): DeliveryOrder!
+
+        """
+        Mark a delivery order item as picked. Sets qtyPicked to the specified value.
+        Used in work queue when staff picks an item.
+        """
+        markDeliveryOrderItemPicked(id: ID!, qtyPicked: String!): DeliveryOrderItemWithDetails!
     }
 `;

@@ -16,10 +16,22 @@ import {
   DeliveryOrderItemInsertType,
   DeliveryOrderItemFilter,
 } from "./delivery-orders.model";
+import { SkuTable } from "@/features/master-data/sku.model";
+import { InventoryBalancesTable } from "@/features/inventory/inventory-balance/inventory.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
-import { eq, and, like, inArray, gte, lte } from "drizzle-orm";
+import { eq, and, like, inArray, gte, lte, or } from "drizzle-orm";
+
+export type DeliveryOrderItemWithDetails = DeliveryOrderItemType & {
+  skuCode: string | null;
+  skuDescription: string | null;
+  doNo: string | null;
+  doStatus: string | null;
+  onHandQty: string | null;
+  lossQty: string | null;
+  reservedQty: string | null;
+};
 
 export class DeliveryOrdersRepositoryClass {
   constructor() {}
@@ -248,6 +260,122 @@ export class DeliveryOrdersRepositoryClass {
       return true;
     } catch (error) {
       logger.error("❌ [DeliveryOrdersRepository.deleteDeliveryOrderItemsByDeliveryOrderNo] Error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get delivery order items with SKU details and inventory balance.
+   * Joins with SKU table, delivery orders table, and inventory balances table.
+   */
+  async getDeliveryOrderItemsWithDetails(
+    filter: DeliveryOrderItemFilter & { 
+      purchaseOrderNo?: string; 
+      doNo?: string;
+      doStatus?: string | string[];
+      search?: string;
+    },
+    paginationParams: PaginationParams
+  ): Promise<PaginatedResponse<DeliveryOrderItemWithDetails>> {
+    try {
+      logger.info("ℹ️ [DeliveryOrdersRepository.getDeliveryOrderItemsWithDetails] Getting delivery order items with details...");
+      const whereConditions: ReturnType<typeof eq>[] = [];
+
+      if (Array.isArray(filter.id)) {
+        whereConditions.push(inArray(DeliveryOrderItemsTable.id, filter.id));
+      } else if (filter.id) {
+        whereConditions.push(eq(DeliveryOrderItemsTable.id, filter.id));
+      }
+
+      if (filter.purchaseOrderNo) {
+        whereConditions.push(like(DeliveryOrderItemsTable.purchaseOrderNo, `%${filter.purchaseOrderNo}%`));
+      }
+
+      if (filter.doNo) {
+        whereConditions.push(like(DeliveryOrdersTable.doNo, `%${filter.doNo}%`));
+      }
+
+      if (Array.isArray(filter.doStatus)) {
+        whereConditions.push(inArray(DeliveryOrdersTable.status, filter.doStatus));
+      } else if (filter.doStatus) {
+        whereConditions.push(eq(DeliveryOrdersTable.status, filter.doStatus));
+      }
+
+      if (filter.search) {
+        const searchTerm = `%${filter.search}%`;
+        whereConditions.push(
+          or(
+            like(SkuTable.skuCode, searchTerm),
+            like(SkuTable.skuDescription, searchTerm),
+            like(DeliveryOrderItemsTable.purchaseOrderNo, searchTerm),
+            like(DeliveryOrdersTable.doNo, searchTerm)
+          )!
+        );
+      }
+
+      const baseQuery = db
+        .select({
+          id: DeliveryOrderItemsTable.id,
+          purchaseOrderId: DeliveryOrderItemsTable.purchaseOrderId,
+          purchaseOrderNo: DeliveryOrderItemsTable.purchaseOrderNo,
+          skuId: DeliveryOrderItemsTable.skuId,
+          qtyRequired: DeliveryOrderItemsTable.qtyRequired,
+          qtyPicked: DeliveryOrderItemsTable.qtyPicked,
+          qtyPacked: DeliveryOrderItemsTable.qtyPacked,
+          createdAt: DeliveryOrderItemsTable.createdAt,
+          updatedAt: DeliveryOrderItemsTable.updatedAt,
+          createdBy: DeliveryOrderItemsTable.createdBy,
+          updatedBy: DeliveryOrderItemsTable.updatedBy,
+          skuCode: SkuTable.skuCode,
+          skuDescription: SkuTable.skuDescription,
+          doNo: DeliveryOrdersTable.doNo,
+          doStatus: DeliveryOrdersTable.status,
+          onHandQty: InventoryBalancesTable.onHandQty,
+          lossQty: InventoryBalancesTable.lossQty,
+          reservedQty: InventoryBalancesTable.reservedQty,
+        })
+        .from(DeliveryOrderItemsTable)
+        .leftJoin(SkuTable, eq(DeliveryOrderItemsTable.skuId, SkuTable.skuId))
+        .leftJoin(DeliveryOrdersTable, eq(DeliveryOrderItemsTable.purchaseOrderId, DeliveryOrdersTable.purchaseOrderId))
+        .leftJoin(InventoryBalancesTable, eq(DeliveryOrderItemsTable.skuId, InventoryBalancesTable.skuId))
+        .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
+
+      const pageSize = paginationParams.pageSize ?? 10;
+      const pageNumber = paginationParams.pageNumber ?? 1;
+      const totalCount = (await baseQuery).length;
+      const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
+      const data = await paginatedQuery.query;
+
+      logger.info("✅ [DeliveryOrdersRepository.getDeliveryOrderItemsWithDetails] Delivery order items with details fetched successfully");
+      return { query: data as DeliveryOrderItemWithDetails[], pagination: paginatedQuery.pagination };
+    } catch (error) {
+      logger.error("❌ [DeliveryOrdersRepository.getDeliveryOrderItemsWithDetails] Error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update qtyPicked for a delivery order item (mark as picked).
+   */
+  async markItemAsPicked(
+    id: string,
+    qtyPicked: string,
+    updatedBy: string,
+    tx?: DbTransaction
+  ): Promise<DeliveryOrderItemType> {
+    try {
+      const dbClient = tx ?? db;
+      logger.info("ℹ️ [DeliveryOrdersRepository.markItemAsPicked] Marking item as picked...");
+      const [row] = await dbClient
+        .update(DeliveryOrderItemsTable)
+        .set({ qtyPicked, updatedBy, updatedAt: new Date() })
+        .where(eq(DeliveryOrderItemsTable.id, id))
+        .returning();
+      if (!row) throw new Error("[DeliveryOrdersRepository.markItemAsPicked] Delivery order item not found");
+      logger.info("✅ [DeliveryOrdersRepository.markItemAsPicked] Item marked as picked successfully");
+      return row;
+    } catch (error) {
+      logger.error("❌ [DeliveryOrdersRepository.markItemAsPicked] Error:", error);
       throw error;
     }
   }
