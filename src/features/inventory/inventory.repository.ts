@@ -5,7 +5,7 @@
  */
 
 import { db } from '@/db';
-import { InventoryMovementsTable } from './inventory.model';
+import { InventoryMovementsTable, InventoryBalancesTable } from './inventory.model';
 import { eq, and, inArray, like, asc, desc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import type { DbTransaction } from '@/types/db-transaction';
@@ -93,6 +93,26 @@ export class InventoryMovementsRepositoryClass {
       return { query: data, pagination: paginatedQuery.pagination };
     } catch (error) {
       logger.error("❌ [InventoryMovementsRepository.getInventoryMovements] Error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get balances by SKU IDs
+   */
+  async getBalancesBySkuIds(skuIds: string[], tx?: DbTransaction): Promise<{ id: string; skuId: string; onHandQty: string; reservedQty: string; updatedAt: Date; }[]> {
+    try {
+      const client = tx ?? db;
+      if (!skuIds || skuIds.length === 0) return [];
+      
+      const balances = await client
+        .select()
+        .from(InventoryBalancesTable)
+        .where(inArray(InventoryBalancesTable.skuId, skuIds));
+        
+      return balances;
+    } catch (error) {
+      logger.error("❌ [InventoryMovementsRepository.getBalancesBySkuIds] Error:", error);
       throw error;
     }
   }
