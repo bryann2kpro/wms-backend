@@ -86,6 +86,9 @@ export const resolvers = {
                     if (args.filter.grnNo) {
                         filter.grnNo = args.filter.grnNo;
                     };
+                    if (args.filter.search != null) {
+                        filter.search = args.filter.search;
+                    };
                     if (args.filter.status) {
                         filter.status = args.filter.status;
                     };
