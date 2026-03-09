@@ -7,6 +7,7 @@
 import { db } from '@/db';
 import { SkuTable } from './sku.model';
 import { SuppliersTable } from './suppliers.model';
+import { InventoryBalancesTable } from '@/features/inventory/inventory-balance/inventory.model';
 import { eq, and, like, inArray, asc, desc } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -200,6 +201,19 @@ export class SkuRepositoryClass {
       if (!sku) {
         throw new Error('SKU insert did not return the created row');
       }
+
+      // Create initial inventory balance record with zero on-hand quantity
+      logger.info('ℹ️ [SkuRepository.createSku] Creating initial inventory balance...');
+      await client
+        .insert(InventoryBalancesTable)
+        .values({
+          skuId: sku.skuId,
+          onHandQty: '0',
+          lossQty: '0',
+          reservedQty: '0',
+        });
+      logger.info('✅ [SkuRepository.createSku] Initial inventory balance created');
+
       logger.info('✅ [SkuRepository.createSku] SKU created successfully');
       return sku;
     } catch (error) {
