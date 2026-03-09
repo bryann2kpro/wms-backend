@@ -9,6 +9,8 @@ import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../
 import { OutletsRepositoryClass } from "../master-data/outlets.repository";
 import { DeliveryOrderType } from "./delivery-orders.model";
 import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
+import { PurchaseOrderType } from "./purchase-orders.model";
+
 import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 
@@ -17,15 +19,6 @@ export type CreateDeliveryOrderItemInput = {
     skuId?: string;
     skuCode?: string;
     qtyRequired: string | number;
-};
-
-export type CreateDeliveryOrderData = {
-    userId: string;
-    purchaseOrderNo: string;
-    deliveryOrderNo: string;
-    outletId: string;
-    orderCreatedAt?: Date;
-    items: CreateDeliveryOrderItemInput[];
 };
 
 export type CompleteDeliveryOrderData = {
@@ -58,117 +51,79 @@ export class OutboundServices {
     ) {}
 
     /**
-     * Creates a delivery order: validates line items, checks stock, computes next delivery date,
-     * then creates the DO and items in a transaction. Returns the created delivery order.
+     * Creates a purchase order with automatic delivery order creation.
+     * Validates line items, checks stock, computes next delivery date,
+     * then creates the PO, DO, and items in a transaction.
      */
-    async createDeliveryOrder(data: CreateDeliveryOrderData): Promise<DeliveryOrderType> {
-        logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Creating delivery order...');
+    async createPurchaseOrder(data: CreatePurchaseOrderData): Promise<PurchaseOrderType> {
+        logger.info("ℹ️ [OutboundServices.createPurchaseOrder] Creating purchase order and delivery order...");
         try {
-            logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Starting Delivery Order Flow...');
-            const createdBy = data.userId;
-            const updatedBy = data.userId;
-            let createdOrder: DeliveryOrderType | null = null;
-
-            await db.transaction(async (tx: DbTransaction) => {
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 1: Check if skus are in stock...');
+            let created: PurchaseOrderType | null = null;
+            await db.transaction(async (tx) => {
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 1: Check if skus are in stock...');
                 const resolvedLines = await this.resolveAndValidateLineItems(data.items, tx);
                 await this.assertSufficientStock(resolvedLines, tx);
 
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 2: Compute the next delivery date...');
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 2.1: Getting Region by Outlet ID...');
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 2: Compute the next delivery date...');
                 const outlet = await this.outletsRepository.getOutletById(data.outletId);
-
                 if (!outlet || !outlet.regionId) {
                     throw new Error('Outlet not found or has no region assigned.');
                 }
-
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 2.2: Compute next delivery date based on cutoff...');
-                const orderTime = data.orderCreatedAt ?? new Date();
-                const nextDelivery = await this.computeNextDeliveryDate(outlet.regionId, orderTime);
-
+                const nextDelivery = await this.computeNextDeliveryDate(outlet.regionId, new Date());
                 if (!nextDelivery) {
                     throw new Error(`No delivery schedules found for region "${outlet.regionId}".`);
                 }
+                logger.info(`✅ [OutboundServices.createPurchaseOrder] Next delivery date: ${nextDelivery.deliveryDate.toISOString()} (${nextDelivery.schedule.dayName})`);
 
-                logger.info(`✅ [OutboundServices.createDeliveryOrder] Next delivery date: ${nextDelivery.deliveryDate.toISOString()} (${nextDelivery.schedule.dayName})`);
-
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 3: Create Delivery Order...');
-                const deliveryOrder = await this.deliveryOrderRepository.createDeliveryOrder({
-                    doNo: data.deliveryOrderNo,
-                    poNo: data.purchaseOrderNo,
-                    createdBy: createdBy,
-                    updatedBy: updatedBy,
-                }, tx);
-                createdOrder = deliveryOrder;
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Delivery Order created successfully');
-
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 4: Create Delivery Order Items...');
-                const itemsToInsert: DeliveryOrderItemInsertType[] = resolvedLines.map((line) => ({
-                    purchaseOrderNo: data.purchaseOrderNo,
-                    skuId: line.skuId,
-                    qtyRequired: line.qtyRequired,
-                    createdBy: data.userId,
-                    updatedBy: data.userId,
-                }));
-                await this.deliveryOrderRepository.createDeliveryOrderItems(itemsToInsert, tx);
-
-                await this.inventoryMovementRepository.createInventoryMovement(itemsToInsert.map(item => ({
-                    skuId: item.skuId,
-                    quantity: item.qtyRequired,
-                    referenceNo: data.purchaseOrderNo,
-                    reason: 'Delivery Order',
-                    createdBy: data.userId,
-                    updatedBy: data.userId,
-                    movementType: InventoryMovementType.RESERVED,
-                })), tx);
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Delivery Order Items created successfully');
-
-                // TODO: Step 5 - Update the PO with scheduledDeliveryDate (requires PO repository)
-                await this.purchaseOrdersRepository.updatePurchaseOrder(data.purchaseOrderNo, {
-                    scheduledDeliveryDate: nextDelivery.deliveryDate,
-                    updatedBy: data.userId,
-                }, tx);
-            });
-
-            if (!createdOrder) {
-                throw new Error('Delivery order was not created.');
-            }
-            return createdOrder;
-        } catch (error) {
-            logger.error('❌ [OutboundServices.createDeliveryOrder] Error:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Creates a purchase order and its line items (for manual PO create from UI).
-     */
-    async createPurchaseOrder(data: CreatePurchaseOrderData): Promise<import("./purchase-orders.model").PurchaseOrderType> {
-        logger.info("ℹ️ [OutboundServices.createPurchaseOrder] Creating purchase order...");
-        try {
-            let created: import("./purchase-orders.model").PurchaseOrderType | null = null;
-            await db.transaction(async (tx) => {
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 3: Create Purchase Order...');
                 created = await this.purchaseOrdersRepository.createPurchaseOrder(
                     {
                         purchaseOrderNo: data.purchaseOrderNo,
                         outletId: data.outletId,
                         status: "NEW",
+                        scheduledDeliveryDate: nextDelivery.deliveryDate,
                         createdBy: data.userId,
                         updatedBy: data.userId,
                     },
                     tx
                 );
-                const items = data.items.map((item) => ({
+
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 4: Create Purchase Order Items...');
+                const poItems = data.items.map((item) => ({
                     purchaseOrderNo: data.purchaseOrderNo,
                     skuCode: item.skuCode,
                     qtyRequired: String(item.qtyRequired),
                     createdBy: data.userId,
                     updatedBy: data.userId,
                 }));
-                await this.purchaseOrdersRepository.createPurchaseOrderItems(items, tx);
+                await this.purchaseOrdersRepository.createPurchaseOrderItems(poItems, tx);
+
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 5: Automatically Create Delivery Order...');
+                const doNo = data.purchaseOrderNo.startsWith('PO') 
+                    ? data.purchaseOrderNo.replace('PO', 'DO') 
+                    : `DO-${data.purchaseOrderNo}`;
+
+                await this.deliveryOrderRepository.createDeliveryOrder({
+                    doNo,
+                    purchaseOrderId: created!.id,
+                    poNo: data.purchaseOrderNo,
+                    createdBy: data.userId,
+                    updatedBy: data.userId,
+                }, tx);
+
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 6: Create Delivery Order Items...');
+                const doItemsToInsert: DeliveryOrderItemInsertType[] = resolvedLines.map((line) => ({
+                    purchaseOrderId: created!.id,
+                    purchaseOrderNo: data.purchaseOrderNo,
+                    skuId: line.skuId,
+                    qtyRequired: line.qtyRequired,
+                    createdBy: data.userId,
+                    updatedBy: data.userId,
+                }));
+                await this.deliveryOrderRepository.createDeliveryOrderItems(doItemsToInsert, tx);
             });
             if (!created) throw new Error("Purchase order was not created.");
-            logger.info("✅ [OutboundServices.createPurchaseOrder] Purchase order created");
+            logger.info("✅ [OutboundServices.createPurchaseOrder] Purchase order and Delivery Order created");
             return created;
         } catch (error) {
             logger.error("❌ [OutboundServices.createPurchaseOrder] Error:", error);

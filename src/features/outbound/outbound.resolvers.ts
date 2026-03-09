@@ -18,30 +18,6 @@ import { PurchaseOrderType, PurchaseOrderFilter } from "./purchase-orders.model"
 // ZOD SCHEMAS (input sanitization)
 // ============================================
 
-const createDeliveryOrderItemSchema = z
-  .object({
-    skuId: z.uuid().optional(),
-    skuCode: z.string().min(1).optional(),
-    qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => String(v)),
-  })
-  .refine((data) => data.skuId ?? data.skuCode, {
-    message: "Each item must have either skuId or skuCode",
-    path: ["items"],
-  });
-
-const createDeliveryOrderInputSchema = z.object({
-  purchaseOrderNo: z.string().min(1, "Purchase order number is required").trim(),
-  deliveryOrderNo: z.string().min(1, "Delivery order number is required").trim(),
-  outletId: z.uuid("Outlet ID must be a valid UUID"),
-  orderCreatedAt: z
-    .string()
-    .optional()
-    .transform((s) => (s ? new Date(s) : undefined)),
-  items: z
-    .array(createDeliveryOrderItemSchema)
-    .min(1, "At least one line item is required"),
-});
-
 /** Parses and sanitizes purchase order list filter; strips undefined values. */
 const purchaseOrderFilterSchema = z
   .object({
@@ -62,7 +38,7 @@ const purchaseOrderFilterSchema = z
     ) as PurchaseOrderFilter;
   });
 
-/** Input for purchaseOrdersByWeek: optional date range (defaults to today through 7 days, UTC). */
+/** Input for purchaseOrdersByWeek: optional date range (defaults to today through 7 days in business timezone). */
 const purchaseOrderWeekFilterSchema = z.object({
   scheduledDeliveryDateFrom: z.string().optional(),
   scheduledDeliveryDateTo: z.string().optional(),
@@ -86,11 +62,16 @@ const createPurchaseOrderInputSchema = z.object({
 // HELPERS
 // ============================================
 
-/** Format a date as DD/MM/YYYY in UTC. */
-function formatDateKeyUTC(d: Date): string {
-  const day = d.getUTCDate();
-  const month = d.getUTCMonth() + 1;
-  const year = d.getUTCFullYear();
+/** Business timezone offset in minutes from UTC (e.g. UTC+8 = 480). */
+const BUSINESS_TZ_OFFSET_MINUTES = 8 * 60;
+
+/** Format a date as DD/MM/YYYY in the business timezone. */
+function formatDateKeyBusinessTZ(d: Date): string {
+  const offsetMs = BUSINESS_TZ_OFFSET_MINUTES * 60_000;
+  const shifted = new Date(d.getTime() + offsetMs);
+  const day = shifted.getUTCDate();
+  const month = shifted.getUTCMonth() + 1;
+  const year = shifted.getUTCFullYear();
   return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
 }
 
@@ -101,13 +82,33 @@ function getDayBoundsUTC(d: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
-/** Default week: from today (UTC) through 7 days (today + 6). Returns [fromDate, toDate] inclusive. */
-function getDefaultWeekRangeUTC(): [Date, Date] {
+/** Get start/end of a day in the business timezone, returned as UTC Date objects. */
+function getDayBoundsInBusinessTZ(d: Date): { start: Date; end: Date } {
+  const offsetMs = BUSINESS_TZ_OFFSET_MINUTES * 60_000;
+  const shifted = new Date(d.getTime() + offsetMs);
+
+  const startShifted = new Date(
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate(), 0, 0, 0, 0)
+  );
+  const endShifted = new Date(
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate(), 23, 59, 59, 999)
+  );
+
+  return {
+    start: new Date(startShifted.getTime() - offsetMs),
+    end: new Date(endShifted.getTime() - offsetMs),
+  };
+}
+
+/**
+ * Default week: from "today" through 7 days (today + 6) in the business timezone.
+ * Returns [fromDate, toDate] inclusive, as UTC Date objects.
+ */
+function getDefaultWeekRangeInBusinessTZ(): [Date, Date] {
   const now = new Date();
-  const { start } = getDayBoundsUTC(now);
-  const endDay = new Date(start);
-  endDay.setUTCDate(endDay.getUTCDate() + 6);
-  const { end } = getDayBoundsUTC(endDay);
+  const { start } = getDayBoundsInBusinessTZ(now);
+  const endAnchor = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const { end } = getDayBoundsInBusinessTZ(endAnchor);
   return [start, end];
 }
 
@@ -221,8 +222,11 @@ export const resolvers = {
           fromDate.setUTCHours(0, 0, 0, 0);
           toDate.setUTCHours(23, 59, 59, 999);
         } else {
-          [fromDate, toDate] = getDefaultWeekRangeUTC();
+          [fromDate, toDate] = getDefaultWeekRangeInBusinessTZ();
         }
+
+        console.log('fromDate', fromDate);
+        console.log('toDate', toDate);
 
         const repoFilter: Partial<PurchaseOrderFilter> = {};
         if (filter.outletId) repoFilter.outletId = filter.outletId;
@@ -237,7 +241,7 @@ export const resolvers = {
         const byDate = new Map<string, PurchaseOrderType[]>();
         for (const po of orders) {
           if (po.scheduledDeliveryDate) {
-            const key = formatDateKeyUTC(po.scheduledDeliveryDate);
+            const key = formatDateKeyBusinessTZ(po.scheduledDeliveryDate);
             if (!byDate.has(key)) byDate.set(key, []);
             byDate.get(key)!.push(po);
           }
@@ -246,7 +250,7 @@ export const resolvers = {
         const entries: Array<{ date: string; orders: PurchaseOrderType[] }> = [];
         const cursor = new Date(fromDate);
         while (cursor <= toDate) {
-          const key = formatDateKeyUTC(cursor);
+          const key = formatDateKeyBusinessTZ(cursor);
           entries.push({ date: key, orders: byDate.get(key) ?? [] });
           cursor.setUTCDate(cursor.getUTCDate() + 1);
         }
@@ -338,65 +342,6 @@ export const resolvers = {
           })),
         });
         return transformPurchaseOrder(created);
-      }
-    ),
-
-    createDeliveryOrder: withAudit<
-      unknown,
-      {
-        input: {
-          purchaseOrderNo: string;
-          deliveryOrderNo: string;
-          outletId: string;
-          orderCreatedAt?: string;
-          items: Array<{ skuId?: string; skuCode?: string; qtyRequired: number }>;
-        };
-      },
-      unknown
-    >(
-      {
-        entity: "DeliveryOrder",
-        action: "CREATE",
-        getEntityId: (result) =>
-          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
-      },
-      async (_: unknown, { input }, context: GraphQLContext) => {
-        const userId = context.user?.id ?? null;
-        if (!userId) {
-          throw new GraphQLError("Authentication required to create a delivery order", {
-            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
-          });
-        }
-
-        logger.info("ℹ️ [outbound.resolvers.createDeliveryOrder] Validating input...");
-        const parseResult = createDeliveryOrderInputSchema.safeParse(input);
-
-        if (!parseResult.success) {
-          const message = prettifyError(parseResult.error);
-          logger.warn("⚠️ [outbound.resolvers.createDeliveryOrder] Invalid input:", message);
-          throw new GraphQLError(message, {
-            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
-          });
-        }
-
-        const data = parseResult.data;
-        logger.info("ℹ️ [outbound.resolvers.createDeliveryOrder] Input validated, calling service...");
-
-        const deliveryOrder = await outboundServices.createDeliveryOrder({
-          userId,
-          purchaseOrderNo: data.purchaseOrderNo,
-          deliveryOrderNo: data.deliveryOrderNo,
-          outletId: data.outletId,
-          orderCreatedAt: data.orderCreatedAt,
-          items: data.items.map((item) => ({
-            ...(item.skuId && { skuId: item.skuId }),
-            ...(item.skuCode && { skuCode: item.skuCode }),
-            qtyRequired: item.qtyRequired,
-          })),
-        });
-
-        logger.info("✅ [outbound.resolvers.createDeliveryOrder] Delivery order created:", deliveryOrder.doNo);
-        return transformDeliveryOrder(deliveryOrder);
       }
     ),
 

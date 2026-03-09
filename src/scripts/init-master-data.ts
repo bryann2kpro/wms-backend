@@ -8,6 +8,8 @@ import { StockUnitTable, StockUnitCode } from '@/features/master-data/stock-unit
 import { eq, inArray } from 'drizzle-orm';
 import { SkuTable, SkuInsertType, SkuType } from '@/features/master-data/sku.model';
 import { WarehousesRepositoryClass } from '@/features/master-data/warehouses.repository';
+import { InventoryBalancesTable } from '@/features/inventory/inventory-balance/inventory.model';
+import { InventoryMovementsTable } from '@/features/inventory/inventory-movement/inventory.model';
 
 // ============================================
 // REGION INITIALIZATION
@@ -352,6 +354,48 @@ async function initSkus(): Promise<void> {
   logger.info('✅ Skus initialization complete!');
 }
 
+// ============================================
+// INVENTORY INITIALIZATION
+// ============================================
+
+/**
+ * Initialize default inventory for all SKUs
+ */
+async function initInventory(): Promise<void> {
+  logger.info('📦 Initializing inventory...');
+  
+  const skus = await db.select().from(SkuTable);
+  for (const sku of skus) {
+    const existing = await db
+      .select()
+      .from(InventoryBalancesTable)
+      .where(eq(InventoryBalancesTable.skuId, sku.skuId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      await db.insert(InventoryBalancesTable).values({
+        skuId: sku.skuId,
+        onHandQty: "1000",
+        reservedQty: "0",
+      });
+
+      await db.insert(InventoryMovementsTable).values({
+        skuId: sku.skuId,
+        movementType: "ADJUSTMENT",
+        quantity: "1000",
+        balanceAfter: "1000",
+        reason: "System Initialization",
+        createdBy: "system",
+      });
+      logger.info(`✅ Initialized inventory for SKU ${sku.skuCode}`);
+    } else {
+      logger.info(`✓ Inventory for SKU ${sku.skuCode} already initialized`);
+    }
+  }
+  
+  logger.info('✅ Inventory initialization complete!');
+}
+
 /**
  * Main initialization function for master data
  */
@@ -371,6 +415,8 @@ export async function initMasterData(): Promise<void> {
     await initWarehouses();
     // Initialize skus (depends on stock units for skuUom)
     await initSkus();
+    // Initialize inventory for skus
+    await initInventory();
 
     logger.info('✅ Master data initialization complete!');
   } catch (error) {
