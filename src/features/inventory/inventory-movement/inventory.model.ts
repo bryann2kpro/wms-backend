@@ -1,6 +1,7 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
 import { SkuTable } from "../../master-data/sku.model";
+import { RegionTable } from "@/features/master-data/region.model";
 
 const InventoryMovementTypeEnum = MainSchema.enum('inventory_movement_type', [
   'INBOUND', // Inventory received from a supplier
@@ -36,12 +37,13 @@ export enum InventoryMovementType {
 export const InventoryMovementsTable = MainSchema.table('inventory_movements', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
   skuId: uuid('sku_id').notNull().references(() => SkuTable.skuId),
+  regionId: uuid('region_id').references(() => RegionTable.regionId),
   movementType: InventoryMovementTypeEnum('movement_type').notNull(),
   quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull(),
   balanceAfter: numeric('balance_after', { precision: 12, scale: 2 }).default('0'),
   referenceNo: text('reference_no'),
   reason: text('reason'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   createdBy: text('created_by').notNull(),
 });
 
