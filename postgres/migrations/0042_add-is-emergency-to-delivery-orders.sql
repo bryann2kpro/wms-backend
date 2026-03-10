@@ -1,0 +1,1 @@
+ALTER TABLE "main"."delivery_orders" ADD COLUMN "is_emergency" boolean DEFAULT false NOT NULL;

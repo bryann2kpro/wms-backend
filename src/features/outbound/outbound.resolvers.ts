@@ -57,6 +57,11 @@ const createPurchaseOrderInputSchema = z.object({
   purchaseOrderNo: z.string().min(1, "Purchase order number is required").trim(),
   outletId: z.uuid("Outlet ID must be a valid UUID"),
   items: z.array(createPurchaseOrderLineItemSchema).min(1, "At least one line item is required"),
+  isEmergency: z.boolean().optional().default(false),
+});
+
+const updateDeliveryOrderInputSchema = z.object({
+  isEmergency: z.boolean().optional(),
 });
 
 // ============================================
@@ -119,6 +124,7 @@ function transformDeliveryOrder(order: DeliveryOrderType) {
     doNo: order.doNo,
     poNo: order.poNo,
     status: order.status,
+    isEmergency: order.isEmergency,
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt?.toISOString() ?? order.createdAt.toISOString(),
     createdBy: order.createdBy,
@@ -303,6 +309,7 @@ export const resolvers = {
           if (args.filter.doNo) filter.doNo = args.filter.doNo;
           if (args.filter.toId) filter.toId = args.filter.toId;
           if (args.filter.status) filter.status = args.filter.status;
+          if (args.filter.isEmergency !== undefined) filter.isEmergency = args.filter.isEmergency;
           if (args.filter.createdBy) filter.createdBy = args.filter.createdBy;
           if (args.filter.createdAtFrom) filter.createdAtFrom = args.filter.createdAtFrom;
           if (args.filter.createdAtTo) filter.createdAtTo = args.filter.createdAtTo;
@@ -380,7 +387,7 @@ export const resolvers = {
   Mutation: {
     createPurchaseOrder: withAudit<
       unknown,
-      { input: { purchaseOrderNo: string; outletId: string; items: Array<{ skuCode: string; skuId?: string; qtyRequired: number }> } },
+      { input: { purchaseOrderNo: string; outletId: string; items: Array<{ skuCode: string; skuId?: string; qtyRequired: number }>; isEmergency?: boolean } },
       unknown
     >(
       {
@@ -413,8 +420,48 @@ export const resolvers = {
             skuId: item.skuId,
             qtyRequired: item.qtyRequired,
           })),
+          isEmergency: data.isEmergency,
         });
         return transformPurchaseOrder(created);
+      }
+    ),
+
+    updateDeliveryOrder: withAudit<
+      unknown,
+      { id: string; input: { isEmergency?: boolean } },
+      unknown
+    >(
+      {
+        entity: "DeliveryOrder",
+        action: "UPDATE",
+        getEntityId: (result) =>
+          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
+      },
+      async (_: unknown, { id, input }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to update a delivery order", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+        const parseResult = updateDeliveryOrderInputSchema.safeParse(input);
+        if (!parseResult.success) {
+          const message = prettifyError(parseResult.error);
+          throw new GraphQLError(message, {
+            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
+          });
+        }
+        const data = parseResult.data;
+        if (Object.keys(data).length === 0) {
+          throw new GraphQLError("At least one field must be provided to update", {
+            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
+          });
+        }
+        const deliveryOrder = await outboundServices.updateDeliveryOrder(id, {
+          ...data,
+          updatedBy: userId,
+        });
+        return transformDeliveryOrder(deliveryOrder);
       }
     ),
 

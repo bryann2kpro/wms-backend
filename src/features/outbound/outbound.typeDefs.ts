@@ -14,6 +14,8 @@ export const typeDefs = `#graphql
         doNo: String!
         poNo: String!
         status: String!
+        "Whether this is an emergency delivery (bypassed normal cutoff time)"
+        isEmergency: Boolean!
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -144,6 +146,8 @@ export const typeDefs = `#graphql
         doNo: String
         toId: ID
         status: String
+        "Filter by emergency delivery status"
+        isEmergency: Boolean
         createdBy: ID
         createdAtFrom: String
         createdAtTo: String
@@ -222,6 +226,16 @@ export const typeDefs = `#graphql
         purchaseOrderNo: String!
         outletId: ID!
         items: [CreatePurchaseOrderLineItemInput!]!
+        "If true, bypasses delivery schedule cutoff and assigns to the next delivery day"
+        isEmergency: Boolean
+    }
+
+    """
+    Input for updating a delivery order (partial update).
+    """
+    input UpdateDeliveryOrderInput {
+        "Whether this is an emergency delivery"
+        isEmergency: Boolean
     }
 
     extend type Mutation {
@@ -235,6 +249,11 @@ export const typeDefs = `#graphql
         computes next delivery date, then creates the DO and items in a transaction.
         """
         createDeliveryOrder(input: CreateDeliveryOrderInput!): DeliveryOrder!
+
+        """
+        Update a delivery order (e.g. isEmergency).
+        """
+        updateDeliveryOrder(id: ID!, input: UpdateDeliveryOrderInput!): DeliveryOrder!
 
         """
         Mark a delivery order as completed.

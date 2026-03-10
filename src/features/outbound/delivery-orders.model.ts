@@ -1,5 +1,5 @@
 import { MainSchema } from "@/db/db.schema";
-import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
+import { uuid, text, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
 
 /**
  * Delivery Orders Table (Outbound)
@@ -28,6 +28,7 @@ export const DeliveryOrdersTable = MainSchema.table('delivery_orders', {
   poNo: text('purchase_order_no').notNull(),
 
   status: text('status').notNull().default('CREATED'),
+  isEmergency: boolean('is_emergency').notNull().default(false),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -69,6 +70,7 @@ export type DeliveryOrderFilter = {
   doNo?: string;
   toId?: string | string[];
   status?: string | string[];
+  isEmergency?: boolean;
   createdBy?: string | string[];
   createdAtFrom?: string;
   createdAtTo?: string;

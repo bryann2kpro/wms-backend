@@ -66,6 +66,9 @@ export class DeliveryOrdersRepositoryClass {
       } else if (filter.status) {
         whereCondition.push(eq(DeliveryOrdersTable.status, filter.status));
       }
+      if (filter.isEmergency !== undefined) {
+        whereCondition.push(eq(DeliveryOrdersTable.isEmergency, filter.isEmergency));
+      }
       if (Array.isArray(filter.createdBy)) {
         whereCondition.push(inArray(DeliveryOrdersTable.createdBy, filter.createdBy));
       } else if (filter.createdBy) {

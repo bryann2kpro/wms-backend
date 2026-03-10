@@ -37,6 +37,7 @@ export type CreatePurchaseOrderData = {
   purchaseOrderNo: string;
   outletId: string;
   items: CreatePurchaseOrderItemInput[];
+  isEmergency?: boolean;
 };
 
 export class OutboundServices {
@@ -69,11 +70,16 @@ export class OutboundServices {
                 if (!outlet || !outlet.regionId) {
                     throw new Error('Outlet not found or has no region assigned.');
                 }
-                const nextDelivery = await this.computeNextDeliveryDate(outlet.regionId, new Date());
+
+                const isEmergency = data.isEmergency ?? false;
+                const nextDelivery = isEmergency
+                    ? await this.computeNextDeliveryDateEmergency(outlet.regionId, new Date())
+                    : await this.computeNextDeliveryDate(outlet.regionId, new Date());
+
                 if (!nextDelivery) {
                     throw new Error(`No delivery schedules found for region "${outlet.regionId}".`);
                 }
-                logger.info(`✅ [OutboundServices.createPurchaseOrder] Next delivery date: ${nextDelivery.deliveryDate.toISOString()} (${nextDelivery.schedule.dayName})`);
+                logger.info(`✅ [OutboundServices.createPurchaseOrder] Next delivery date: ${nextDelivery.deliveryDate.toISOString()} (${nextDelivery.schedule.dayName})${isEmergency ? ' [EMERGENCY]' : ''}`);
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 3: Create Purchase Order...');
                 created = await this.purchaseOrdersRepository.createPurchaseOrder(
@@ -107,6 +113,7 @@ export class OutboundServices {
                     doNo,
                     purchaseOrderId: created!.id,
                     poNo: data.purchaseOrderNo,
+                    isEmergency,
                     createdBy: data.userId,
                     updatedBy: data.userId,
                 }, tx);
@@ -145,6 +152,30 @@ export class OutboundServices {
             return updated;
         } catch (error) {
             logger.error('❌ [OutboundServices.completeDeliveryOrder] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Updates a delivery order (e.g. isEmergency).
+     */
+    async updateDeliveryOrder(
+        id: string,
+        data: { isEmergency?: boolean; updatedBy: string }
+    ): Promise<DeliveryOrderType> {
+        logger.info('ℹ️ [OutboundServices.updateDeliveryOrder] Updating delivery order...');
+        try {
+            const payload: { isEmergency?: boolean; updatedBy: string } = {
+                updatedBy: data.updatedBy,
+            };
+            if (data.isEmergency !== undefined) {
+                payload.isEmergency = data.isEmergency;
+            }
+            const updated = await this.deliveryOrderRepository.updateDeliveryOrder(id, payload);
+            logger.info('✅ [OutboundServices.updateDeliveryOrder] Delivery order updated');
+            return updated;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.updateDeliveryOrder] Error:', error);
             throw error;
         }
     }
@@ -290,5 +321,54 @@ export class OutboundServices {
         }
 
         return validDates;
+    }
+
+    /**
+     * Compute the next delivery date for emergency orders (bypasses cutoff).
+     * Returns the very next delivery day for the region, regardless of cutoff time.
+     * 
+     * @param regionId - The region ID
+     * @param orderCreatedAt - When the order was placed (defaults to now)
+     * @returns The next delivery date (ignoring cutoff), or null if no schedules exist
+     */
+    async computeNextDeliveryDateEmergency(
+        regionId: string,
+        orderCreatedAt: Date = new Date()
+    ): Promise<{ deliveryDate: Date; schedule: DeliveryScheduleWithRegion } | null> {
+        const schedules = await this.deliveryScheduleRepository.getSchedulesByRegion(regionId);
+        if (schedules.length === 0) return null;
+
+        const candidates: { deliveryDate: Date; schedule: DeliveryScheduleWithRegion }[] = [];
+
+        for (const schedule of schedules) {
+            const deliveryDate = this.getNextDeliveryDateForScheduleIgnoringCutoff(schedule, orderCreatedAt);
+            candidates.push({ deliveryDate, schedule });
+        }
+
+        candidates.sort((a, b) => a.deliveryDate.getTime() - b.deliveryDate.getTime());
+        return candidates[0];
+    }
+
+    /**
+     * Get the next delivery date for a schedule, ignoring cutoff time.
+     * Used for emergency deliveries where we want the very next delivery day.
+     */
+    private getNextDeliveryDateForScheduleIgnoringCutoff(
+        schedule: DeliveryScheduleWithRegion,
+        orderCreatedAt: Date
+    ): Date {
+        const { dayOfWeek } = schedule;
+        const now = new Date(orderCreatedAt);
+
+        const currentDayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+
+        let daysUntilDelivery = dayOfWeek - currentDayOfWeek;
+        if (daysUntilDelivery <= 0) daysUntilDelivery += 7;
+
+        const deliveryDate = new Date(now);
+        deliveryDate.setDate(now.getDate() + daysUntilDelivery);
+        deliveryDate.setHours(0, 0, 0, 0);
+
+        return deliveryDate;
     }
 }
