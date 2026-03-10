@@ -23,6 +23,7 @@ export type InventoryMovementsInsertType = typeof InventoryMovementsTable.$infer
 export type InventoryMovementsFilter = {
   id?: string;
   skuId?: string | string[];
+  regionId?: string | string[];
   movementType?: InventoryMovementType | InventoryMovementType[];
   referenceNo?: string;
   reason?: string;
@@ -49,6 +50,12 @@ export class InventoryMovementRepositoryClass {
         whereCondition.push(inArray(InventoryMovementsTable.skuId, filter.skuId));
       } else if (filter.skuId) {
         whereCondition.push(eq(InventoryMovementsTable.skuId, filter.skuId));
+      }
+
+      if (Array.isArray(filter.regionId)) {
+        whereCondition.push(inArray(InventoryMovementsTable.regionId, filter.regionId));
+      } else if (filter.regionId) {
+        whereCondition.push(eq(InventoryMovementsTable.regionId, filter.regionId));
       }
 
       if (Array.isArray(filter.movementType)) {

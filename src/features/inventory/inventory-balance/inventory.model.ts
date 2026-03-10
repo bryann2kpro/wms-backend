@@ -22,5 +22,5 @@ export const InventoryBalancesTable = MainSchema.table('inventory_balances', {
   onHandQty: numeric('on_hand_qty', { precision: 12, scale: 2 }).notNull().default('0'),
   lossQty: numeric('loss_qty', { precision: 12, scale: 2 }).notNull().default('0'),
   reservedQty: numeric('reserved_qty', { precision: 12, scale: 2 }).notNull().default('0'),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

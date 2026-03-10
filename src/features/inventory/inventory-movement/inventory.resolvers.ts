@@ -53,6 +53,8 @@ export const resolvers = {
           id?: string;
           skuId?: string;
           skuIds?: string[];
+          regionId?: string;
+          regionIds?: string[];
           movementType?: InventoryMovementType;
           movementTypes?: InventoryMovementType[];
           referenceNo?: string;
@@ -71,6 +73,12 @@ export const resolvers = {
           filter.skuId = args.filter.skuIds;
         } else if (args.filter.skuId) {
           filter.skuId = args.filter.skuId;
+        }
+
+        if (args.filter.regionIds) {
+          filter.regionId = args.filter.regionIds;
+        } else if (args.filter.regionId) {
+          filter.regionId = args.filter.regionId;
         }
 
         if (args.filter.movementType) {
