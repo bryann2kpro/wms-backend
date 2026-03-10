@@ -11,7 +11,7 @@ import { DeliveryOrderType } from "./delivery-orders.model";
 import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
 import { PurchaseOrderType } from "./purchase-orders.model";
 
-import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
+import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 
 /** Line item input: must have qtyRequired and either skuId or skuCode. */
@@ -104,7 +104,19 @@ export class OutboundServices {
                 }));
                 await this.purchaseOrdersRepository.createPurchaseOrderItems(poItems, tx);
 
-                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 5: Automatically Create Delivery Order...');
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 5: Create Inventory Movements...');
+                const inventoryMovements: InventoryMovementsInsertType[] = resolvedLines.map((line) => ({
+                    skuId: line.skuId,
+                    regionId: outlet.regionId,
+                    quantity: line.qtyRequired,
+                    movementType: InventoryMovementType.RESERVED,
+                    createdBy: data.userId,
+                    updatedBy: data.userId,
+                }));
+
+                await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, tx);
+
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 6: Automatically Create Delivery Order...');
                 const doNo = data.purchaseOrderNo.startsWith('PO') 
                     ? data.purchaseOrderNo.replace('PO', 'DO') 
                     : `DO-${data.purchaseOrderNo}`;
@@ -118,7 +130,7 @@ export class OutboundServices {
                     updatedBy: data.userId,
                 }, tx);
 
-                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 6: Create Delivery Order Items...');
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 7: Create Delivery Order Items...');
                 const doItemsToInsert: DeliveryOrderItemInsertType[] = resolvedLines.map((line) => ({
                     purchaseOrderId: created!.id,
                     purchaseOrderNo: data.purchaseOrderNo,
