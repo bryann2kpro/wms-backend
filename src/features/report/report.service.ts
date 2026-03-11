@@ -11,7 +11,11 @@ import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 import { jsPDF } from 'jspdf';
 import { autoTable, CellHookData } from 'jspdf-autotable';
-import { regionRepository } from '@/composition-root';
+import { inventoryMovementRepository, regionRepository } from '@/composition-root';
+import { db } from '@/db';
+import { eq, and, gte, lt, sql } from 'drizzle-orm';
+import { InventoryMovementsTable, InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
+import { SkuTable } from '../master-data/sku.model';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MOVEMENT_REPORT_HTML_PATH = path.join(__dirname, 'html', 'movement-report.html');
@@ -19,10 +23,10 @@ const PROFORMA_INVOICES_HTML_PATH = path.join(__dirname, 'html', 'proforma-invoi
 
 // Movement Report row shape
 export interface MovementReportRow {
-  companyCode: string;
+  // companyCode: string;
   itemCode: string;
   description: string;
-  countAdjustmentQty: number;
+  countAdjustmentQty: string;
 }
 
 // Invoices Summary row shape
@@ -35,14 +39,6 @@ export interface InvoiceSummaryRow {
   ctn: number;
   amount: number;
 }
-
-const MOVEMENT_MOCK_ROWS: MovementReportRow[] = [
-  { companyCode: 'EMPIRE SUSHI', itemCode: 'RAW-E0012', description: 'EMPIRE SUSHI BOX (LARGE) 200PCS/CTN (LOCAL)', countAdjustmentQty: -66 },
-  { companyCode: 'EMPIRE SUSHI', itemCode: 'RAW-E0011', description: 'EMPIRE SUSHI BOX (MEDIUM) 300PCS/CTN (LOCAL)', countAdjustmentQty: -80 },
-  { companyCode: 'EMPIRE SUSHI', itemCode: 'RAW-E0013', description: 'EMPIRE SUSHI BOX (SMALL) 300PCS/CTN (LOCAL)', countAdjustmentQty: -90 },
-  { companyCode: 'EMPIRE SUSHI', itemCode: 'RAW-P0017', description: 'PLASTIC BAG BIODEGRADABLE 3000PC/CTN (LOCAL)', countAdjustmentQty: -5 },
-  { companyCode: 'EMPIRE SUSHI', itemCode: 'RAW-E0010', description: 'EMPIRE COMBO BOX (60PCS/PKT) (LOCAL)', countAdjustmentQty: -1 },
-];
 
 const INVOICE_SUMMARY_MOCK_ROWS: InvoiceSummaryRow[] = [
   { proformaId: 'ES-20260213-0001', poNumber: '#PO260170528', outlet: 'Aeon Midtown Falim', region: "Klang Valley" ,expectedArrivalDate: '22/1/2026', ctn: 10, amount: 1250.00 },
@@ -71,13 +67,37 @@ const INVOICE_SUMMARY_MOCK_ROWS: InvoiceSummaryRow[] = [
 /**
  * Fetch movement report data. Replace with DB query when ready.
  */
-export function getMovementReportData(
-  _dateFrom?: string,
-  _dateTo?: string,
-  _regionId?: string
-): MovementReportRow[] {
-  // TODO: filter by dateFrom, dateTo, regionId when querying DB
-  return MOVEMENT_MOCK_ROWS;
+export async function getMovementReportData(
+  _dateFrom: string,
+  _dateTo: string,
+  _regionId: string
+): Promise<MovementReportRow[]> {
+  const dateFrom = new Date(_dateFrom);
+  const dateToExclusive = new Date(_dateTo);
+  dateToExclusive.setUTCDate(dateToExclusive.getUTCDate() + 1);
+
+  const whereConditions = [
+    eq(InventoryMovementsTable.regionId, _regionId),
+    gte(InventoryMovementsTable.createdAt, dateFrom),
+    lt(InventoryMovementsTable.createdAt, dateToExclusive),
+    eq(InventoryMovementsTable.movementType, InventoryMovementType.SHIPMENT),
+  ];
+
+  // TODO: apply regionId filter when a valid relation is available for this query
+  const reportData = await db
+    .select({
+      itemCode: SkuTable.skuCode,
+      description: SkuTable.skuDescription,
+      countAdjustmentQty: sql<string>`coalesce(sum(${InventoryMovementsTable.quantity}), 0)::text`,
+    })
+    .from(InventoryMovementsTable)
+    .innerJoin(SkuTable, eq(InventoryMovementsTable.skuId, SkuTable.skuId))
+    .where(and(...whereConditions))
+    .groupBy(SkuTable.skuCode, SkuTable.skuDescription);
+
+
+  return reportData;
+  // return MOVEMENT_MOCK_ROWS;
 }
 
 /**
@@ -100,15 +120,15 @@ export async function renderMovementReportHtml(
         return `<tr class="border-b border-gray-300 hover:bg-gray-100 ${rowOdd}">
           <td class="px-4 py-3 whitespace-nowrap text-gray-900 font-medium">${escapeHtml(r.itemCode)}</td>
           <td class="px-4 py-3 whitespace-nowrap text-gray-800">${escapeHtml(r.description)}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums font-medium text-gray-900">${r.countAdjustmentQty}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums font-medium text-gray-900">-${r.countAdjustmentQty}</td>
         </tr>`;
       }
     )
     .join('\n');
-  const grandTotal = rows.reduce((sum, r) => sum + r.countAdjustmentQty, 0);
+  const grandTotal = rows.reduce((sum, r) => sum + Number(r.countAdjustmentQty), 0).toFixed(2);
   const totalRow = `<tr class="border-t-2 border-gray-500 bg-gray-200 font-bold text-gray-900">
     <td class="px-4 py-3.5" colspan="2">TOTAL OUT</td>
-    <td class="px-4 py-3.5 text-right tabular-nums">${grandTotal}</td>
+    <td class="px-4 py-3.5 text-right tabular-nums">-${grandTotal}</td>
   </tr>`;
 
   let regionName: string;

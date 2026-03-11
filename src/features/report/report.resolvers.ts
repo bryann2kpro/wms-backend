@@ -29,10 +29,10 @@ export const resolvers = {
       args: {
         input: {
           type: 'INVOICE_SUMMARY' | 'MOVEMENT_REPORT';
-          dateFrom?: string;
-          dateTo?: string;
+          dateFrom: string;
+          dateTo: string;
           format?: 'PDF' | 'EXCEL';
-          regionId?: string;
+          regionId: string;
           saveToS3?: boolean;
         };
       }
@@ -50,7 +50,7 @@ export const resolvers = {
       let result: { pdfBase64: string; filename: string };
 
       if (type === 'MOVEMENT_REPORT') {
-        const rows = getMovementReportData(dateFrom, dateTo, regionId);
+        const rows = await getMovementReportData(dateFrom, dateTo, regionId);
         result = await generateMovementReportPdf(rows, dateFrom, dateTo, regionId);
       } else if (type === 'INVOICE_SUMMARY') {
         const rows = await getInvoiceSummaryData(dateFrom, dateTo, regionId);

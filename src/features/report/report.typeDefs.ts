@@ -19,12 +19,12 @@ export const typeDefs = `#graphql
   input GenerateReportInput {
     """Report type (e.g. INVOICE_SUMMARY, MOVEMENT_REPORT)"""
     type: ReportType!
-    """Optional start date filter (ISO date string)"""
-    dateFrom: String
-    """Optional end date filter (ISO date string)"""
-    dateTo: String
-    """Optional region ID to filter or display (e.g. for movement report header)"""
-    regionId: String
+    """Start date filter (ISO date string) (required)"""
+    dateFrom: String!
+    """End date filter (ISO date string) (required)"""
+    dateTo: String!
+    """Region ID to filter or display (e.g. for movement report header) (required)"""
+    regionId: ID!
     """If true, upload the generated PDF to S3 and return s3Url"""
     saveToS3: Boolean
   }

@@ -8,14 +8,14 @@ class ReportControllerClass {
         try {
             logger.info('🔎 [report.controller.getMovementReport] Getting movement report...');
             const schema = z.object({
-                dateFrom: z.string().optional(),
-                dateTo: z.string().optional(),
-                regionId: z.string().optional(),
+                dateFrom: z.string(),
+                dateTo: z.string(),
+                regionId: z.string(),
             });
             const { dateFrom, dateTo, regionId } = schema.parse(req.query);
 
             logger.info('🔎 [report.controller.getMovementReport] Date from: %s, regionId: %s', dateFrom, regionId);
-            const rows = getMovementReportData(dateFrom, dateTo, regionId);
+            const rows = await getMovementReportData(dateFrom, dateTo, regionId);
             logger.info('🔎 [report.controller.getMovementReport] Rows Got: %s', rows.length);
             const html = await renderMovementReportHtml(rows, dateFrom, dateTo, regionId);
             logger.info('🔎 [report.controller.getMovementReport] HTML Rendered!');
