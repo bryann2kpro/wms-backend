@@ -277,5 +277,12 @@ export const typeDefs = `#graphql
         Used in work queue when staff picks an item.
         """
         markDeliveryOrderItemPicked(id: ID!, qtyPicked: String!): DeliveryOrderItemWithDetails!
+
+        """
+        Apply emergency delivery to an existing purchase order.
+        Re-computes the scheduledDeliveryDate ignoring normal cutoff rules,
+        moving it to the next available delivery day for the outlet's region.
+        """
+        applyEmergencyDelivery(id: ID!): PurchaseOrder!
     }
 `;
