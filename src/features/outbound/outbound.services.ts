@@ -125,6 +125,7 @@ export class OutboundServices {
                     doNo,
                     purchaseOrderId: created!.id,
                     poNo: data.purchaseOrderNo,
+                    status: 'NEW',
                     isEmergency,
                     createdBy: data.userId,
                     updatedBy: data.userId,
@@ -168,26 +169,75 @@ export class OutboundServices {
         }
     }
 
+    /** Allowed delivery order status flow: NEW -> PACKING -> DELIVERED. */
+    static readonly DO_STATUS_FLOW = ['NEW', 'PACKING', 'DELIVERED'] as const;
+
     /**
-     * Updates a delivery order (e.g. isEmergency).
+     * Updates a delivery order (e.g. isEmergency, status).
+     * Status must follow the flow NEW -> PACKING -> DELIVERED.
      */
     async updateDeliveryOrder(
         id: string,
-        data: { isEmergency?: boolean; updatedBy: string }
+        data: { isEmergency?: boolean; status?: string; updatedBy: string }
     ): Promise<DeliveryOrderType> {
         logger.info('ℹ️ [OutboundServices.updateDeliveryOrder] Updating delivery order...');
         try {
-            const payload: { isEmergency?: boolean; updatedBy: string } = {
+            const payload: { isEmergency?: boolean; status?: string; updatedBy: string } = {
                 updatedBy: data.updatedBy,
             };
             if (data.isEmergency !== undefined) {
                 payload.isEmergency = data.isEmergency;
+            }
+            if (data.status !== undefined) {
+                const allowed = OutboundServices.DO_STATUS_FLOW;
+                if (!allowed.includes(data.status as typeof allowed[number])) {
+                    throw new Error(`Invalid status "${data.status}". Allowed: ${allowed.join(', ')}.`);
+                }
+                const existing = await this.deliveryOrderRepository.getDeliveryOrderById(id);
+                if (!existing) throw new Error('Delivery order not found');
+                const effectiveCurrent = existing.status === 'CREATED' ? 'NEW' : existing.status;
+                const currentIndex = allowed.indexOf(effectiveCurrent as typeof allowed[number]);
+                const nextIndex = allowed.indexOf(data.status as typeof allowed[number]);
+                if (currentIndex < 0 || nextIndex !== currentIndex + 1) {
+                    throw new Error(`Invalid transition: current status is "${existing.status}", next allowed is "${allowed[currentIndex + 1] ?? 'none'}".`);
+                }
+                payload.status = data.status;
             }
             const updated = await this.deliveryOrderRepository.updateDeliveryOrder(id, payload);
             logger.info('✅ [OutboundServices.updateDeliveryOrder] Delivery order updated');
             return updated;
         } catch (error) {
             logger.error('❌ [OutboundServices.updateDeliveryOrder] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Advances a delivery order to the next step: NEW -> PACKING -> DELIVERED.
+     */
+    async advanceDeliveryOrderStatus(data: { id: string; userId: string }): Promise<DeliveryOrderType> {
+        logger.info('ℹ️ [OutboundServices.advanceDeliveryOrderStatus] Advancing delivery order status...');
+        try {
+            const existing = await this.deliveryOrderRepository.getDeliveryOrderById(data.id);
+            if (!existing) throw new Error('Delivery order not found');
+            const flow = OutboundServices.DO_STATUS_FLOW;
+            const effectiveStatus = existing.status === 'CREATED' ? 'NEW' : existing.status;
+            const currentIndex = flow.indexOf(effectiveStatus as typeof flow[number]);
+            if (currentIndex < 0) {
+                throw new Error(`Delivery order has status "${existing.status}". Allowed flow: ${flow.join(' -> ')}.`);
+            }
+            if (currentIndex >= flow.length - 1) {
+                throw new Error('Delivery order is already DELIVERED; no next step.');
+            }
+            const nextStatus = flow[currentIndex + 1];
+            const updated = await this.deliveryOrderRepository.updateDeliveryOrder(data.id, {
+                status: nextStatus,
+                updatedBy: data.userId,
+            });
+            logger.info(`✅ [OutboundServices.advanceDeliveryOrderStatus] Status advanced to ${nextStatus}`);
+            return updated;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.advanceDeliveryOrderStatus] Error:', error);
             throw error;
         }
     }

@@ -100,6 +100,34 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
+  async getDeliveryOrderById(id: string): Promise<DeliveryOrderType | null> {
+    try {
+      const [row] = await db
+        .select()
+        .from(DeliveryOrdersTable)
+        .where(eq(DeliveryOrdersTable.id, id))
+        .limit(1);
+      return row ?? null;
+    } catch (error) {
+      logger.error("❌ [DeliveryOrdersRepository.getDeliveryOrderById] Error:", error);
+      throw error;
+    }
+  }
+
+  async getDeliveryOrderByPurchaseOrderId(purchaseOrderId: string): Promise<DeliveryOrderType | null> {
+    try {
+      const [row] = await db
+        .select()
+        .from(DeliveryOrdersTable)
+        .where(eq(DeliveryOrdersTable.purchaseOrderId, purchaseOrderId))
+        .limit(1);
+      return row ?? null;
+    } catch (error) {
+      logger.error("❌ [DeliveryOrdersRepository.getDeliveryOrderByPurchaseOrderId] Error:", error);
+      throw error;
+    }
+  }
+
   async createDeliveryOrder(data: DeliveryOrderInsertType, tx?: DbTransaction): Promise<DeliveryOrderType> {
     try {
       const dbClient = tx ?? db;
