@@ -82,6 +82,10 @@ export const typeDefs = `#graphql
         Resolved outlet (master data) for this purchase order. Request with: purchaseOrders { query { outlet { outletName outletCode regionName } } }
         """
         outlet: Outlet
+        """
+        Delivery order created for this purchase order (one-to-one). Request deliveryOrder { id status } to show step and advance.
+        """
+        deliveryOrder: DeliveryOrder
         status: String!
         scheduledDeliveryDate: String
         createdAt: String!
@@ -232,10 +236,13 @@ export const typeDefs = `#graphql
 
     """
     Input for updating a delivery order (partial update).
+    Status must follow the flow: NEW -> PACKING -> DELIVERED.
     """
     input UpdateDeliveryOrderInput {
         "Whether this is an emergency delivery"
         isEmergency: Boolean
+        "Next step status: NEW | PACKING | DELIVERED (only valid transition allowed)"
+        status: String
     }
 
     extend type Mutation {
@@ -259,6 +266,11 @@ export const typeDefs = `#graphql
         Mark a delivery order as completed.
         """
         completeDeliveryOrder(id: ID!): DeliveryOrder!
+
+        """
+        Advance delivery order to the next step: NEW -> PACKING -> DELIVERED.
+        """
+        advanceDeliveryOrderStatus(id: ID!): DeliveryOrder!
 
         """
         Mark a delivery order item as picked. Sets qtyPicked to the specified value.

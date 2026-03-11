@@ -62,6 +62,7 @@ const createPurchaseOrderInputSchema = z.object({
 
 const updateDeliveryOrderInputSchema = z.object({
   isEmergency: z.boolean().optional(),
+  status: z.enum(["NEW", "PACKING", "DELIVERED"]).optional(),
 });
 
 // ============================================
@@ -201,11 +202,15 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
 // ============================================
 
 export const resolvers = {
-  /** Resolves nested fields on PurchaseOrder (e.g. outlet from outletId). Uses DataLoader to batch outlet lookups (avoids N+1). */
+  /** Resolves nested fields on PurchaseOrder (e.g. outlet from outletId, deliveryOrder from purchaseOrderId). */
   PurchaseOrder: {
     outlet: async (parent: { outletId: string }, _args: unknown, context: GraphQLContext) => {
       const outlet = await context.getOutletLoader().load(parent.outletId);
       return outlet ? transformOutletForGraphQL(outlet) : null;
+    },
+    deliveryOrder: async (parent: { id: string }) => {
+      const doRow = await deliveryOrdersRepository.getDeliveryOrderByPurchaseOrderId(parent.id);
+      return doRow ? transformDeliveryOrder(doRow) : null;
     },
   },
 
@@ -458,6 +463,29 @@ export const resolvers = {
           ...data,
           updatedBy: userId,
         });
+        return transformDeliveryOrder(deliveryOrder);
+      }
+    ),
+
+    advanceDeliveryOrderStatus: withAudit<
+      unknown,
+      { id: string },
+      unknown
+    >(
+      {
+        entity: "DeliveryOrder",
+        action: "UPDATE",
+        getEntityId: (result) =>
+          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
+      },
+      async (_: unknown, { id }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to advance delivery order status", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+        const deliveryOrder = await outboundServices.advanceDeliveryOrderStatus({ id, userId });
         return transformDeliveryOrder(deliveryOrder);
       }
     ),
