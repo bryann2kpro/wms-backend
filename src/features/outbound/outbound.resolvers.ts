@@ -255,9 +255,6 @@ export const resolvers = {
           [fromDate, toDate] = getDefaultWeekRangeInBusinessTZ();
         }
 
-        console.log('fromDate', fromDate);
-        console.log('toDate', toDate);
-
         const repoFilter: Partial<PurchaseOrderFilter> = {};
         if (filter.outletId) repoFilter.outletId = filter.outletId;
         if (filter.status) repoFilter.status = filter.status;
