@@ -192,24 +192,11 @@ export class InboundServices {
                 }
 
                 if (data.inboundQty != null && data.skuId) {
-                    logger.info('ℹ️ [InboundServices.createInbound] Updating inventory balance...');
-
-                    await this.inventoryMovementRepository.createInventoryMovement(grnItemRows.map(item => ({
-                        skuId: item.skuId,
-                        quantity: item.qty,
-                        referenceNo: grn.grnNo,
-                        reason: 'Inbound',
-                        createdBy,
-                        updatedBy,
-                        movementType: InventoryMovementType.INBOUND,
-                    })), tx);
-
                     await this.skuRepository.updateSku(data.skuId, {
                         cartonQuantity: String(data.inboundQty),
                         updatedBy: createdBy,
                         updatedAt: new Date(),
                     }, tx);
-                    logger.info('✅ [InboundServices.createInbound] Inventory balance updated successfully');
                 }
 
                 logger.info('✅ [InboundServices.createInbound] Inbound Flow completed successfully');
