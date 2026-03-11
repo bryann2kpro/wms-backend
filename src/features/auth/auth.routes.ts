@@ -43,6 +43,20 @@ const router = Router();
 router.post('/login', authController.login.bind(authController));
 
 /**
+ * @route POST /auth/forgot-password
+ * @description Request a password reset email
+ * @body { email: string }
+ */
+router.post('/forgot-password', authController.forgotPassword.bind(authController));
+
+/**
+ * @route POST /auth/reset-password
+ * @description Reset password using a valid token
+ * @body { token: string, password: string }
+ */
+router.post('/reset-password', authController.resetPassword.bind(authController));
+
+/**
  * @route POST /auth/register
  * @description Register a new user with role assignment
  * @body { email: string, displayName: string, password: string, contactNo?: string, roleId: string }

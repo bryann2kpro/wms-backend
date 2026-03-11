@@ -18,6 +18,8 @@ import { UserInsertType } from './auth.model.js';
 import { JwtControllerClass } from '@/features/jwt/jwt.controller.js';
 import { Error } from '@/error/index.js';
 import { hashPassword, comparePassword } from '@/util/password.js';
+import { sendPasswordResetEmail } from '@/util/mailer.js';
+import crypto from 'node:crypto';
 import { logger } from '@/util/logger.js';
 import { db } from '@/db/index.js';
 import { RbacRepositoryClass } from '@/features/rbac/rbac.repository.js';
@@ -32,6 +34,21 @@ import { RbacRepositoryClass } from '@/features/rbac/rbac.repository.js';
 const LoginSchema = z.object({
   username: z.email('Invalid email format'),
   password: z.string().min(1, 'Password is required'),
+});
+
+/**
+ * Forgot password request schema
+ */
+const ForgotPasswordSchema = z.object({
+  email: z.email('Invalid email format'),
+});
+
+/**
+ * Reset password request schema
+ */
+const ResetPasswordSchema = z.object({
+  token: z.string().min(1, 'Token is required'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
 /**
@@ -322,6 +339,85 @@ class AuthControllerClass {
         message: Error.INTERNAL_SERVER_ERROR,
         data: null,
       });
+    }
+  }
+  /**
+   * Forgot Password
+   * POST /auth/forgot-password
+   *
+   * @description Generates a password reset token and emails a reset link.
+   * Always responds with 200 to avoid user enumeration.
+   */
+  async forgotPassword(req: Request, res: Response) {
+    try {
+      logger.info('ℹ️ [AuthController.forgotPassword] Processing forgot password request...');
+
+      const parseResult = ForgotPasswordSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ success: false, message: 'Valid email is required', data: null });
+      }
+
+      const { email } = parseResult.data;
+      const user = await this.authRepository.getUserByEmail(email);
+
+      // Always return 200 — do not reveal whether email exists
+      if (!user || !user.isActive) {
+        return res.status(200).json({ success: true, message: 'If that email exists, a reset link has been sent.', data: null });
+      }
+
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await this.authRepository.createPasswordResetToken(user.id, token, expiresAt);
+
+      const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+      const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
+
+      await sendPasswordResetEmail(email, resetUrl);
+
+      logger.info('✅ [AuthController.forgotPassword] Reset email sent to:', email);
+      return res.status(200).json({ success: true, message: 'If that email exists, a reset link has been sent.', data: null });
+    } catch (error) {
+      logger.error('❌ [AuthController.forgotPassword] Error:', error);
+      return res.status(500).json({ success: false, message: Error.INTERNAL_SERVER_ERROR, data: null });
+    }
+  }
+
+  /**
+   * Reset Password
+   * POST /auth/reset-password
+   *
+   * @description Validates the reset token and updates the user's password.
+   */
+  async resetPassword(req: Request, res: Response) {
+    try {
+      logger.info('ℹ️ [AuthController.resetPassword] Processing password reset...');
+
+      const parseResult = ResetPasswordSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          success: false,
+          message: parseResult.error.issues[0]?.message ?? 'Validation failed',
+          data: null,
+        });
+      }
+
+      const { token, password } = parseResult.data;
+      const resetToken = await this.authRepository.getPasswordResetToken(token);
+
+      if (!resetToken || resetToken.expiresAt < new Date()) {
+        return res.status(400).json({ success: false, message: 'Reset link is invalid or has expired.', data: null });
+      }
+
+      const passwordHash = await hashPassword(password);
+      await this.authRepository.updateUserPassword(resetToken.userId, passwordHash);
+      await this.authRepository.deletePasswordResetToken(token);
+
+      logger.info('✅ [AuthController.resetPassword] Password reset for userId:', resetToken.userId);
+      return res.status(200).json({ success: true, message: 'Password reset successfully.', data: null });
+    } catch (error) {
+      logger.error('❌ [AuthController.resetPassword] Error:', error);
+      return res.status(500).json({ success: false, message: Error.INTERNAL_SERVER_ERROR, data: null });
     }
   }
 }
