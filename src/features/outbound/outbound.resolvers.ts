@@ -212,6 +212,28 @@ export const resolvers = {
       const doRow = await deliveryOrdersRepository.getDeliveryOrderByPurchaseOrderId(parent.id);
       return doRow ? transformDeliveryOrder(doRow) : null;
     },
+    createdByUser: async (parent: { createdBy: string | null }, _args: unknown, context: GraphQLContext) => {
+      if (!parent.createdBy) return null;
+      const user = await context.getUserLoader().load(parent.createdBy);
+      return user ? { id: user.id, displayName: user.displayName, email: user.email } : null;
+    },
+    updatedByUser: async (parent: { updatedBy: string | null }, _args: unknown, context: GraphQLContext) => {
+      if (!parent.updatedBy) return null;
+      const user = await context.getUserLoader().load(parent.updatedBy);
+      return user ? { id: user.id, displayName: user.displayName, email: user.email } : null;
+    },
+    items: async (parent: { purchaseOrderNo: string }) => {
+      const result = await purchaseOrdersRepository.getPurchaseOrderItems(
+        { purchaseOrderNo: parent.purchaseOrderNo },
+        { pageSize: 1000, pageNumber: 1 }
+      );
+      return result.query.map((item) => ({
+        id: item.id,
+        skuCode: item.skuCode,
+        skuDescription: (item as typeof item & { skuDescription: string | null }).skuDescription ?? null,
+        qtyRequired: item.qtyRequired,
+      }));
+    },
   },
 
   Query: {

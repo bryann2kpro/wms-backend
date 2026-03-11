@@ -20,6 +20,7 @@ import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model"
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
 import { eq, and, like, inArray, gte, lte } from "drizzle-orm";
+import { SkuTable } from "@/features/master-data/sku.model";
 
 export class PurchaseOrdersRepositoryClass {
   constructor() {}
@@ -219,8 +220,19 @@ export class PurchaseOrdersRepositoryClass {
       }
 
       const baseQuery = db
-        .select()
+        .select({
+          id: PurchaseOrderItemsTable.id,
+          purchaseOrderNo: PurchaseOrderItemsTable.purchaseOrderNo,
+          skuCode: PurchaseOrderItemsTable.skuCode,
+          qtyRequired: PurchaseOrderItemsTable.qtyRequired,
+          createdAt: PurchaseOrderItemsTable.createdAt,
+          updatedAt: PurchaseOrderItemsTable.updatedAt,
+          createdBy: PurchaseOrderItemsTable.createdBy,
+          updatedBy: PurchaseOrderItemsTable.updatedBy,
+          skuDescription: SkuTable.skuDescription,
+        })
         .from(PurchaseOrderItemsTable)
+        .leftJoin(SkuTable, eq(PurchaseOrderItemsTable.skuCode, SkuTable.skuCode))
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
 
       const pageSize = paginationParams.pageSize ?? 10;
@@ -230,7 +242,7 @@ export class PurchaseOrdersRepositoryClass {
       const data = await paginatedQuery.query;
 
       logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrderItems] Purchase order items fetched successfully");
-      return { query: data, pagination: paginatedQuery.pagination };
+      return { query: data as (PurchaseOrderItemType & { skuDescription: string | null })[], pagination: paginatedQuery.pagination };
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.getPurchaseOrderItems] Error:", error);
       throw error;

@@ -44,6 +44,9 @@ export type OutletLoader = DataLoader<string, OutletWithRegion | null>;
 /** DataLoader for batching region lookups by ID (avoids N+1 when resolving Outlet.region). */
 export type RegionLoader = DataLoader<string, RegionType | null>;
 
+/** DataLoader for batching user lookups by ID (avoids N+1 when resolving createdByUser/updatedByUser). */
+export type UserLoader = DataLoader<string, UserType | null>;
+
 export interface GraphQLContext {
   /** The authenticated user, or null if not authenticated */
   user: UserType | null;
@@ -61,6 +64,8 @@ export interface GraphQLContext {
   getOutletLoader: () => OutletLoader;
   /** Batched region-by-ID loader (per request). Use when resolving Outlet.region. */
   getRegionLoader: () => RegionLoader;
+  /** Batched user-by-ID loader (per request). Use when resolving createdByUser/updatedByUser. */
+  getUserLoader: () => UserLoader;
 }
 
 // ============================================
@@ -87,6 +92,16 @@ function createOutletLoader(): OutletLoader {
   });
 }
 
+/** Creates the user DataLoader. One instance per request so batches are request-scoped. */
+function createUserLoader(): UserLoader {
+  return new DataLoader<string, UserType | null>(async (ids) => {
+    const uniqueIds = [...new Set(ids)];
+    const users = await authRepository.getUsersByIds(uniqueIds);
+    const byId = new Map(users.map((u) => [u.id, u]));
+    return ids.map((id) => byId.get(id) ?? null);
+  });
+}
+
 /** Creates the region DataLoader. One instance per request so batches are request-scoped. */
 function createRegionLoader(): RegionLoader {
   return new DataLoader<string, RegionType | null>(async (ids) => {
@@ -103,6 +118,7 @@ function createRegionLoader(): RegionLoader {
 export async function createContext({ req }: { req: Request }): Promise<GraphQLContext> {
   const outletLoader = createOutletLoader();
   const regionLoader = createRegionLoader();
+  const userLoader = createUserLoader();
   const context: GraphQLContext = {
     user: null,
     userPermissions: [],
@@ -111,6 +127,7 @@ export async function createContext({ req }: { req: Request }): Promise<GraphQLC
     req,
     getOutletLoader: () => outletLoader,
     getRegionLoader: () => regionLoader,
+    getUserLoader: () => userLoader,
   };
 
   // Extract token from Authorization header

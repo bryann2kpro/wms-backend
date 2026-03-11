@@ -73,6 +73,25 @@ export const typeDefs = `#graphql
     }
 
     """
+    Minimal user info for audit fields on a Purchase Order.
+    """
+    type PurchaseOrderUser {
+        id: ID!
+        displayName: String!
+        email: String!
+    }
+
+    """
+    A line item on a Purchase Order.
+    """
+    type PurchaseOrderItem {
+        id: ID!
+        skuCode: String!
+        skuDescription: String
+        qtyRequired: String!
+    }
+
+    """
     Purchase Order - transfer/purchase order pulled from NetSuite.
     """
     type PurchaseOrder {
@@ -92,6 +111,9 @@ export const typeDefs = `#graphql
         updatedAt: String!
         createdBy: ID
         updatedBy: ID
+        createdByUser: PurchaseOrderUser
+        updatedByUser: PurchaseOrderUser
+        items: [PurchaseOrderItem!]!
     }
 
     """
