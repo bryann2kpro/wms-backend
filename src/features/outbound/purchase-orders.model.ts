@@ -21,6 +21,7 @@ import { uuid, text, numeric, timestamp, jsonb } from "drizzle-orm/pg-core";
  * - ACCEPTED: Order accepted by SME for fulfillment
  * - REJECTED: Order rejected (e.g., cannot fulfill)
  * - DO_CREATED: Delivery Order has been created for this TO
+ * - SHIPPED: Goods have left the warehouse (set when DO advances to SHIPPED)
  * - CANCELLED: Order cancelled
  */
 export const PurchaseOrdersTable = MainSchema.table('purchase_orders', {

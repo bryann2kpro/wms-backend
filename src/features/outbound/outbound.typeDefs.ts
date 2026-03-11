@@ -236,12 +236,12 @@ export const typeDefs = `#graphql
 
     """
     Input for updating a delivery order (partial update).
-    Status must follow the flow: NEW -> PACKING -> DELIVERED.
+    Status must follow the flow: NEW -> PACKING -> SHIPPED -> DELIVERED.
     """
     input UpdateDeliveryOrderInput {
         "Whether this is an emergency delivery"
         isEmergency: Boolean
-        "Next step status: NEW | PACKING | DELIVERED (only valid transition allowed)"
+        "Next step status: NEW | PACKING | SHIPPED | DELIVERED (only valid transition allowed)"
         status: String
     }
 
@@ -268,7 +268,7 @@ export const typeDefs = `#graphql
         completeDeliveryOrder(id: ID!): DeliveryOrder!
 
         """
-        Advance delivery order to the next step: NEW -> PACKING -> DELIVERED.
+        Advance delivery order to the next step: NEW -> PACKING -> SHIPPED -> DELIVERED. When DO becomes SHIPPED, the linked PO is set to Shipped.
         """
         advanceDeliveryOrderStatus(id: ID!): DeliveryOrder!
 
