@@ -62,7 +62,7 @@ const createPurchaseOrderInputSchema = z.object({
 
 const updateDeliveryOrderInputSchema = z.object({
   isEmergency: z.boolean().optional(),
-  status: z.enum(["NEW", "PACKING", "DELIVERED"]).optional(),
+  status: z.enum(["NEW", "PACKING", "SHIPPED", "DELIVERED"]).optional(),
 });
 
 // ============================================

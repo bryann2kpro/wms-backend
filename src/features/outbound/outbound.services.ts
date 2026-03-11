@@ -169,8 +169,8 @@ export class OutboundServices {
         }
     }
 
-    /** Allowed delivery order status flow: NEW -> PACKING -> DELIVERED. */
-    static readonly DO_STATUS_FLOW = ['NEW', 'PACKING', 'DELIVERED'] as const;
+    /** Allowed delivery order status flow: NEW -> PACKING -> SHIPPED (out from warehouse) -> DELIVERED. */
+    static readonly DO_STATUS_FLOW = ['NEW', 'PACKING', 'SHIPPED', 'DELIVERED'] as const;
 
     /**
      * Updates a delivery order (e.g. isEmergency, status).
@@ -213,7 +213,8 @@ export class OutboundServices {
     }
 
     /**
-     * Advances a delivery order to the next step: NEW -> PACKING -> DELIVERED.
+     * Advances a delivery order to the next step: NEW -> PACKING -> SHIPPED (out from warehouse) -> DELIVERED.
+     * When DO advances to SHIPPED, the linked Purchase Order is updated to status SHIPPED.
      */
     async advanceDeliveryOrderStatus(data: { id: string; userId: string }): Promise<DeliveryOrderType> {
         logger.info('ℹ️ [OutboundServices.advanceDeliveryOrderStatus] Advancing delivery order status...');
@@ -234,7 +235,14 @@ export class OutboundServices {
                 status: nextStatus,
                 updatedBy: data.userId,
             });
-            logger.info(`✅ [OutboundServices.advanceDeliveryOrderStatus] Status advanced to ${nextStatus}`);
+            if (nextStatus === 'SHIPPED') {
+                await this.purchaseOrdersRepository.updatePurchaseOrder(existing.purchaseOrderId, {
+                    status: 'SHIPPED',
+                    updatedBy: data.userId,
+                });
+                logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] PO updated to SHIPPED');
+            }
+            logger.info(`✅ [OutboundServices.advanceDeliveryOrderStatus] DO status advanced to ${nextStatus}`);
             return updated;
         } catch (error) {
             logger.error('❌ [OutboundServices.advanceDeliveryOrderStatus] Error:', error);
