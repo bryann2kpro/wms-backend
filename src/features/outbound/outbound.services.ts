@@ -251,6 +251,39 @@ export class OutboundServices {
     }
 
     /**
+     * Applies emergency delivery to an existing purchase order.
+     * Re-computes the scheduledDeliveryDate ignoring cutoff rules, moving it to
+     * the next available delivery day for the outlet's region.
+     */
+    async applyEmergencyDelivery(poId: string, userId: string): Promise<PurchaseOrderType> {
+        logger.info('ℹ️ [OutboundServices.applyEmergencyDelivery] Applying emergency delivery...');
+        try {
+            const poResult = await this.purchaseOrdersRepository.getPurchaseOrders(
+                { id: poId },
+                { pageSize: 1, pageNumber: 1 }
+            );
+            const po = poResult.query[0];
+            if (!po) throw new Error('Purchase order not found');
+
+            const outlet = await this.outletsRepository.getOutletById(po.outletId);
+            if (!outlet || !outlet.regionId) throw new Error('Outlet not found or has no region assigned');
+
+            const nextDelivery = await this.computeNextDeliveryDateEmergency(outlet.regionId);
+            if (!nextDelivery) throw new Error(`No delivery schedules found for region "${outlet.regionId}"`);
+
+            const updated = await this.purchaseOrdersRepository.updatePurchaseOrder(poId, {
+                scheduledDeliveryDate: nextDelivery.deliveryDate,
+                updatedBy: userId,
+            });
+            logger.info(`✅ [OutboundServices.applyEmergencyDelivery] Scheduled delivery updated to ${nextDelivery.deliveryDate.toISOString()}`);
+            return updated;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.applyEmergencyDelivery] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Resolve each line item to skuId (from skuId or skuCode) and validate SKU exists.
      * Returns list of { skuId, qtyRequired, skuCode? } for stock check and downstream use.
      */
