@@ -50,6 +50,7 @@ import { InventoryBalanceRepositoryClass } from './features/inventory/inventory-
 import { StockCountServices } from './features/inventory/stock-count.services';
 // Dashboard
 import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
+import { InvoicesRepositoryClass } from './features/invoicing/invoices.repository';
 
 
 // ============================================
@@ -96,6 +97,8 @@ export const stockCountServices = new StockCountServices();
 
 // Dashboard
 export const dashboardRepository = new DashboardRepositoryClass();
+// Invoicing Repositories
+export const invoicesRepository = new InvoicesRepositoryClass();
 
 // Outbound Services
 export const outboundServices = new OutboundServices(

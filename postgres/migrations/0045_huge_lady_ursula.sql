@@ -1,0 +1,1 @@
+ALTER TABLE "main"."invoices" RENAME COLUMN "to_id" TO "po_id";

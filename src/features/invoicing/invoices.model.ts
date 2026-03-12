@@ -29,7 +29,7 @@ export const InvoicesTable = MainSchema.table('invoices', {
   invoiceNo: text('invoice_no').unique().notNull(),
 
   doId: uuid('do_id').unique().notNull(),
-  toId: uuid('to_id'),
+  poId: uuid('po_id'),
   poNo: text('po_no'),
 
   billingAddressId: uuid('billing_address_id'),
@@ -106,3 +106,25 @@ export const InvoiceExportsTable = MainSchema.table('invoice_exports', {
   createdBy: uuid('created_by').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export type InvoiceType = typeof InvoicesTable.$inferSelect;
+export type InvoiceInsertType = typeof InvoicesTable.$inferInsert;
+export type InvoiceFilter = {
+  id?: string | string[];
+  invoiceNo?: string;
+  doId?: string | string[];
+  poId?: string | string[];
+  status?: string | string[];
+  dateIssuedFrom?: string;
+  dateIssuedTo?: string;
+  createdAtFrom?: string;
+  createdAtTo?: string;
+};
+
+export type InvoiceItemType = typeof InvoiceItemsTable.$inferSelect;
+export type InvoiceItemInsertType = typeof InvoiceItemsTable.$inferInsert;
+export type InvoiceItemFilter = {
+  id?: string | string[];
+  invoiceId?: string | string[];
+  skuId?: string | string[];
+};
