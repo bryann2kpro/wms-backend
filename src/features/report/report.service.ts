@@ -9,9 +9,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { jsPDF } from 'jspdf';
-import { autoTable, CellHookData } from 'jspdf-autotable';
-import { inventoryMovementRepository, regionRepository } from '@/composition-root';
+import { regionRepository } from '@/composition-root';
 import { db } from '@/db';
 import { eq, and, gte, lt, sql } from 'drizzle-orm';
 import { InventoryMovementsTable, InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
@@ -175,27 +173,18 @@ export async function getInvoiceSummaryData(
   return INVOICE_SUMMARY_MOCK_ROWS.filter((r) => r.region === region.regionName);
 }
 
+// Number of columns that precede the two numeric summary columns (Ctn, Amount).
+// Used for colspan on subtotal / grand-total label cells.
+const INVOICE_LEADING_COLS = 5;
+
 /**
- * Load the proforma invoices HTML template and inject data.
- * Use this to render invoice summary in HTML format (proforma-invoices.html).
- * Rows are grouped by region with a per-region summary row (total amount and ctn).
- * When regionId is provided, regionName is shown in the header (from getRegionById).
+ * Group an array of InvoiceSummaryRows by region, preserving insertion order.
+ * Shared by renderProformaInvoicesHtml and generateInvoiceSummaryPdf.
  */
-export async function renderProformaInvoicesHtml(
-  rows: InvoiceSummaryRow[],
-  dateFrom?: string,
-  dateTo?: string,
-  regionId?: string
-): Promise<string> {
-  const template = await readFile(PROFORMA_INVOICES_HTML_PATH, 'utf-8');
-
-  let regionName = '—';
-  if (regionId) {
-    const region = await regionRepository.getRegionById(regionId);
-    regionName = region ? escapeHtml(region.regionName) : '—';
-  }
-
-  // Group by region (preserve order of first occurrence) using passed-in rows
+function groupRowsByRegion(rows: InvoiceSummaryRow[]): {
+  regionOrder: string[];
+  byRegion: Map<string, InvoiceSummaryRow[]>;
+} {
   const regionOrder: string[] = [];
   const byRegion = new Map<string, InvoiceSummaryRow[]>();
   for (const r of rows) {
@@ -205,51 +194,86 @@ export async function renderProformaInvoicesHtml(
     }
     byRegion.get(r.region)!.push(r);
   }
+  return { regionOrder, byRegion };
+}
 
-  const rowHtml: string[] = [];
-  let dataRowIndex = 0;
-  for (const region of regionOrder) {
-    let columnCount = Object.keys(byRegion.get(region)![0]).length;
-    const regionRows = byRegion.get(region)!;
-    for (const r of regionRows) {
-      const rowAlt = dataRowIndex % 2 === 0 ? 'tr-alt' : '';
-      dataRowIndex += 1;
-      rowHtml.push(
-        `<tr class="tr-data ${rowAlt}">
-          <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.proformaId)}</td>
-          <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.poNumber)}</td>
-          <td class="px-4 py-3 whitespace-nowrap col-desc">${escapeHtml(r.outlet)}</td>
-          <td class="px-4 py-3 whitespace-nowrap col-meta">${escapeHtml(r.expectedArrivalDate)}</td>
-          <td class="px-4 py-3 whitespace-nowrap col-meta">${escapeHtml(r.region)}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">${r.ctn}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">${formatAmount(r.amount)}</td>
-        </tr>`
-      );
-    }
-    const regionTotalCtn = regionRows.reduce((sum, r) => sum + r.ctn, 0);
-    const regionTotalAmount = regionRows.reduce((sum, r) => sum + r.amount, 0);
-    rowHtml.push(
-      `<tr class="tr-subtotal">
-        <td class="px-4 py-3" colspan="${columnCount - 2}">Total (${escapeHtml(region)})</td>
-        <td class="px-4 py-3 text-right tabular-nums">${regionTotalCtn}</td>
-        <td class="px-4 py-3 text-right tabular-nums">${formatAmount(regionTotalAmount)}</td>
-      </tr>`
-    );
-  }
+function buildInvoiceDataRow(r: InvoiceSummaryRow, isAlt: boolean): string {
+  return `<tr class="tr-data${isAlt ? ' tr-alt' : ''}">
+    <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.proformaId)}</td>
+    <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.poNumber)}</td>
+    <td class="px-4 py-3 whitespace-nowrap col-desc">${escapeHtml(r.outlet)}</td>
+    <td class="px-4 py-3 whitespace-nowrap col-meta">${escapeHtml(r.expectedArrivalDate)}</td>
+    <td class="px-4 py-3 whitespace-nowrap col-meta">${escapeHtml(r.region)}</td>
+    <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">${r.ctn}</td>
+    <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">${formatAmount(r.amount)}</td>
+  </tr>`;
+}
 
-  const totalCtn = rows.reduce((sum, r) => sum + r.ctn, 0);
-  const totalAmount = rows.reduce((sum, r) => sum + r.amount, 0);
-  const grandTotalRow = `<tr class="tr-grand-total">
-    <td class="px-4 py-3.5" colspan="5">TOTAL</td>
+function buildInvoiceSubtotalRow(region: string, totalCtn: number, totalAmount: number): string {
+  return `<tr class="tr-subtotal">
+    <td class="px-4 py-3" colspan="${INVOICE_LEADING_COLS}">Total (${escapeHtml(region)})</td>
+    <td class="px-4 py-3 text-right tabular-nums">${totalCtn}</td>
+    <td class="px-4 py-3 text-right tabular-nums">${formatAmount(totalAmount)}</td>
+  </tr>`;
+}
+
+function buildInvoiceGrandTotalRow(totalCtn: number, totalAmount: number): string {
+  return `<tr class="tr-grand-total">
+    <td class="px-4 py-3.5" colspan="${INVOICE_LEADING_COLS}">TOTAL</td>
     <td class="px-4 py-3.5 text-right tabular-nums">${totalCtn}</td>
     <td class="px-4 py-3.5 text-right tabular-nums">${formatAmount(totalAmount)}</td>
   </tr>`;
+}
+
+function buildInvoiceTableHtml(rows: InvoiceSummaryRow[]): string {
+  const { regionOrder, byRegion } = groupRowsByRegion(rows);
+  const html: string[] = [];
+  let rowIndex = 0;
+
+  for (const region of regionOrder) {
+    const regionRows = byRegion.get(region)!;
+    for (const r of regionRows) {
+      html.push(buildInvoiceDataRow(r, rowIndex++ % 2 === 0));
+    }
+    const regionCtn = regionRows.reduce((sum, r) => sum + r.ctn, 0);
+    const regionAmount = regionRows.reduce((sum, r) => sum + r.amount, 0);
+    html.push(buildInvoiceSubtotalRow(region, regionCtn, regionAmount));
+  }
+
+  const grandCtn = rows.reduce((sum, r) => sum + r.ctn, 0);
+  const grandAmount = rows.reduce((sum, r) => sum + r.amount, 0);
+  html.push(buildInvoiceGrandTotalRow(grandCtn, grandAmount));
+
+  return html.join('\n');
+}
+
+/**
+ * Load the proforma invoices HTML template and inject data.
+ * Rows are grouped by region with a per-region subtotal row, then a grand total.
+ * When regionId is provided, the region name is resolved and shown in the header.
+ */
+export async function renderProformaInvoicesHtml(
+  rows: InvoiceSummaryRow[],
+  dateFrom?: string,
+  dateTo?: string,
+  regionId?: string
+): Promise<string> {
+  const [template, regionName] = await Promise.all([
+    readFile(PROFORMA_INVOICES_HTML_PATH, 'utf-8'),
+    resolveRegionName(regionId),
+  ]);
 
   return template
     .replace(/\{\{dateFrom\}\}/g, dateFrom ?? '—')
     .replace(/\{\{dateTo\}\}/g, dateTo ?? '—')
-    .replace(/\{\{regionName\}\}/g, regionName)
-    .replace(/\{\{tableRows\}\}/, rowHtml.join('\n') + '\n' + grandTotalRow);
+    .replace(/\{\{regionName\}\}/g, escapeHtml(regionName))
+    .replace(/\{\{tableRows\}\}/, buildInvoiceTableHtml(rows));
+}
+
+async function resolveRegionName(regionId?: string): Promise<string> {
+  if (!regionId) return 'All Regions';
+  const region = await regionRepository.getRegionById(regionId);
+  return region?.regionName ?? '—';
 }
 
 function formatAmount(value: number): string {
@@ -260,19 +284,17 @@ function formatAmount(value: number): string {
  * Render HTML to PDF using Puppeteer (same layout as preview).
  * Waits for Tailwind CDN script so styles are applied before printing.
  */
-async function htmlToPdf(html: string): Promise<Buffer> {
+async function htmlToPdf(html: string, options?: { landscape?: boolean }): Promise<Buffer> {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   try {
     const page = await browser.newPage();
-    await page.setContent(html, {
-      waitUntil: 'networkidle0',
-      timeout: 20000,
-    });
+    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 20000 });
     const pdfBuffer = await page.pdf({
       format: 'A4',
+      landscape: options?.landscape ?? false,
       printBackground: true,
       margin: { top: '16px', right: '16px', bottom: '16px', left: '16px' },
     });
@@ -285,7 +307,6 @@ async function htmlToPdf(html: string): Promise<Buffer> {
 /**
  * Generate Movement Report PDF from the same HTML template as the preview.
  * PDF layout and styling match /api/v1/report/preview/movement.
- * regionId is used for the region header row in the report.
  */
 export async function generateMovementReportPdf(
   rows: MovementReportRow[],
@@ -296,84 +317,21 @@ export async function generateMovementReportPdf(
   const html = await renderMovementReportHtml(rows, dateFrom, dateTo, regionId);
   const pdfBuffer = await htmlToPdf(html);
   const filename = `Movement_Report_${new Date().toISOString().split('T')[0]}.pdf`;
-  const pdfBase64 = pdfBuffer.toString('base64');
-  return { pdfBase64, filename };
+  return { pdfBase64: pdfBuffer.toString('base64'), filename };
 }
 
 /**
- * Generate Invoices Summary (Proforma) PDF and return base64 + filename.
- * Groups by region with per-region total amount summary, then grand total.
- * When regionId is provided, adds "Region: <name>" subtitle (name from getRegionById).
+ * Generate Invoices Summary (Proforma) PDF from the same HTML template as the preview.
+ * PDF layout and styling match /api/v1/report/preview/proforma.
  */
 export async function generateInvoiceSummaryPdf(
   rows: InvoiceSummaryRow[],
+  dateFrom?: string,
+  dateTo?: string,
   regionId?: string
 ): Promise<{ pdfBase64: string; filename: string }> {
-  const regionOrder: string[] = [];
-  const byRegion = new Map<string, InvoiceSummaryRow[]>();
-  for (const r of rows) {
-    if (!byRegion.has(r.region)) {
-      regionOrder.push(r.region);
-      byRegion.set(r.region, []);
-    }
-    byRegion.get(r.region)!.push(r);
-  }
-
-  const body: string[][] = [];
-  for (const region of regionOrder) {
-    const regionRows = byRegion.get(region)!;
-    for (const r of regionRows) {
-      body.push([r.poNumber, r.outlet, r.expectedArrivalDate, r.region, String(r.ctn), formatAmount(r.amount)]);
-    }
-    const regionTotalCtn = regionRows.reduce((sum, r) => sum + r.ctn, 0);
-    const regionTotalAmount = regionRows.reduce((sum, r) => sum + r.amount, 0);
-    body.push(['', '', '', `Total (${region})`, String(regionTotalCtn), formatAmount(regionTotalAmount)]);
-  }
-  const totalCtn = rows.reduce((sum, r) => sum + r.ctn, 0);
-  const totalAmount = rows.reduce((sum, r) => sum + r.amount, 0);
-  body.push(['', '', '', 'TOTAL', String(totalCtn), formatAmount(totalAmount)]);
-
-  const doc = new jsPDF();
-  doc.setFontSize(16);
-  doc.text('Proforma Invoices', 14, 16);
-  let startY = 22;
-  if (regionId) {
-    const region = await regionRepository.getRegionById(regionId);
-    if (region) {
-      doc.setFontSize(10);
-      doc.text(`Region: ${region.regionName}`, 14, 20);
-      startY = 26;
-    }
-  }
-
-  const subtotalRowIndices = new Set<number>();
-  let idx = 0;
-  for (const region of regionOrder) {
-    idx += byRegion.get(region)!.length;
-    subtotalRowIndices.add(idx);
-    idx += 1;
-  }
-  subtotalRowIndices.add(body.length - 1);
-
-  autoTable(doc, {
-    head: [['Proforma Invoice No', 'Outlet', 'Expected Arrival Date', 'Region', 'Ctn', 'Amount']],
-    body,
-    startY,
-    theme: 'grid',
-    headStyles: { fontStyle: 'bold', fillColor: "black" },
-    bodyStyles: { fontSize: 10 },
-    columnStyles: {
-      4: { halign: 'right' },
-      5: { halign: 'right' },
-    },
-    didParseCell: (data: CellHookData) => {
-      if (data.section === 'body' && subtotalRowIndices.has(data.row.index)) {
-        (data.cell.styles as { fontStyle?: string }).fontStyle = 'bold';
-      }
-    },
-  });
-
+  const html = await renderProformaInvoicesHtml(rows, dateFrom, dateTo, regionId);
+  const pdfBuffer = await htmlToPdf(html, { landscape: true });
   const filename = `Proforma_Invoices_${new Date().toISOString().split('T')[0]}.pdf`;
-  const pdfBase64 = doc.output('datauristring').split(',')[1] ?? '';
-  return { pdfBase64, filename };
+  return { pdfBase64: pdfBuffer.toString('base64'), filename };
 }

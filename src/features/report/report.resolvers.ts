@@ -54,7 +54,7 @@ export const resolvers = {
         result = await generateMovementReportPdf(rows, dateFrom, dateTo, regionId);
       } else if (type === 'INVOICE_SUMMARY') {
         const rows = await getInvoiceSummaryData(dateFrom, dateTo, regionId);
-        result = await generateInvoiceSummaryPdf(rows, regionId);
+        result = await generateInvoiceSummaryPdf(rows, dateFrom, dateTo, regionId);
       } else {
         throw new Error(`Unsupported report type: ${type}`);
       }
