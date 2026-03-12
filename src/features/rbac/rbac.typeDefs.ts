@@ -75,6 +75,25 @@ export const typeDefs = `#graphql
   }
 
   """
+  Input for creating a new module
+  """
+  input CreateModuleInput {
+    moduleName: String!
+    status: String
+    createdBy: String!
+    updatedBy: String!
+  }
+
+  """
+  Input for updating a module
+  """
+  input UpdateModuleInput {
+    moduleName: String
+    status: String
+    updatedBy: String!
+  }
+
+  """
   Input for creating a new role
   """
   input CreateRoleInput {
@@ -132,6 +151,18 @@ export const typeDefs = `#graphql
   }
 
   extend type Mutation {
+    """
+    Create a new module.
+    Requires Role:create permission.
+    """
+    createModule(input: CreateModuleInput!): RbacModule! @requirePermission(module: "Role", permission: "create")
+
+    """
+    Update an existing module.
+    Requires Role:update permission.
+    """
+    updateModule(id: ID!, input: UpdateModuleInput!): RbacModule @requirePermission(module: "Role", permission: "update")
+
     """
     Create a new role.
     Requires Role:create permission.

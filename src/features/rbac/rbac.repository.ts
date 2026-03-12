@@ -338,7 +338,7 @@ class RbacRepositoryClass {
                 whereCondition.push(eq(Module.status, filter.status));
             }
 
-            const modules = 
+            const modules =
                 await db
                     .select({
                         id: Module.moduleId,
@@ -353,7 +353,7 @@ class RbacRepositoryClass {
                         updatedBy: Module.updatedBy,
                     })
                     .from(Module)
-                    .innerJoin(Permission, eq(Module.moduleId, Permission.moduleId))
+                    .leftJoin(Permission, eq(Module.moduleId, Permission.moduleId))
                     .where(and(...whereCondition))
                     .orderBy(Module.moduleName);
 
