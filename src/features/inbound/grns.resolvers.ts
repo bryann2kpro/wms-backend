@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -17,6 +17,7 @@ import { logger } from '@/util/logger';
 import { GrnFilter } from './grns.repository';
 import type { GrnItemsType } from './grns-items.repository';
 import { inArray } from 'drizzle-orm';
+import { InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -648,35 +649,45 @@ export const resolvers = {
                             logger.error('[grns.resolvers]: Failed to get GRN items');
                             throw new Error('Failed to get GRN items for approval');
                         }
-                        // Aggregate per SKU: net received (qty - lossQty) → cartonQuantity, lossQty → lossQuantity
-                        const addQtyBySkuId = new Map<string, number>();
-                        const addLossBySkuId = new Map<string, number>();
-                        for (const item of grnItems) {
-                            const qty = Number(item.qty ?? 0);
-                            const lossQty = Number((item as { lossQty?: string }).lossQty ?? 0);
-                            const netQty = qty - lossQty;
-                            addQtyBySkuId.set(item.skuId, (addQtyBySkuId.get(item.skuId) ?? 0) + netQty);
-                            addLossBySkuId.set(item.skuId, (addLossBySkuId.get(item.skuId) ?? 0) + lossQty);
-                        }
-                        const skuIds = [...new Set([...addQtyBySkuId.keys(), ...addLossBySkuId.keys()])];
-                        if (skuIds.length > 0) {
-                            const { query: skus } = await skuRepository.getSku({ skuId: skuIds }, undefined, context.tx);
-                            const skuMap = new Map(skus.map((s) => [s.skuId, s]));
-                            const updates = skuIds.map(async (skuId) => {
-                                const sku = skuMap.get(skuId);
-                                if (!sku) throw new Error(`SKU not found: ${skuId}`);
-                                const currentQty = Number(sku.cartonQuantity ?? 0);
-                                const currentLoss = Number(sku.lossQuantity ?? 0);
-                                const addQty = addQtyBySkuId.get(skuId) ?? 0;
-                                const addLoss = addLossBySkuId.get(skuId) ?? 0;
-                                const newQty = (currentQty + addQty).toFixed(2);
-                                const newLoss = (currentLoss + addLoss).toFixed(2);
-                                const updated = await skuRepository.updateSku(skuId, { cartonQuantity: newQty, lossQuantity: newLoss }, context.tx);
-                                if (!updated) throw new Error(`Failed to update SKU quantity: ${skuId}`);
-                                return updated;
-                            });
-                            await Promise.all(updates);
-                        }
+                    //     // Aggregate per SKU: net received (qty - lossQty) → cartonQuantity, lossQty → lossQuantity
+                    //     const addQtyBySkuId = new Map<string, number>();
+                    //     const addLossBySkuId = new Map<string, number>();
+                    //     for (const item of grnItems) {
+                    //         const qty = Number(item.qty ?? 0);
+                    //         const lossQty = Number((item as { lossQty?: string }).lossQty ?? 0);
+                    //         const netQty = qty - lossQty;
+                    //         addQtyBySkuId.set(item.skuId, (addQtyBySkuId.get(item.skuId) ?? 0) + netQty);
+                    //         addLossBySkuId.set(item.skuId, (addLossBySkuId.get(item.skuId) ?? 0) + lossQty);
+                    //     }
+                    //     const skuIds = [...new Set([...addQtyBySkuId.keys(), ...addLossBySkuId.keys()])];
+                    //     if (skuIds.length > 0) {
+                    //         const { query: skus } = await skuRepository.getSku({ skuId: skuIds }, undefined, context.tx);
+                    //         const skuMap = new Map(skus.map((s) => [s.skuId, s]));
+                    //         const updates = skuIds.map(async (skuId) => {
+                    //             const sku = skuMap.get(skuId);
+                    //             if (!sku) throw new Error(`SKU not found: ${skuId}`);
+                    //             const currentQty = Number(sku.cartonQuantity ?? 0);
+                    //             const currentLoss = Number(sku.lossQuantity ?? 0);
+                    //             const addQty = addQtyBySkuId.get(skuId) ?? 0;
+                    //             const addLoss = addLossBySkuId.get(skuId) ?? 0;
+                    //             const newQty = (currentQty + addQty).toFixed(2);
+                    //             const newLoss = (currentLoss + addLoss).toFixed(2);
+                    //             const updated = await skuRepository.updateSku(skuId, { cartonQuantity: newQty, lossQuantity: newLoss }, context.tx);
+                    //             if (!updated) throw new Error(`Failed to update SKU quantity: ${skuId}`);
+                    //             return updated;
+                    //         });
+                    //         await Promise.all(updates);
+                    //     }
+
+                        await inventoryMovementRepository.createInventoryMovement(grnItems.map(item => ({
+                            skuId: item.skuId,
+                            quantity: item.qty,
+                            referenceNo: grn.grnNo,
+                            reason: 'Inbound',
+                            createdBy: updatedBy,
+                            updatedBy: updatedBy,
+                            movementType: InventoryMovementType.INBOUND,
+                        })), context.tx);
                     }
 
                     return transformGrn(grn);

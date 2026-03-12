@@ -15,7 +15,7 @@ import { typeDefs as supplierDeliveriesTypeDefs } from '@/features/inbound/suppl
 import { typeDefs as outboundTypeDefs } from '@/features/outbound/outbound.typeDefs';
 import { typeDefs as inventoryTypeDefs } from '@/features/inventory/inventory-movement/inventory.typeDefs';
 import { typeDefs as inventoryBalanceTypeDefs } from '@/features/inventory/inventory-balance/inventory.typeDefs';
-
+import { typeDefs as stockCountTypeDefs } from '@/features/inventory/stock-count.typeDefs';
 // Master Data typeDefs
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
 import { typeDefs as deliveryScheduleTypeDefs } from '@/features/master-data/delivery-schedule.typeDefs';
@@ -97,6 +97,7 @@ export const typeDefs = [
   outboundTypeDefs,
   inventoryTypeDefs,
   inventoryBalanceTypeDefs,
+  stockCountTypeDefs,
   // Master Data
   regionTypeDefs,
   deliveryScheduleTypeDefs,

@@ -18,6 +18,7 @@ import { resolvers as supplierDeliveriesResolvers } from '@/features/inbound/sup
 import { resolvers as outboundResolvers } from '@/features/outbound/outbound.resolvers';
 import { resolvers as inventoryResolvers } from '@/features/inventory/inventory-movement/inventory.resolvers';
 import { resolvers as inventoryBalanceResolvers } from '@/features/inventory/inventory-balance/inventory.resolver';
+import { resolvers as stockCountResolvers } from '@/features/inventory/stock-count.resolver';
 // Master Data resolvers
 import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
 import { resolvers as deliveryScheduleResolvers } from '@/features/master-data/delivery-schedule.resolvers';
@@ -101,6 +102,7 @@ export const resolvers = mergeResolvers([
   outboundResolvers,
   inventoryResolvers,
   inventoryBalanceResolvers,
+  stockCountResolvers,
   // Master Data
   regionResolvers,
   deliveryScheduleResolvers,
