@@ -7,7 +7,9 @@
  * Type definitions are in rbac.typeDefs.ts
  */
 
-import { rbacRepository } from '@/composition-root';
+import { authRepository, rbacRepository } from '@/composition-root';
+import { db } from '@/db';
+import { RoleCode } from '@/features/rbac/rbac.model';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -215,7 +217,7 @@ export const resolvers = {
 
   Mutation: {
     /**
-     * Create a new module (uses repository)
+     * Create a new module (uses repository) — also auto-creates default permissions
      */
     createModule: async (_: unknown, { input }: { input: {
       moduleName: string;
@@ -223,11 +225,43 @@ export const resolvers = {
       createdBy: string;
       updatedBy: string;
     }}) => {
-      const module = await rbacRepository.createModule({
-        moduleName: input.moduleName,
-        status: input.status || 'active',
-        createdBy: input.createdBy,
-        updatedBy: input.updatedBy,
+      const defaultPermissionTypes = ['Read', 'Create', 'Update', 'Delete'];
+
+      const { module, createdPermissions } = await db.transaction(async (tx) => {
+        const module = await rbacRepository.createModule({
+          moduleName: input.moduleName,
+          status: input.status || 'active',
+          createdBy: input.createdBy,
+          updatedBy: input.updatedBy,
+        }, tx);
+
+        const createdPermissions = await Promise.all(
+          defaultPermissionTypes.map((permissionType) =>
+            rbacRepository.createPermission({
+              moduleId: module.moduleId,
+              permissionType,
+              status: 'active',
+              createdBy: input.createdBy,
+              updatedBy: input.updatedBy,
+            }, tx)
+          )
+        );
+
+        // Auto-assign all new permissions to Super Admin role
+        const superAdminRole = await authRepository.getRoleByName(RoleCode.SUPER_ADMIN);
+        if (superAdminRole) {
+          await rbacRepository.createRolePermission(
+            createdPermissions.map((p) => ({
+              roleId: superAdminRole.roleId,
+              permissionId: p.permissionId,
+              createdBy: input.createdBy,
+              updatedBy: input.updatedBy,
+            })),
+            tx
+          );
+        }
+
+        return { module, createdPermissions };
       });
 
       return {
@@ -238,7 +272,17 @@ export const resolvers = {
         updatedAt: module.updatedAt.toISOString(),
         createdBy: module.createdBy,
         updatedBy: module.updatedBy,
-        permissions: [],
+        permissions: createdPermissions.map((p) => ({
+          permissionId: p.permissionId,
+          moduleId: p.moduleId,
+          permissionType: p.permissionType,
+          description: p.description ?? null,
+          status: p.status,
+          createdAt: p.createdAt.toISOString(),
+          updatedAt: p.updatedAt.toISOString(),
+          createdBy: p.createdBy,
+          updatedBy: p.updatedBy,
+        })),
       };
     },
 

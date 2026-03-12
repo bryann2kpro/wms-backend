@@ -12,7 +12,7 @@ import { logger } from '@/util/logger.js';
 import z, { prettifyError } from 'zod';
 import { db } from '@/db';
 import { RbacRepositoryClass } from './rbac.repository';
-import { ModuleGroupType, ModuleWithPermissionType, RolePermissionGroupType } from './rbac.model';
+import { ModuleGroupType, ModuleWithPermissionType, RoleCode, RolePermissionGroupType } from './rbac.model';
 
 class RbacControllerClass {
   constructor(
@@ -625,14 +625,48 @@ class RbacControllerClass {
         return;
       }
 
-      const module = await this.rbacRepository.createModule(data);
+      const defaultPermissionTypes = ['Read', 'Create', 'Update', 'Delete'];
+
+      const { module, createdPermissions } = await db.transaction(async (tx) => {
+        const module = await this.rbacRepository.createModule(data, tx);
+
+        const createdPermissions = await Promise.all(
+          defaultPermissionTypes.map((permissionType) =>
+            this.rbacRepository.createPermission({
+              moduleId: module.moduleId,
+              permissionType,
+              status: 'active',
+              createdBy: data.createdBy,
+              updatedBy: data.updatedBy,
+            }, tx)
+          )
+        );
+
+        const superAdminRole = await this.authRepository.getRoleByName(RoleCode.SUPER_ADMIN);
+        if (superAdminRole) {
+          await this.rbacRepository.createRolePermission(
+            createdPermissions.map((p) => ({
+              roleId: superAdminRole.roleId,
+              permissionId: p.permissionId,
+              createdBy: data.createdBy,
+              updatedBy: data.updatedBy,
+            })),
+            tx
+          );
+        }
+
+        return { module, createdPermissions };
+      });
 
       logger.info('✅ [RbacController.createModule] Module created successfully');
 
       res.status(201).json({
         success: true,
         message: 'Module created successfully',
-        data: module
+        data: {
+          ...module,
+          permissions: createdPermissions,
+        },
       });
     } catch (error) {
       logger.error('❌ [RbacController.createModule] Error:', error);
@@ -947,11 +981,18 @@ class RbacControllerClass {
         return acc;
       }, {} as Record<string, ModuleWithPermissionType[]>);
 
-      // Transform data for all modules, including those without permissions
-      const transformedData = Object.keys(modulesByName).map(moduleName => {
+      // Transform data for all modules — skip modules that have no permissions (null permissionId from LEFT JOIN)
+      const transformedData = Object.keys(modulesByName).flatMap(moduleName => {
         const modulePermissions = modulesByName[moduleName];
 
-        const allPermissions = modulePermissions.map((mp: ModuleWithPermissionType) => {
+        // Filter out LEFT JOIN null rows (module exists but has no permissions in m_permission)
+        const validPermissions = modulePermissions.filter(
+          (mp: ModuleWithPermissionType) => mp.permissionId !== null
+        );
+
+        if (validPermissions.length === 0) return [];
+
+        const allPermissions = validPermissions.map((mp: ModuleWithPermissionType) => {
           const key = `${moduleName}-${mp.permissionId}`;
           const existingPermission = existingPermissions[key];
 
@@ -973,10 +1014,10 @@ class RbacControllerClass {
           }
         });
 
-        return {
+        return [{
           module: moduleName,
           permissions: allPermissions
-        };
+        }];
       });
 
       // Apply pagination to transformed data
