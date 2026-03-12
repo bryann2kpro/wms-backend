@@ -25,6 +25,7 @@ import { typeDefs as stockUnitTypeDefs } from '@/features/master-data/stock-unit
 import { typeDefs as racksTypeDefs } from '@/features/master-data/racks.typeDefs';
 import { typeDefs as warehousesTypeDefs } from '@/features/master-data/warehouses.typeDefs';
 import { typeDefs as reportTypeDefs } from '@/features/report/report.typeDefs';
+import { typeDefs as dashboardTypeDefs } from '@/features/dashboard/dashboard.typeDefs';
 
 // Directive type definitions
 import { directiveTypeDefs } from './directives';
@@ -108,5 +109,5 @@ export const typeDefs = [
   warehousesTypeDefs,
   reportTypeDefs,
   auditLogTypeDefs,
-
+  dashboardTypeDefs,
 ];

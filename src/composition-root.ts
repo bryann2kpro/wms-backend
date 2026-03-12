@@ -48,6 +48,8 @@ import { OutboundServices } from './features/outbound/outbound.services';
 import { InventoryMovementRepositoryClass } from './features/inventory/inventory-movement/inventory.repository';
 import { InventoryBalanceRepositoryClass } from './features/inventory/inventory-balance/inventory.repository';
 import { StockCountServices } from './features/inventory/stock-count.services';
+// Dashboard
+import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
 
 
 // ============================================
@@ -91,6 +93,9 @@ export const exceptionsRepository = new ExceptionsRepositoryClass();
 export const inventoryBalancesRepository = new InventoryBalanceRepositoryClass();
 export const inventoryMovementRepository = new InventoryMovementRepositoryClass(inventoryBalancesRepository);
 export const stockCountServices = new StockCountServices();
+
+// Dashboard
+export const dashboardRepository = new DashboardRepositoryClass();
 
 // Outbound Services
 export const outboundServices = new OutboundServices(
