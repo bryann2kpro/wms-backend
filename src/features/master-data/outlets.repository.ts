@@ -38,12 +38,16 @@ export class OutletsRepositoryClass {
    * @param paginationParams - Pagination parameters
    * @returns Paginated outlets with region info
    */
-  async getOutlet(filter: OutletFilter, paginationParams: PaginationParams): Promise<PaginatedResponse<any>> {
+  async getOutlet(filter: OutletFilter, paginationParams: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any>> {
     try {
       logger.info('ℹ️ [OutletsRepository.getOutlet] Getting outlets...');
       logger.debug('Filter:', filter);
 
       const whereCondition = [];
+
+      if (organizationId) {
+        whereCondition.push(eq(OutletsTable.organizationId, organizationId));
+      }
 
       if (Array.isArray(filter.outletId)) {
         whereCondition.push(inArray(OutletsTable.outletId, filter.outletId));
@@ -105,9 +109,13 @@ export class OutletsRepositoryClass {
   /**
    * Get outlet by ID
    */
-  async getOutletById(id: string): Promise<OutletWithRegion | null> {
+  async getOutletById(id: string, organizationId?: string): Promise<OutletWithRegion | null> {
     try {
       logger.info('ℹ️ [OutletsRepository.getOutletById] Getting outlet by ID...');
+      const whereConditions = [eq(OutletsTable.outletId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(OutletsTable.organizationId, organizationId));
+      }
       const [outlet] = await db
         .select({
           outletId: OutletsTable.outletId,
@@ -124,7 +132,7 @@ export class OutletsRepositoryClass {
         })
         .from(OutletsTable)
         .leftJoin(RegionTable, eq(OutletsTable.regionId, RegionTable.regionId))
-        .where(eq(OutletsTable.outletId, id))
+        .where(and(...whereConditions))
         .limit(1);
       
       logger.info('✅ [OutletsRepository.getOutletById] Outlet fetched successfully');
@@ -138,9 +146,13 @@ export class OutletsRepositoryClass {
   /**
    * Get outlet by code
    */
-  async getOutletByCode(code: string): Promise<OutletWithRegion | null> {
+  async getOutletByCode(code: string, organizationId?: string): Promise<OutletWithRegion | null> {
     try {
       logger.info('ℹ️ [OutletsRepository.getOutletByCode] Getting outlet by code...');
+      const whereConditions = [eq(OutletsTable.outletCode, code)];
+      if (organizationId) {
+        whereConditions.push(eq(OutletsTable.organizationId, organizationId));
+      }
       const [outlet] = await db
         .select({
           outletId: OutletsTable.outletId,
@@ -157,7 +169,7 @@ export class OutletsRepositoryClass {
         })
         .from(OutletsTable)
         .leftJoin(RegionTable, eq(OutletsTable.regionId, RegionTable.regionId))
-        .where(eq(OutletsTable.outletCode, code))
+        .where(and(...whereConditions))
         .limit(1);
       
       logger.info('✅ [OutletsRepository.getOutletByCode] Outlet fetched successfully');
@@ -173,11 +185,11 @@ export class OutletsRepositoryClass {
    * @param data - Outlet data
    * @param tx - Optional transaction
    */
-  async createOutlet(data: Omit<OutletInsertType, 'outletId' | 'createdAt' | 'updatedAt'>, tx?: DbTransaction): Promise<OutletType> {
+  async createOutlet(data: Omit<OutletInsertType, 'outletId' | 'createdAt' | 'updatedAt'> & { organizationId: string }, tx?: DbTransaction): Promise<OutletType> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [OutletsRepository.createOutlet] Creating outlet...');
-      
+
       const [outlet] = await dbClient
         .insert(OutletsTable)
         .values({
@@ -186,7 +198,7 @@ export class OutletsRepositoryClass {
           updatedAt: new Date(),
         })
         .returning();
-      
+
       logger.info('✅ [OutletsRepository.createOutlet] Outlet created successfully');
       return outlet;
     } catch (error) {
@@ -227,15 +239,19 @@ export class OutletsRepositoryClass {
    * @param updatedBy - User who made the update
    * @param tx - Optional transaction
    */
-  async assignOutletToRegion(outletId: string, regionId: string | null, updatedBy: string, tx?: DbTransaction): Promise<OutletType> {
+  async assignOutletToRegion(outletId: string, regionId: string | null, updatedBy: string, organizationId?: string, tx?: DbTransaction): Promise<OutletType> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [OutletsRepository.assignOutletToRegion] Assigning outlet to region...');
-      
+      const whereConditions = [eq(OutletsTable.outletId, outletId)];
+      if (organizationId) {
+        whereConditions.push(eq(OutletsTable.organizationId, organizationId));
+      }
+
       const [outlet] = await dbClient
         .update(OutletsTable)
         .set({ regionId, updatedAt: new Date(), updatedBy })
-        .where(eq(OutletsTable.outletId, outletId))
+        .where(and(...whereConditions))
         .returning();
       
       logger.info('✅ [OutletsRepository.assignOutletToRegion] Outlet assigned successfully');
@@ -253,15 +269,19 @@ export class OutletsRepositoryClass {
    * @param updatedBy - User who made the update
    * @param tx - Optional transaction
    */
-  async bulkAssignOutletsToRegion(outletIds: string[], regionId: string | null, updatedBy: string, tx?: DbTransaction): Promise<OutletType[]> {
+  async bulkAssignOutletsToRegion(outletIds: string[], regionId: string | null, updatedBy: string, organizationId?: string, tx?: DbTransaction): Promise<OutletType[]> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [OutletsRepository.bulkAssignOutletsToRegion] Bulk assigning outlets to region...');
-      
+      const whereConditions = [inArray(OutletsTable.outletId, outletIds)];
+      if (organizationId) {
+        whereConditions.push(eq(OutletsTable.organizationId, organizationId));
+      }
+
       const outlets = await dbClient
         .update(OutletsTable)
         .set({ regionId, updatedAt: new Date(), updatedBy })
-        .where(inArray(OutletsTable.outletId, outletIds))
+        .where(and(...whereConditions))
         .returning();
       
       logger.info('✅ [OutletsRepository.bulkAssignOutletsToRegion] Outlets assigned successfully');
@@ -275,16 +295,21 @@ export class OutletsRepositoryClass {
   /**
    * Delete an outlet
    * @param id - Outlet ID
+   * @param organizationId - Organization ID (for multi-tenant filtering)
    * @param tx - Optional transaction
    */
-  async deleteOutlet(id: string, tx?: DbTransaction): Promise<boolean> {
+  async deleteOutlet(id: string, organizationId?: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [OutletsRepository.deleteOutlet] Deleting outlet...');
-      
+      const whereConditions = [eq(OutletsTable.outletId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(OutletsTable.organizationId, organizationId));
+      }
+
       await dbClient
         .delete(OutletsTable)
-        .where(eq(OutletsTable.outletId, id));
+        .where(and(...whereConditions));
       
       logger.info('✅ [OutletsRepository.deleteOutlet] Outlet deleted successfully');
       return true;

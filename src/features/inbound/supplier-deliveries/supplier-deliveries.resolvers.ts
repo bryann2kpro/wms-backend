@@ -77,8 +77,9 @@ export const resolvers = {
             filter?: SupplierDeliveryFilter;
             pageSize?: number;
             pageNumber?: number;
-        }) => {
+        }, context: GraphQLContext) => {
             try {
+                const organizationId = context.organizationId;
                 const filter: SupplierDeliveryFilter = args.filter || {};
                 if (args.filter) {
                     if (args.filter.id) {
@@ -116,7 +117,7 @@ export const resolvers = {
                         pageNumber: args.pageNumber,
                     };
                 }
-                const result = await supplierDeliveriesRepository.getSupplierDeliveries(filter, paginationParams);
+                const result = await supplierDeliveriesRepository.getSupplierDeliveries(filter, paginationParams, organizationId ?? undefined);
                 if (!result) return false;
                 return {
                     query: result.query.map(transformSupplierDelivery),
@@ -127,10 +128,11 @@ export const resolvers = {
                 return false;
             }
         },
-        supplierDelivery: async (_: unknown, { id }: { id: string }) => {
+        supplierDelivery: async (_: unknown, { id }: { id: string }, context: GraphQLContext) => {
             const result = await supplierDeliveriesRepository.getSupplierDeliveries(
                 { id },
-                { pageSize: 1, pageNumber: 1 }
+                { pageSize: 1, pageNumber: 1 },
+                context.organizationId ?? undefined
             );
             if (!result || result.query.length === 0) {
                 throw new Error(`Supplier delivery not found: ${id}`);
@@ -202,6 +204,7 @@ export const resolvers = {
                         // supplierId: input.supplierId,
                         // TODO: Replace this after testing
                         supplierId: '53233271-d78a-451c-a676-132982542883',
+                        organizationId: context.organizationId ?? '00000000-0000-0000-0000-000000000001',
                         deliveryDate: new Date(input.deliveryDate),
                         orderDate: input.orderDate != null ? new Date(input.orderDate) : undefined,
                     };
@@ -226,10 +229,11 @@ export const resolvers = {
                 entity: 'SupplierDelivery',
                 action: 'UPDATE',
                 getEntityId: (_, args) => args.id,
-                getOldData: async (args) => {
+                getOldData: async (args, context) => {
                     const r = await supplierDeliveriesRepository.getSupplierDeliveries(
                         { id: args.id },
-                        { pageSize: 1, pageNumber: 1 }
+                        { pageSize: 1, pageNumber: 1 },
+                        (context as GraphQLContext).organizationId ?? undefined
                     );
                     return r ? r.query[0] : null;
                 },
@@ -310,10 +314,11 @@ export const resolvers = {
                 entity: 'SupplierDelivery',
                 action: 'DELETE',
                 getEntityId: (_: unknown, args: { id: string }) => args.id,
-                getOldData: async (args: { id: string }) => {
+                getOldData: async (args: { id: string }, context) => {
                     const r = await supplierDeliveriesRepository.getSupplierDeliveries(
                         { id: args.id },
-                        { pageSize: 1, pageNumber: 1 }
+                        { pageSize: 1, pageNumber: 1 },
+                        (context as GraphQLContext).organizationId ?? undefined
                     );
                     return r ? r.query[0] : null;
                 },

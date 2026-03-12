@@ -170,7 +170,11 @@ export const resolvers = {
       }
 
       // Generate tokens
-      const tokenPayload = { username: email, loginType: 'EMAIL' as const };
+      const tokenPayload = {
+        username: email,
+        loginType: 'EMAIL' as const,
+        organizationId: user.primaryOrganizationId || '00000000-0000-0000-0000-000000000001', // Default org if not assigned
+      };
       const accessToken = jwtController.generateAccessToken(tokenPayload);
       const refreshToken = jwtController.generateRefreshToken(tokenPayload);
       const decodedToken = jwtController.verifyToken(accessToken);

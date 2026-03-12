@@ -23,6 +23,7 @@ import { UploadControllerClass } from '@/features/upload/upload.controller.js';
 import { S3Repository } from '@/features/upload/aws_s3.repository.js';
 
 // Master Data Repositories
+import { OrganizationRepositoryClass } from '@/features/master-data/organization.repository.js';
 import { SkuRepositoryClass } from '@/features/master-data/sku.repository.js';
 import { RegionRepositoryClass } from '@/features/master-data/region.repository.js';
 import { DeliveryScheduleRepositoryClass } from '@/features/master-data/delivery-schedule.repository.js';
@@ -71,6 +72,7 @@ export const authRepository = new AuthRepositoryClass(jwtController);
 export const rbacRepository = new RbacRepositoryClass();
 
 // Master Data Repositories
+export const organizationRepository = new OrganizationRepositoryClass();
 export const skuRepository = new SkuRepositoryClass();
 export const regionRepository = new RegionRepositoryClass();
 export const deliveryScheduleRepository = new DeliveryScheduleRepositoryClass();

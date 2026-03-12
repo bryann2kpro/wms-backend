@@ -1,5 +1,6 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, timestamp, integer } from "drizzle-orm/pg-core";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
  * Supplier Deliveries Table
@@ -19,6 +20,7 @@ import { uuid, text, numeric, timestamp, integer } from "drizzle-orm/pg-core";
  */
 export const SupplierDeliveriesTable = MainSchema.table('supplier_deliveries', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   supplierId: uuid('supplier_id').notNull(),
   supplierDeliveryNo: text('supplier_delivery_no').unique().notNull(),
   deliveryDate: timestamp('delivery_date').notNull(),

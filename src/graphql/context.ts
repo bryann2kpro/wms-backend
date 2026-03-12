@@ -7,7 +7,7 @@
 
 import DataLoader from 'dataloader';
 import { Request } from 'express';
-import { authRepository, outletsRepository, regionRepository } from '@/composition-root';
+import { authRepository, jwtController, outletsRepository, regionRepository } from '@/composition-root';
 import type { OutletWithRegion } from '@/features/master-data/outlets.repository';
 import type { RegionType } from '@/features/master-data/region.model';
 import { UserType } from '@/features/auth/auth.model';
@@ -50,6 +50,8 @@ export type UserLoader = DataLoader<string, UserType | null>;
 export interface GraphQLContext {
   /** The authenticated user, or null if not authenticated */
   user: UserType | null;
+  /** The organization ID from JWT token (for multi-tenant data isolation) */
+  organizationId: string | null;
   /** The user's roles with permissions (for authorization checks) */
   userPermissions: UserRolePermission[];
   /** Whether the user is a Super Admin (bypasses all permission checks) */
@@ -121,6 +123,7 @@ export async function createContext({ req }: { req: Request }): Promise<GraphQLC
   const userLoader = createUserLoader();
   const context: GraphQLContext = {
     user: null,
+    organizationId: null,
     userPermissions: [],
     isSuperAdmin: false,
     userRoles: [],
@@ -142,13 +145,22 @@ export async function createContext({ req }: { req: Request }): Promise<GraphQLC
   }
 
   try {
-    // Get user from token
+    // Get user from token and extract organization ID
     const user = await authRepository.getUserDataByToken(token);
     if (!user) {
       return context;
     }
 
     context.user = user;
+
+    // Extract organizationId from JWT token
+    try {
+      const jwtPayload = jwtController.verifyToken(token) as any;
+      context.organizationId = jwtPayload?.organizationId || user.primaryOrganizationId || '00000000-0000-0000-0000-000000000001';
+    } catch {
+      // Fall back to user's primary organization if token verification fails
+      context.organizationId = user.primaryOrganizationId || '00000000-0000-0000-0000-000000000001';
+    }
 
     const userRoles = await authRepository.getUserRoles(user.id);
     context.userRoles = userRoles.map(role => ({

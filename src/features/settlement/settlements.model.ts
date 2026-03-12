@@ -1,5 +1,6 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
  * Settlements Table
@@ -22,6 +23,7 @@ import { uuid, text, boolean, timestamp } from "drizzle-orm/pg-core";
  */
 export const SettlementsTable = MainSchema.table('settlements', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   doId: uuid('do_id').unique().notNull(),
 
   status: text('status').notNull().default('OPEN'),

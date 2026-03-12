@@ -1,5 +1,6 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
  * Goods Received Notes (GRN) Table
@@ -22,6 +23,7 @@ import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
  */
 export const GrnsTable = MainSchema.table('grns', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   grnNo: text('grn_no').unique().notNull(),
   supplierId: uuid('supplier_id').notNull(),
   supplierDeliveryId: uuid('supplier_delivery_id'),

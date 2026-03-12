@@ -31,9 +31,12 @@ export type GrnFilter = {
 export class GrnsRepositoryClass {
     constructor() { }
 
-    async getGrns(filter: GrnFilter, paginationParams?: PaginationParams): Promise<PaginatedResponse<any> | false> {
+    async getGrns(filter: GrnFilter, paginationParams?: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any> | false> {
         try {
             const whereCondition = [];
+            if (organizationId) {
+                whereCondition.push(eq(GrnsTable.organizationId, organizationId));
+            }
             if (filter.id) {
                 whereCondition.push(eq(GrnsTable.id, filter.id));
             }
@@ -49,7 +52,7 @@ export class GrnsRepositoryClass {
                 const matchingSdIds = await db
                     .select({ id: SupplierDeliveriesTable.id })
                     .from(SupplierDeliveriesTable)
-                    .where(ilike(SupplierDeliveriesTable.supplierDeliveryNo, term));
+                    .where(organizationId ? and(ilike(SupplierDeliveriesTable.supplierDeliveryNo, term), eq(SupplierDeliveriesTable.organizationId, organizationId)) : ilike(SupplierDeliveriesTable.supplierDeliveryNo, term));
                 const sdIds = matchingSdIds.map((r) => r.id).filter(Boolean);
                 if (sdIds.length > 0) {
                     searchConds.push(inArray(GrnsTable.supplierDeliveryId, sdIds));

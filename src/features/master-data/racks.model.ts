@@ -1,6 +1,7 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, timestamp, varchar } from "drizzle-orm/pg-core";
 import { RegionTable } from "./region.model";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
  * Racks Table
@@ -17,6 +18,7 @@ import { RegionTable } from "./region.model";
  */
 export const RacksTable = MainSchema.table('racks', {
   rackId: uuid('rack_id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   rackRow: varchar('rack_row').notNull(),
   rackColumn: varchar('rack_column').notNull(),
   rackLevel: varchar('rack_level').notNull(),

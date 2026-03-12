@@ -22,11 +22,16 @@ export class ExceptionsRepositoryClass {
 
   async getExceptions(
     filter: ExceptionFilter,
-    paginationParams: PaginationParams
+    paginationParams: PaginationParams,
+    organizationId?: string
   ): Promise<PaginatedResponse<ExceptionType>> {
     try {
       logger.info("ℹ️ [ExceptionsRepository.getExceptions] Getting exceptions...");
       const whereCondition: ReturnType<typeof eq>[] = [];
+
+      if (organizationId) {
+        whereCondition.push(eq(ExceptionsTable.organizationId, organizationId));
+      }
 
       if (Array.isArray(filter.id)) {
         whereCondition.push(inArray(ExceptionsTable.id, filter.id));
@@ -107,15 +112,20 @@ export class ExceptionsRepositoryClass {
   async updateException(
     id: string,
     data: Partial<ExceptionInsertType>,
+    organizationId?: string,
     tx?: DbTransaction
   ): Promise<ExceptionType> {
     try {
       const dbClient = tx ?? db;
       logger.info("ℹ️ [ExceptionsRepository.updateException] Updating exception...");
+      const whereConditions = [eq(ExceptionsTable.id, id)];
+      if (organizationId) {
+        whereConditions.push(eq(ExceptionsTable.organizationId, organizationId));
+      }
       const [row] = await dbClient
         .update(ExceptionsTable)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(ExceptionsTable.id, id))
+        .where(and(...whereConditions))
         .returning();
       if (!row) throw new Error("[ExceptionsRepository.updateException] Exception not found");
       logger.info("✅ [ExceptionsRepository.updateException] Exception updated successfully");
@@ -126,10 +136,14 @@ export class ExceptionsRepositoryClass {
     }
   }
 
-  async deleteException(id: string, tx?: DbTransaction): Promise<boolean> {
+  async deleteException(id: string, organizationId?: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx ?? db;
-      await dbClient.delete(ExceptionsTable).where(eq(ExceptionsTable.id, id));
+      const whereConditions = [eq(ExceptionsTable.id, id)];
+      if (organizationId) {
+        whereConditions.push(eq(ExceptionsTable.organizationId, organizationId));
+      }
+      await dbClient.delete(ExceptionsTable).where(and(...whereConditions));
       logger.info("✅ [ExceptionsRepository.deleteException] Exception deleted successfully");
       return true;
     } catch (error) {

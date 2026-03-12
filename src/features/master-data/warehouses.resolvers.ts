@@ -65,7 +65,8 @@ export const resolvers = {
         };
         pageSize?: number;
         pageNumber?: number;
-      }
+      },
+      context: GraphQLContext
     ) => {
       const filter: WarehouseFilter = {};
 
@@ -90,7 +91,7 @@ export const resolvers = {
       const result = await warehousesRepository.getWarehouse(filter, {
         pageSize: args.pageSize,
         pageNumber: args.pageNumber,
-      });
+      }, context.organizationId || undefined);
 
       // Batch-load audit users to avoid N+1
       const allUserIds = Array.from(
@@ -125,8 +126,8 @@ export const resolvers = {
     /**
      * Get a single warehouse by ID
      */
-    warehouse: async (_: unknown, { id }: { id: string }) => {
-      const warehouse = await warehousesRepository.getWarehouseById(id);
+    warehouse: async (_: unknown, { id }: { id: string }, context: GraphQLContext) => {
+      const warehouse = await warehousesRepository.getWarehouseById(id, context.organizationId || undefined);
       if (!warehouse) return null;
 
       // For single warehouse, N+1 isn't an issue, but we can still batch-style load
@@ -202,12 +203,13 @@ export const resolvers = {
 
         logger.info("ℹ️ [WarehousesResolvers.createWarehouse] Creating warehouse...");
         const warehouse = await warehousesRepository.createWarehouse({
+          organizationId: context.organizationId || '00000000-0000-0000-0000-000000000001',
           warehouseName: data.warehouseName,
           warehouseCode: data.warehouseCode ?? null,
           warehouseAddress: data.warehouseAddress ?? null,
           createdBy: userId,
           updatedBy: userId,
-        });
+        }, context.tx);
         logger.info("✅ [WarehousesResolvers.createWarehouse] Warehouse created successfully");
         return transformWarehouse(warehouse);
       }
@@ -221,8 +223,8 @@ export const resolvers = {
         entity: "Warehouse",
         action: "UPDATE",
         getEntityId: (_, args) => args.id,
-        getOldData: async (args) => {
-          return await warehousesRepository.getWarehouseById(args.id);
+        getOldData: async (args, context) => {
+          return await warehousesRepository.getWarehouseById(args.id, (context as GraphQLContext).organizationId || undefined);
         },
       },
       async (
@@ -262,7 +264,7 @@ export const resolvers = {
         if (data.warehouseAddress !== undefined) updateData.warehouseAddress = data.warehouseAddress;
 
         logger.info("ℹ️ [WarehousesResolvers.updateWarehouse] Updating warehouse...");
-        const warehouse = await warehousesRepository.updateWarehouse(id, updateData);
+        const warehouse = await warehousesRepository.updateWarehouse(id, updateData, context.organizationId || undefined, context.tx);
         if (!warehouse) return null;
 
         logger.info("✅ [WarehousesResolvers.updateWarehouse] Warehouse updated successfully");
@@ -278,12 +280,12 @@ export const resolvers = {
         entity: "Warehouse",
         action: "DELETE",
         getEntityId: (_, args) => args.id,
-        getOldData: async (args) => {
-          return await warehousesRepository.getWarehouseById(args.id);
+        getOldData: async (args, context) => {
+          return await warehousesRepository.getWarehouseById(args.id, (context as GraphQLContext).organizationId || undefined);
         },
       },
-      async (_: unknown, { id }: { id: string }) => {
-        return await warehousesRepository.deleteWarehouse(id);
+      async (_: unknown, { id }: { id: string }, context: GraphQLContext) => {
+        return await warehousesRepository.deleteWarehouse(id, context.organizationId || undefined, context.tx);
       }
     ),
   },

@@ -30,14 +30,19 @@ export class StockUnitRepositoryClass {
    * Get stock units with optional filtering and pagination
    * @param filter - Filter options
    * @param paginationParams - Pagination parameters
+   * @param organizationId - Organization ID for multi-tenant filtering
    * @returns Paginated stock units
    */
-  async getStockUnit(filter: StockUnitFilter, paginationParams: PaginationParams): Promise<PaginatedResponse<any>> {
+  async getStockUnit(filter: StockUnitFilter, paginationParams: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any>> {
     try {
       logger.info('ℹ️ [StockUnitRepository.getStockUnit] Getting stock units...');
       logger.debug('Filter:', filter);
 
       const whereCondition = [];
+
+      if (organizationId) {
+        whereCondition.push(eq(StockUnitTable.organizationId, organizationId));
+      }
 
       if (Array.isArray(filter.stockUnitId)) {
         whereCondition.push(inArray(StockUnitTable.stockUnitId, filter.stockUnitId));
@@ -80,16 +85,22 @@ export class StockUnitRepositoryClass {
 
   /**
    * Get stock unit by ID
+   * @param id - Stock unit ID
+   * @param organizationId - Organization ID for multi-tenant filtering
    */
-  async getStockUnitById(id: string): Promise<StockUnitType | null> {
+  async getStockUnitById(id: string, organizationId?: string): Promise<StockUnitType | null> {
     try {
       logger.info('ℹ️ [StockUnitRepository.getStockUnitById] Getting stock unit by ID...');
+      const whereConditions = [eq(StockUnitTable.stockUnitId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(StockUnitTable.organizationId, organizationId));
+      }
       const [stockUnit] = await db
         .select()
         .from(StockUnitTable)
-        .where(eq(StockUnitTable.stockUnitId, id))
+        .where(and(...whereConditions))
         .limit(1);
-      
+
       logger.info('✅ [StockUnitRepository.getStockUnitById] Stock unit fetched successfully');
       return stockUnit || null;
     } catch (error) {
@@ -100,16 +111,22 @@ export class StockUnitRepositoryClass {
 
   /**
    * Get stock unit by code
+   * @param code - Unit code
+   * @param organizationId - Organization ID for multi-tenant filtering
    */
-  async getStockUnitByCode(code: string): Promise<StockUnitType | null> {
+  async getStockUnitByCode(code: string, organizationId?: string): Promise<StockUnitType | null> {
     try {
       logger.info('ℹ️ [StockUnitRepository.getStockUnitByCode] Getting stock unit by code...');
+      const whereConditions = [eq(StockUnitTable.unitCode, code)];
+      if (organizationId) {
+        whereConditions.push(eq(StockUnitTable.organizationId, organizationId));
+      }
       const [stockUnit] = await db
         .select()
         .from(StockUnitTable)
-        .where(eq(StockUnitTable.unitCode, code))
+        .where(and(...whereConditions))
         .limit(1);
-      
+
       logger.info('✅ [StockUnitRepository.getStockUnitByCode] Stock unit fetched successfully');
       return stockUnit || null;
     } catch (error) {
@@ -149,19 +166,24 @@ export class StockUnitRepositoryClass {
    * Update an existing stock unit
    * @param data - Partial stock unit data
    * @param id - Stock unit ID
+   * @param organizationId - Organization ID for multi-tenant filtering
    * @param tx - Optional transaction
    */
-  async updateStockUnit(data: Partial<StockUnitInsertType>, id: string, tx?: DbTransaction): Promise<StockUnitType> {
+  async updateStockUnit(data: Partial<StockUnitInsertType>, id: string, organizationId?: string, tx?: DbTransaction): Promise<StockUnitType> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [StockUnitRepository.updateStockUnit] Updating stock unit...');
-      
+      const whereConditions = [eq(StockUnitTable.stockUnitId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(StockUnitTable.organizationId, organizationId));
+      }
+
       const [stockUnit] = await dbClient
         .update(StockUnitTable)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(StockUnitTable.stockUnitId, id))
+        .where(and(...whereConditions))
         .returning();
-      
+
       logger.info('✅ [StockUnitRepository.updateStockUnit] Stock unit updated successfully');
       return stockUnit;
     } catch (error) {
@@ -175,19 +197,24 @@ export class StockUnitRepositoryClass {
    * @param id - Stock unit ID
    * @param isActive - New active status
    * @param updatedBy - User who made the update
+   * @param organizationId - Organization ID for multi-tenant filtering
    * @param tx - Optional transaction
    */
-  async toggleStockUnitActive(id: string, isActive: boolean, updatedBy: string, tx?: DbTransaction): Promise<StockUnitType> {
+  async toggleStockUnitActive(id: string, isActive: boolean, updatedBy: string, organizationId?: string, tx?: DbTransaction): Promise<StockUnitType> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [StockUnitRepository.toggleStockUnitActive] Toggling stock unit status...');
-      
+      const whereConditions = [eq(StockUnitTable.stockUnitId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(StockUnitTable.organizationId, organizationId));
+      }
+
       const [stockUnit] = await dbClient
         .update(StockUnitTable)
         .set({ isActive, updatedAt: new Date(), updatedBy })
-        .where(eq(StockUnitTable.stockUnitId, id))
+        .where(and(...whereConditions))
         .returning();
-      
+
       logger.info('✅ [StockUnitRepository.toggleStockUnitActive] Stock unit status updated');
       return stockUnit;
     } catch (error) {
@@ -199,17 +226,22 @@ export class StockUnitRepositoryClass {
   /**
    * Delete a stock unit
    * @param id - Stock unit ID
+   * @param organizationId - Organization ID for multi-tenant filtering
    * @param tx - Optional transaction
    */
-  async deleteStockUnit(id: string, tx?: DbTransaction): Promise<boolean> {
+  async deleteStockUnit(id: string, organizationId?: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [StockUnitRepository.deleteStockUnit] Deleting stock unit...');
-      
+      const whereConditions = [eq(StockUnitTable.stockUnitId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(StockUnitTable.organizationId, organizationId));
+      }
+
       await dbClient
         .delete(StockUnitTable)
-        .where(eq(StockUnitTable.stockUnitId, id));
-      
+        .where(and(...whereConditions));
+
       logger.info('✅ [StockUnitRepository.deleteStockUnit] Stock unit deleted successfully');
       return true;
     } catch (error) {

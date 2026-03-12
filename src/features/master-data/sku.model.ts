@@ -1,6 +1,7 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { StockUnitTable } from "./stock-unit.model";
+import { OrganizationsTable } from "./organization.model";
 
 /**
 * Sku Table
@@ -9,6 +10,7 @@ import { StockUnitTable } from "./stock-unit.model";
 
 export const SkuTable = MainSchema.table('skus', {
   skuId: uuid('sku_id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   skuCode: text('sku_code').notNull(),
   skuDescription: text('sku_description').notNull(),
   skuPrice: numeric('sku_price', { precision: 6, scale: 2 }),

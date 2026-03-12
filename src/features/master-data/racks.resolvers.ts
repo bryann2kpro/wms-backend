@@ -1,6 +1,6 @@
 /**
  * Racks GraphQL Resolvers
- * 
+ *
  * @description Resolver functions for Rack operations.
  * Uses RacksRepository for data access.
  */
@@ -8,6 +8,7 @@
 import { racksRepository } from '@/composition-root';
 import { RackFilter } from './racks.repository';
 import { withAudit } from '../audit-log/audit.wrapper';
+import { GraphQLContext } from '@/graphql/context';
 
 // ============================================ 
 // HELPER FUNCTIONS
@@ -57,28 +58,28 @@ export const resolvers = {
       };
       pageSize?: number;
       pageNumber?: number;
-    }) => {
+    }, context: GraphQLContext) => {
       const filter: RackFilter = {};
-      
+
       if (args.filter) {
         if (args.filter.rackIds) {
           filter.rackId = args.filter.rackIds;
         } else if (args.filter.rackId) {
           filter.rackId = args.filter.rackId;
         }
-        
+
         if (args.filter.rackRows) {
           filter.rackRow = args.filter.rackRows;
         } else if (args.filter.rackRow) {
           filter.rackRow = args.filter.rackRow;
         }
-        
+
         if (args.filter.rackColumns) {
           filter.rackColumn = args.filter.rackColumns;
         } else if (args.filter.rackColumn) {
           filter.rackColumn = args.filter.rackColumn;
         }
-        
+
         if (args.filter.rackLevels) {
           filter.rackLevel = args.filter.rackLevels;
         } else if (args.filter.rackLevel) {
@@ -89,7 +90,7 @@ export const resolvers = {
       const result = await racksRepository.getRack(filter, {
         pageSize: args.pageSize,
         pageNumber: args.pageNumber,
-      });
+      }, context.organizationId || undefined);
 
       return {
         query: result.query.map(transformRack),
@@ -98,10 +99,10 @@ export const resolvers = {
     },
 
     /**
-     * Get a single outlet by ID
+     * Get a single rack by ID
      */
-    rack: async (_: unknown, { id }: { id: string }) => {
-      const rack = await racksRepository.getRackById(id);
+    rack: async (_: unknown, { id }: { id: string }, context: GraphQLContext) => {
+      const rack = await racksRepository.getRackById(id, context.organizationId || undefined);
       if (!rack) return null;
       return transformRack(rack);
     },
@@ -123,14 +124,15 @@ export const resolvers = {
         rackLevel: string;
         createdBy: string;
         updatedBy: string;
-      }}) => {
+      }}, context: GraphQLContext) => {
         const rack = await racksRepository.createRack({
+          organizationId: context.organizationId || '00000000-0000-0000-0000-000000000001',
           rackRow: input.rackRow,
           rackColumn: input.rackColumn,
           rackLevel: input.rackLevel,
           createdBy: input.createdBy,
           updatedBy: input.updatedBy,
-        });
+        }, context.organizationId || undefined, context.tx);
         return rack ? transformRack(rack) : null;
       },
     ),
@@ -143,8 +145,8 @@ export const resolvers = {
         entity: 'Rack',
         action: 'UPDATE',
         getEntityId: (_, args) => args.id,
-        getOldData: async (args) => {
-          return await racksRepository.getRackById(args.id);
+        getOldData: async (args, context) => {
+          return await racksRepository.getRackById(args.id, (context as GraphQLContext).organizationId || undefined);
         },
       },
       async (_: unknown, { id, input }: { id: string; input: {
@@ -152,31 +154,31 @@ export const resolvers = {
         rackColumn?: string;
         rackLevel?: string;
         updatedBy: string;
-      }}) => {
+      }}, context: GraphQLContext) => {
         const rack = await racksRepository.updateRack({
           rackRow: input.rackRow || undefined,
           rackColumn: input.rackColumn || undefined,
           rackLevel: input.rackLevel || undefined,
           updatedBy: input.updatedBy,
-        }, id);
+        }, id, context.organizationId || undefined, context.tx);
         if (!rack) return null;
         return transformRack(rack);
       },
     ),
     /**
-     * Delete an rack
+     * Delete a rack
      */
     deleteRack: withAudit(
       {
         entity: 'Rack',
         action: 'DELETE',
         getEntityId: (_, args) => args.id,
-        getOldData: async (args) => {
-          return await racksRepository.getRackById(args.id);
+        getOldData: async (args, context) => {
+          return await racksRepository.getRackById(args.id, (context as GraphQLContext).organizationId || undefined);
         },
       },
-      async (_: unknown, { id }: { id: string }) => {
-      return await racksRepository.deleteRack(id);
+      async (_: unknown, { id }: { id: string }, context: GraphQLContext) => {
+        return await racksRepository.deleteRack(id, context.organizationId || undefined, context.tx);
       },
     ),
   },

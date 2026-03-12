@@ -42,11 +42,16 @@ export class DeliveryOrdersRepositoryClass {
 
   async getDeliveryOrders(
     filter: DeliveryOrderFilter,
-    paginationParams: PaginationParams
+    paginationParams: PaginationParams,
+    organizationId?: string
   ): Promise<PaginatedResponse<DeliveryOrderType>> {
     try {
       logger.info("ℹ️ [DeliveryOrdersRepository.getDeliveryOrders] Getting delivery orders...");
       const whereCondition: ReturnType<typeof eq>[] = [];
+
+      if (organizationId) {
+        whereCondition.push(eq(DeliveryOrdersTable.organizationId, organizationId));
+      }
 
       if (Array.isArray(filter.id)) {
         whereCondition.push(inArray(DeliveryOrdersTable.id, filter.id));
@@ -100,12 +105,16 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
-  async getDeliveryOrderById(id: string): Promise<DeliveryOrderType | null> {
+  async getDeliveryOrderById(id: string, organizationId?: string): Promise<DeliveryOrderType | null> {
     try {
+      const whereConditions = [eq(DeliveryOrdersTable.id, id)];
+      if (organizationId) {
+        whereConditions.push(eq(DeliveryOrdersTable.organizationId, organizationId));
+      }
       const [row] = await db
         .select()
         .from(DeliveryOrdersTable)
-        .where(eq(DeliveryOrdersTable.id, id))
+        .where(and(...whereConditions))
         .limit(1);
       return row ?? null;
     } catch (error) {
@@ -114,12 +123,16 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
-  async getDeliveryOrderByPurchaseOrderId(purchaseOrderId: string): Promise<DeliveryOrderType | null> {
+  async getDeliveryOrderByPurchaseOrderId(purchaseOrderId: string, organizationId?: string): Promise<DeliveryOrderType | null> {
     try {
+      const whereConditions = [eq(DeliveryOrdersTable.purchaseOrderId, purchaseOrderId)];
+      if (organizationId) {
+        whereConditions.push(eq(DeliveryOrdersTable.organizationId, organizationId));
+      }
       const [row] = await db
         .select()
         .from(DeliveryOrdersTable)
-        .where(eq(DeliveryOrdersTable.purchaseOrderId, purchaseOrderId))
+        .where(and(...whereConditions))
         .limit(1);
       return row ?? null;
     } catch (error) {
@@ -128,7 +141,7 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
-  async createDeliveryOrder(data: DeliveryOrderInsertType, tx?: DbTransaction): Promise<DeliveryOrderType> {
+  async createDeliveryOrder(data: DeliveryOrderInsertType & { organizationId: string }, tx?: DbTransaction): Promise<DeliveryOrderType> {
     try {
       const dbClient = tx ?? db;
       logger.info("ℹ️ [DeliveryOrdersRepository.createDeliveryOrder] Creating delivery order...");
@@ -151,15 +164,20 @@ export class DeliveryOrdersRepositoryClass {
   async updateDeliveryOrder(
     id: string,
     data: Partial<DeliveryOrderInsertType>,
+    organizationId?: string,
     tx?: DbTransaction
   ): Promise<DeliveryOrderType> {
     try {
       const dbClient = tx ?? db;
       logger.info("ℹ️ [DeliveryOrdersRepository.updateDeliveryOrder] Updating delivery order...");
+      const whereConditions = [eq(DeliveryOrdersTable.id, id)];
+      if (organizationId) {
+        whereConditions.push(eq(DeliveryOrdersTable.organizationId, organizationId));
+      }
       const [row] = await dbClient
         .update(DeliveryOrdersTable)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(DeliveryOrdersTable.id, id))
+        .where(and(...whereConditions))
         .returning();
       if (!row) throw new Error("[DeliveryOrdersRepository.updateDeliveryOrder] Delivery order not found");
       logger.info("✅ [DeliveryOrdersRepository.updateDeliveryOrder] Delivery order updated successfully");
@@ -170,10 +188,14 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
-  async deleteDeliveryOrder(id: string, tx?: DbTransaction): Promise<boolean> {
+  async deleteDeliveryOrder(id: string, organizationId?: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx ?? db;
-      await dbClient.delete(DeliveryOrdersTable).where(eq(DeliveryOrdersTable.id, id));
+      const whereConditions = [eq(DeliveryOrdersTable.id, id)];
+      if (organizationId) {
+        whereConditions.push(eq(DeliveryOrdersTable.organizationId, organizationId));
+      }
+      await dbClient.delete(DeliveryOrdersTable).where(and(...whereConditions));
       logger.info("✅ [DeliveryOrdersRepository.deleteDeliveryOrder] Delivery order deleted successfully");
       return true;
     } catch (error) {
