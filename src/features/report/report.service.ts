@@ -116,17 +116,17 @@ export async function renderMovementReportHtml(
   const tableRows = rows
     .map(
       (r, i) => {
-        const rowOdd = i % 2 === 0 ? 'bg-gray-50' : '';
-        return `<tr class="border-b border-gray-300 hover:bg-gray-100 ${rowOdd}">
-          <td class="px-4 py-3 whitespace-nowrap text-gray-900 font-medium">${escapeHtml(r.itemCode)}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-gray-800">${escapeHtml(r.description)}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums font-medium text-gray-900">-${r.countAdjustmentQty}</td>
+        const rowAlt = i % 2 === 0 ? 'tr-alt' : '';
+        return `<tr class="tr-data ${rowAlt}">
+          <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.itemCode)}</td>
+          <td class="px-4 py-3 whitespace-nowrap col-desc">${escapeHtml(r.description)}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">-${r.countAdjustmentQty}</td>
         </tr>`;
       }
     )
     .join('\n');
   const grandTotal = rows.reduce((sum, r) => sum + Number(r.countAdjustmentQty), 0).toFixed(2);
-  const totalRow = `<tr class="border-t-2 border-gray-500 bg-gray-200 font-bold text-gray-900">
+  const totalRow = `<tr class="tr-grand-total">
     <td class="px-4 py-3.5" colspan="2">TOTAL OUT</td>
     <td class="px-4 py-3.5 text-right tabular-nums">-${grandTotal}</td>
   </tr>`;
@@ -140,8 +140,8 @@ export async function renderMovementReportHtml(
     regionName = region.query[0]?.regionName ?? '—';
   }
 
-  const tableRegionHeader = `<tr class="border-b border-gray-400 bg-gray-100">
-    <td class="px-4 py-3 font-semibold text-gray-900" colspan="3">${escapeHtml(regionName)}</td>
+  const tableRegionHeader = `<tr class="tr-region">
+    <td class="px-4 py-3" colspan="3">${escapeHtml(regionName)}</td>
   </tr>`;
 
   return template
@@ -212,24 +212,24 @@ export async function renderProformaInvoicesHtml(
     let columnCount = Object.keys(byRegion.get(region)![0]).length;
     const regionRows = byRegion.get(region)!;
     for (const r of regionRows) {
-      const rowOdd = dataRowIndex % 2 === 0 ? 'bg-gray-50' : '';
+      const rowAlt = dataRowIndex % 2 === 0 ? 'tr-alt' : '';
       dataRowIndex += 1;
       rowHtml.push(
-        `<tr class="border-b border-gray-300 hover:bg-gray-100 ${rowOdd}">
-          <td class="px-4 py-3 whitespace-nowrap text-gray-900 font-medium">${escapeHtml(r.proformaId)}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-gray-900 font-medium">${escapeHtml(r.poNumber)}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-gray-800">${escapeHtml(r.outlet)}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-gray-700">${escapeHtml(r.expectedArrivalDate)}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-gray-700">${escapeHtml(r.region)}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums font-medium text-gray-900">${r.ctn}</td>
-          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums font-medium text-gray-900">${formatAmount(r.amount)}</td>
+        `<tr class="tr-data ${rowAlt}">
+          <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.proformaId)}</td>
+          <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.poNumber)}</td>
+          <td class="px-4 py-3 whitespace-nowrap col-desc">${escapeHtml(r.outlet)}</td>
+          <td class="px-4 py-3 whitespace-nowrap col-meta">${escapeHtml(r.expectedArrivalDate)}</td>
+          <td class="px-4 py-3 whitespace-nowrap col-meta">${escapeHtml(r.region)}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">${r.ctn}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">${formatAmount(r.amount)}</td>
         </tr>`
       );
     }
     const regionTotalCtn = regionRows.reduce((sum, r) => sum + r.ctn, 0);
     const regionTotalAmount = regionRows.reduce((sum, r) => sum + r.amount, 0);
     rowHtml.push(
-      `<tr class="border-b border-gray-400 bg-gray-100 font-bold text-gray-900">
+      `<tr class="tr-subtotal">
         <td class="px-4 py-3" colspan="${columnCount - 2}">Total (${escapeHtml(region)})</td>
         <td class="px-4 py-3 text-right tabular-nums">${regionTotalCtn}</td>
         <td class="px-4 py-3 text-right tabular-nums">${formatAmount(regionTotalAmount)}</td>
@@ -239,7 +239,7 @@ export async function renderProformaInvoicesHtml(
 
   const totalCtn = rows.reduce((sum, r) => sum + r.ctn, 0);
   const totalAmount = rows.reduce((sum, r) => sum + r.amount, 0);
-  const grandTotalRow = `<tr class="border-t-2 border-gray-500 bg-gray-200 font-bold text-gray-900">
+  const grandTotalRow = `<tr class="tr-grand-total">
     <td class="px-4 py-3.5" colspan="5">TOTAL</td>
     <td class="px-4 py-3.5 text-right tabular-nums">${totalCtn}</td>
     <td class="px-4 py-3.5 text-right tabular-nums">${formatAmount(totalAmount)}</td>

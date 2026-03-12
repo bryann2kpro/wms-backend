@@ -5,43 +5,272 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Proforma Invoices</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <!-- Print-friendly: light backgrounds, dark text, minimal ink -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg:            #F3F2ED;
+            --surface:       #FFFFFF;
+            --border:        #D4D1C9;
+            --border-strong: #8C8880;
+            --text-primary:  #1C1917;
+            --text-secondary:#57534E;
+            --text-muted:    #A8A29E;
+            --th-bg:         #1C1917;
+            --th-text:       #F3F2ED;
+            --row-alt:       #ECEAE3;
+            --row-hover:     #E2DFD8;
+            --region-bg:     #2C2825;
+            --region-text:   #E8E5DC;
+            --subtotal-bg:   #DAD8D0;
+            --grand-bg:      #1C1917;
+            --grand-text:    #F3F2ED;
+            --accent:        #92400E;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            font-family: 'IBM Plex Sans', system-ui, sans-serif;
+            color: var(--text-primary);
+            padding: 2.5rem 2rem;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .report-wrap {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* ── Document Header ── */
+        .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 2rem;
+            padding-bottom: 1.25rem;
+            border-bottom: 2px solid var(--text-primary);
+            gap: 2rem;
+        }
+
+        .doc-eyebrow {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.625rem;
+            font-weight: 500;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.4rem;
+        }
+
+        .doc-title {
+            font-size: 1.625rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1;
+            color: var(--text-primary);
+        }
+
+        .doc-meta {
+            text-align: right;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            line-height: 1.75;
+            flex-shrink: 0;
+        }
+
+        .doc-meta .label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            display: block;
+        }
+
+        .doc-meta strong {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 500;
+            font-size: 0.775rem;
+            color: var(--text-primary);
+        }
+
+        .doc-meta .meta-region {
+            margin-top: 0.3rem;
+            font-size: 0.78rem;
+        }
+
+        /* ── Table Container ── */
+        .table-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        /* ── Table Header ── */
+        thead th {
+            background: var(--th-bg);
+            color: var(--th-text);
+            padding: 0.7rem 1rem;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            border: none;
+        }
+
+        thead th + th {
+            border-left: 1px solid rgba(255, 255, 255, 0.07);
+        }
+
+        /* ── Data Rows ── */
+        .tr-data td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            font-size: 0.825rem;
+            vertical-align: middle;
+        }
+
+        .tr-data:last-of-type td { border-bottom: none; }
+
+        .tr-data.tr-alt td { background: var(--row-alt); }
+
+        .tr-data:hover td { background: var(--row-hover) !important; }
+
+        /* ── Cell types ── */
+        .col-code {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.775rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .col-desc {
+            color: var(--text-secondary);
+        }
+
+        .col-num {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.775rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .col-meta {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        /* ── Subtotal Row ── */
+        .tr-subtotal td {
+            background: var(--subtotal-bg);
+            color: var(--text-primary);
+            padding: 0.625rem 1rem;
+            font-weight: 700;
+            font-size: 0.8rem;
+            border-top: 1px solid var(--border-strong);
+            border-bottom: 1px solid var(--border-strong);
+        }
+
+        .tr-subtotal .col-num,
+        .tr-subtotal td.text-right {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+        }
+
+        /* ── Grand Total Row ── */
+        .tr-grand-total td {
+            background: var(--grand-bg);
+            color: var(--grand-text);
+            padding: 0.8rem 1rem;
+            font-weight: 700;
+            font-size: 0.825rem;
+            letter-spacing: 0.03em;
+            border: none;
+        }
+
+        .tr-grand-total .col-num,
+        .tr-grand-total td.text-right {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+
+        /* ── Print ── */
         @media print {
-            body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .print-container { box-shadow: none !important; }
+            @page { size: A4 landscape; margin: 12mm 14mm; }
+
+            :root {
+                --bg:            #FFFFFF;
+                --surface:       #FFFFFF;
+                --border:        #CCCCCC;
+                --border-strong: #888888;
+                --text-primary:  #000000;
+                --text-secondary:#333333;
+                --text-muted:    #777777;
+                --th-bg:         #000000;
+                --th-text:       #FFFFFF;
+                --row-alt:       #F2F2F2;
+                --region-bg:     #222222;
+                --region-text:   #FFFFFF;
+                --subtotal-bg:   #E0E0E0;
+                --grand-bg:      #000000;
+                --grand-text:    #FFFFFF;
+                --accent:        #7C3513;
+            }
+
+            body {
+                background: white;
+                padding: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .tr-data:hover td { background: inherit !important; }
+
+            tr { page-break-inside: avoid; }
         }
     </style>
 </head>
-<body class="min-h-screen bg-white p-6 font-sans antialiased text-gray-900">
-    <div class="mx-auto max-w-6xl print-container">
-        <header class="mb-6">
-            <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Proforma Invoices</h1>
-            <p class="mt-1 text-sm text-gray-600">
-                Period: <strong class="text-gray-900">{{dateFrom}}</strong> to <strong class="text-gray-900">{{dateTo}}</strong>
-            </p>
-            <p class="mt-1 text-sm text-gray-600">Region: <strong class="text-gray-900">{{regionName}}</strong></p>
+<body>
+    <div class="report-wrap">
+        <header class="doc-header">
+            <div>
+                <div class="doc-eyebrow">Outbound · Proforma Invoice</div>
+                <div class="doc-title">Proforma Invoices</div>
+            </div>
+            <div class="doc-meta">
+                <span class="label">Period</span>
+                <strong>{{dateFrom}}</strong> &mdash; <strong>{{dateTo}}</strong>
+                <div class="meta-region">Region: <strong>{{regionName}}</strong></div>
+            </div>
         </header>
 
-        <div class="overflow-hidden rounded-lg border border-gray-300 bg-white">
-            <div class="overflow-x-auto">
-                <table class="w-full min-w-[640px] text-sm">
-                    <thead>
-                        <tr>
-                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900">Proforma Invoice No</th>
-                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900">PO No</th>
-                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900">Outlet</th>
-                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900">Expected Arrival Date</th>
-                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900">Region</th>
-                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-900">Ctn</th>
-                            <th class="border-b-2 border-gray-400 bg-gray-200 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-900">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-300">
-                        {{tableRows}}
-                    </tbody>
-                </table>
-            </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="text-align:left">Proforma Invoice No</th>
+                        <th style="text-align:left">PO No</th>
+                        <th style="text-align:left">Outlet</th>
+                        <th style="text-align:left">Expected Arrival Date</th>
+                        <th style="text-align:left">Region</th>
+                        <th style="text-align:right">Ctn</th>
+                        <th style="text-align:right">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{tableRows}}
+                </tbody>
+            </table>
         </div>
     </div>
 </body>
