@@ -282,10 +282,14 @@ export class InvoicesRepositoryClass {
    */
   async createInvoiceFromDeliveryOrder(
     doId: string,
-    createdBy: string,
     tx?: DbTransaction
   ): Promise<InvoiceType> {
     const run = async (dbClient: DbClient) => {
+      const systemUserId = process.env.SYSTEM_USER_UUID;
+      if (!systemUserId) {
+        throw new Error("[InvoicesRepository.createInvoiceFromDeliveryOrder] System user ID is not set");
+      }
+
       const [doRow] = await dbClient
         .select()
         .from(DeliveryOrdersTable)
@@ -323,8 +327,8 @@ export class InvoicesRepositoryClass {
           deliveryAddressId: InvoicesRepositoryClass.INVOICE_ADDRESS_SNAPSHOT_ID,
           status: "GENERATED",
           dateIssued: new Date(),
-          createdBy,
-          updatedBy: createdBy,
+          createdBy: systemUserId,
+          updatedBy: systemUserId,
         },
         dbClient
       );
@@ -337,8 +341,8 @@ export class InvoicesRepositoryClass {
         unitPrice: "0",
         subTotal: "0",
         itemNo: String(index + 1),
-        createdBy,
-        updatedBy: createdBy,
+        createdBy: systemUserId,
+        updatedBy: systemUserId,
       }));
 
       if (invoiceItemInserts.length > 0) {

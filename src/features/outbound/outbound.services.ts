@@ -1,6 +1,8 @@
 import { db } from "@/db";
 import { logger } from "@/util/logger";
 import { DbTransaction } from "@/types/db-transaction";
+import { invoicesRepository } from "@/composition-root";
+import { isWithinMonthEndWindow } from "@/util/date";
 import { DeliveryOrdersRepositoryClass } from "./delivery-orders.repository";
 import { DeliveryOrderItemInsertType } from "./delivery-orders.model";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
@@ -203,7 +205,28 @@ export class OutboundServices {
                 }
                 payload.status = data.status;
             }
-            const updated = await this.deliveryOrderRepository.updateDeliveryOrder(id, payload);
+
+            const shouldTryCreateInvoice =
+                payload.status === "SHIPPED" || payload.status === "DELIVERED";
+            const updateTime = new Date();
+
+            const updated = await db.transaction(async (tx) => {
+                const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(id, payload, tx);
+
+                if (shouldTryCreateInvoice && isWithinMonthEndWindow(updateTime, { timeZone: "Asia/Kuala_Lumpur", daysFromEndInclusive: 2 })) {
+                    try {
+                        await invoicesRepository.createInvoiceFromDeliveryOrder(id, tx);
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        if (!message.includes("Invoice already exists for this delivery order")) {
+                            throw error;
+                        }
+                    }
+                }
+
+                return updatedDo;
+            });
+
             logger.info('✅ [OutboundServices.updateDeliveryOrder] Delivery order updated');
             return updated;
         } catch (error) {
@@ -231,17 +254,37 @@ export class OutboundServices {
                 throw new Error('Delivery order is already DELIVERED; no next step.');
             }
             const nextStatus = flow[currentIndex + 1];
-            const updated = await this.deliveryOrderRepository.updateDeliveryOrder(data.id, {
-                status: nextStatus,
-                updatedBy: data.userId,
-            });
-            if (nextStatus === 'SHIPPED') {
-                await this.purchaseOrdersRepository.updatePurchaseOrder(existing.purchaseOrderId, {
-                    status: 'SHIPPED',
+            // const updateTime = new Date();
+            const updateTime = new Date('2026-03-30');
+
+            const updated = await db.transaction(async (tx) => {
+                const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(data.id, {
+                    status: nextStatus,
                     updatedBy: data.userId,
-                });
-                logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] PO updated to SHIPPED');
-            }
+                }, tx);
+
+                if (nextStatus === 'SHIPPED') {
+                    await this.purchaseOrdersRepository.updatePurchaseOrder(existing.purchaseOrderId, {
+                        status: 'SHIPPED',
+                        updatedBy: data.userId,
+                    }, tx);
+                    logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] PO updated to SHIPPED');
+                }
+
+                if ((nextStatus === "SHIPPED" || nextStatus === "DELIVERED") && isWithinMonthEndWindow(updateTime, { timeZone: "Asia/Kuala_Lumpur", daysFromEndInclusive: 2 })) {
+                    try {
+                        await invoicesRepository.createInvoiceFromDeliveryOrder(data.id, tx);
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        if (!message.includes("Invoice already exists for this delivery order")) {
+                            throw error;
+                        }
+                    }
+                }
+
+                return updatedDo;
+            });
+
             logger.info(`✅ [OutboundServices.advanceDeliveryOrderStatus] DO status advanced to ${nextStatus}`);
             return updated;
         } catch (error) {

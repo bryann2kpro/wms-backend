@@ -32,7 +32,7 @@ export async function runInvoiceCreationJob(): Promise<RunInvoiceCreationJobResu
 
   for (const doRow of eligibleDos) {
     try {
-      await invoicesRepository.createInvoiceFromDeliveryOrder(doRow.id, SYSTEM_USER_ID);
+      await invoicesRepository.createInvoiceFromDeliveryOrder(doRow.id);
       createdCount += 1;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
