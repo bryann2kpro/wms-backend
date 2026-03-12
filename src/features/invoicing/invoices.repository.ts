@@ -2,7 +2,7 @@
  * Invoices Repository
  *
  * @description Data access layer for Invoices and Invoice Items.
- * Creates invoices from delivery orders when eligible (n+2 rule or month-end rule).
+ * Creates invoices from delivery orders when eligible (n+2 rule).
  */
 
 import { db } from "@/db";
@@ -26,6 +26,7 @@ import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model"
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
 import { eq, and, like, inArray, gte, lte, or, sql, isNull } from "drizzle-orm";
+import { RunningNoRepository } from "@/features/running-no/running-no.repository";
 
 /** Db or transaction client for methods that can run in or out of a transaction */
 type DbClient = typeof db | DbTransaction;
@@ -36,16 +37,17 @@ export class InvoicesRepositoryClass {
   constructor() {}
 
   private static readonly INVOICE_ADDRESS_SNAPSHOT_ID = "02858010-2dcf-4ef1-82f5-1a5f677a01b1";
+  private readonly runningNoRepo = new RunningNoRepository();
 
   // ============================================
-  // Eligibility (n+2 rule and month-end rule)
+  // Eligibility (n+2 rule)
   // ============================================
 
   /**
    * Returns delivery orders eligible for invoicing:
    * - Status SHIPPED or DELIVERED
    * - No existing invoice for this DO
-   * - Either: updated_at <= now - 2 days (n+2) OR (today in month-end window AND created_at <= 2 days before end of DO's month)
+   * - updated_at <= now - 2 days (n+2)
    */
   async getDeliveryOrdersEligibleForInvoicing(): Promise<DeliveryOrderType[]> {
     try {
@@ -72,6 +74,7 @@ export class InvoicesRepositoryClass {
           and(
             inArray(DeliveryOrdersTable.status, [...ELIGIBLE_DO_STATUSES]),
             isNull(InvoicesTable.doId),
+            nPlusTwoCondition,
           )
         );
 
@@ -243,21 +246,30 @@ export class InvoicesRepositoryClass {
    * Should be called within a transaction when used from createInvoiceFromDeliveryOrder.
    */
   async generateInvoiceNo(tx?: DbClient): Promise<string> {
-    const dbClient = tx ?? db;
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const dd = String(now.getDate()).padStart(2, "0");
     const prefix = `INV-${yyyy}${mm}${dd}-`;
 
-    const existing = await dbClient
-      .select({ invoiceNo: InvoicesTable.invoiceNo })
-      .from(InvoicesTable)
-      .where(like(InvoicesTable.invoiceNo, `${prefix}%`));
+    const run = async (dbClient: DbClient) => {
+      const nextSeq = await this.runningNoRepo.generateRunningNo(
+        {
+          scope: "invoice",
+          partitionKey: `${yyyy}${mm}${dd}`,
+          width: 4,
+          matchPrefix: prefix,
+        },
+        dbClient
+      );
 
-    const nextSeq = existing.length + 1;
-    const suffix = String(nextSeq).padStart(4, "0");
-    return `${prefix}${suffix}`;
+      const suffix = String(nextSeq).padStart(4, "0");
+      return `${prefix}${suffix}`;
+    };
+
+    // Ensure the advisory lock lives for the whole operation
+    if (tx) return run(tx);
+    return db.transaction(async (dbTx) => run(dbTx));
   }
 
   // ============================================
