@@ -20,8 +20,6 @@
             --th-text:       #F3F2ED;
             --row-alt:       #ECEAE3;
             --row-hover:     #E2DFD8;
-            --region-bg:     #2C2825;
-            --region-text:   #E8E5DC;
             --subtotal-bg:   #DAD8D0;
             --grand-bg:      #1C1917;
             --grand-text:    #F3F2ED;
@@ -139,8 +137,6 @@
             vertical-align: middle;
         }
 
-        .tr-data:last-of-type td { border-bottom: none; }
-
         .tr-data.tr-alt td { background: var(--row-alt); }
 
         .tr-data:hover td { background: var(--row-hover) !important; }
@@ -153,9 +149,7 @@
             color: var(--text-primary);
         }
 
-        .col-desc {
-            color: var(--text-secondary);
-        }
+        .col-desc { color: var(--text-secondary); }
 
         .col-num {
             font-family: 'IBM Plex Mono', monospace;
@@ -219,8 +213,6 @@
                 --th-bg:         #000000;
                 --th-text:       #FFFFFF;
                 --row-alt:       #F2F2F2;
-                --region-bg:     #222222;
-                --region-text:   #FFFFFF;
                 --subtotal-bg:   #E0E0E0;
                 --grand-bg:      #000000;
                 --grand-text:    #FFFFFF;
@@ -249,8 +241,8 @@
             </div>
             <div class="doc-meta">
                 <span class="label">Period</span>
-                <strong>{{dateFrom}}</strong> &mdash; <strong>{{dateTo}}</strong>
-                <div class="meta-region">Region: <strong>{{regionName}}</strong></div>
+                <strong>01/02/2026</strong> &mdash; <strong>28/02/2026</strong>
+                <div class="meta-region">Region: <strong>All Regions</strong></div>
             </div>
         </header>
 
@@ -268,7 +260,222 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {{tableRows}}
+                    <!-- Klang Valley -->
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-20260213-0001</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260170528</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Aeon Midtown Falim</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">Klang Valley</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">10</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 1,250.00</td>
+                    </tr>
+                    <tr class="tr-data">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-20260213-0002</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173297</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Lotuss Taiping</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">Klang Valley</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">8</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 980.00</td>
+                    </tr>
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-20260213-0003</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173298</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Gurney Paragon</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">Klang Valley</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">5</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 620.50</td>
+                    </tr>
+                    <tr class="tr-data">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-20260213-0004</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173299</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Amanjaya</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">Klang Valley</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">24</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 3,120.00</td>
+                    </tr>
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-20260213-0005</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173300</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">AEON Bukit Mertajam</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">Klang Valley</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">18</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 2,340.00</td>
+                    </tr>
+                    <tr class="tr-data">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0006</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173301</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Aman Central LG</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">Klang Valley</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">15</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 1,950.00</td>
+                    </tr>
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0007</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173302</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Lotuss Teluk Intan</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">Klang Valley</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">9</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 1,107.00</td>
+                    </tr>
+                    <tr class="tr-subtotal">
+                        <td class="px-4 py-3" colspan="5">Total (Klang Valley)</td>
+                        <td class="px-4 py-3 text-right tabular-nums">89</td>
+                        <td class="px-4 py-3 text-right tabular-nums">RM 11,367.50</td>
+                    </tr>
+
+                    <!-- North -->
+                    <tr class="tr-data">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0008</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173303</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Pearl City</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">North</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">13</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 1,690.00</td>
+                    </tr>
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0018</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173313</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Mydin Bukit Mertajam</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">North</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">12</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 1,488.00</td>
+                    </tr>
+                    <tr class="tr-subtotal">
+                        <td class="px-4 py-3" colspan="5">Total (North)</td>
+                        <td class="px-4 py-3 text-right tabular-nums">25</td>
+                        <td class="px-4 py-3 text-right tabular-nums">RM 3,178.00</td>
+                    </tr>
+
+                    <!-- South -->
+                    <tr class="tr-data">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0009</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173304</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Nibong Tebal</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">6</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 744.00</td>
+                    </tr>
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0010</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173305</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Lotuss Ipoh Bercham</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">24</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 2,976.00</td>
+                    </tr>
+                    <tr class="tr-data">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0011</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173306</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Sunway Carnival</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">5</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 620.00</td>
+                    </tr>
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0012</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173307</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Sentra Mall</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">8</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 992.00</td>
+                    </tr>
+                    <tr class="tr-data">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0013</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173308</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">AEON Seri Manjung</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">6</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 744.00</td>
+                    </tr>
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0014</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173309</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">AEON Taiping</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">6</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 744.00</td>
+                    </tr>
+                    <tr class="tr-data">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0015</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173310</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">AEON Ipoh S18</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">13</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 1,612.00</td>
+                    </tr>
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0016</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173311</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">1st Avenue</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">17</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 2,108.00</td>
+                    </tr>
+                    <tr class="tr-data">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0017</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173312</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Queensbay Mall</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">10</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 1,240.00</td>
+                    </tr>
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0019</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173314</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Gurney Plaza</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">13</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 1,612.00</td>
+                    </tr>
+                    <tr class="tr-data">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0020</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173315</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">Serai Wangi</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">10</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 1,240.00</td>
+                    </tr>
+                    <tr class="tr-data tr-alt">
+                        <td class="px-4 py-3 whitespace-nowrap col-code">ES-2026213-0021</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-code">#PO260173316</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-desc">AEON Kinta City</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">22/1/2026</td>
+                        <td class="px-4 py-3 whitespace-nowrap col-meta">South</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">12</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">RM 1,488.00</td>
+                    </tr>
+                    <tr class="tr-subtotal">
+                        <td class="px-4 py-3" colspan="5">Total (South)</td>
+                        <td class="px-4 py-3 text-right tabular-nums">130</td>
+                        <td class="px-4 py-3 text-right tabular-nums">RM 16,120.00</td>
+                    </tr>
+
+                    <!-- Grand Total -->
+                    <tr class="tr-grand-total">
+                        <td class="px-4 py-3.5" colspan="5">TOTAL</td>
+                        <td class="px-4 py-3.5 text-right tabular-nums">244</td>
+                        <td class="px-4 py-3.5 text-right tabular-nums">RM 30,665.50</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
