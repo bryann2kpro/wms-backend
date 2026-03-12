@@ -22,6 +22,7 @@ export const typeDefs = `#graphql
         approvedAt: String
         notes: String
         proofUrl: String
+        warehouse: Warehouse
         createdAt: String!
         updatedAt: String!
         createdByUser: GrnAuditUser
@@ -49,9 +50,12 @@ export const typeDefs = `#graphql
         qty: String!
         lossQty: String!
         remarks: String
-        warehouseId: ID
-        warehouseName: String
-        warehouseAddress: String
+        """Primary rack (first rackId if multiple are provided)."""
+        rack: Rack
+        """All rack IDs associated with this GRN item."""
+        rackIds: [ID!]
+        """Optional expiry date for this GRN item."""
+        expiryDate: String
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -67,7 +71,12 @@ export const typeDefs = `#graphql
         qty: String!
         lossQty: String
         remarks: String
-        warehouseId: ID
+        """Deprecated: use rackIds instead."""
+        rackId: ID
+        """All rack IDs associated with this GRN item."""
+        rackIds: [ID!]
+        """Optional expiry date for this GRN item."""
+        expiryDate: String
         skuCode: String
         skuDescription: String
         skuUom: ID
@@ -85,6 +94,7 @@ export const typeDefs = `#graphql
         receivedAt: String
         notes: String
         proofUrl: String
+        warehouseId: ID
         status: String
         createdBy: String
         updatedBy: String
@@ -104,6 +114,7 @@ export const typeDefs = `#graphql
         receivedAt: String
         notes: String
         proofUrl: String
+        warehouseId: ID
         status: String
         approvedBy: ID
         approvedAt: String
@@ -118,15 +129,41 @@ export const typeDefs = `#graphql
     input GrnFilterInput {
         id: ID
         grnNo: String
+        """Search across GRN number, PO reference, and Supplier DO (case-insensitive)."""
+        search: String
         status: String
         page: Int
         pageSize: Int
         pageNumber: Int
+        """Sort field: GRN_NO, UPDATED_AT, CREATED_AT, STATUS, RECEIVED_AT. Default: UPDATED_AT"""
+        sortBy: String
+        """Sort direction: ASC or DESC. Default: DESC (latest first)"""
+        sortOrder: String
     }
 
     type GrnPaginatedResponse {
         query: [Grn!]!
         pagination: Pagination!
+    }
+
+    """
+    Input for createInbound (same as createGrn flow; userId required; optional inboundQty + skuId to update SKU quantity).
+    """
+    input CreateInboundInput {
+        userId: String!
+        grnNo: String!
+        supplierId: ID
+        supplierDeliveryId: ID
+        supplierDeliveryNo: String
+        poNo: String
+        receivedAt: String
+        notes: String
+        proofUrl: String
+        warehouseId: ID
+        status: String
+        items: [CreateGrnItemInput!]
+        inboundQty: Float
+        skuId: ID
     }
 
     extend type Mutation {  
@@ -135,6 +172,12 @@ export const typeDefs = `#graphql
         Requires authentication.
         """
         createGrn(input: CreateGrnInput!): Grn! @auth
+
+        """
+        Create inbound (GRN + items). Same process as createGrn; use userId. Optional inboundQty + skuId to update SKU quantity.
+        Requires authentication.
+        """
+        createInbound(input: CreateInboundInput!): Boolean! @auth
 
         """
         Update an existing GRN.

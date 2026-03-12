@@ -145,6 +145,48 @@ async function initRbacModule(): Promise<void> {
 }
 
 /**
+ * Backfill: assign all existing module permissions to Super Admin role.
+ * Use for existing deployments where modules were created before auto-assign was added.
+ */
+async function initAllModulePermissionsForSuperAdmin(): Promise<void> {
+  logger.info('📦 Backfilling Super Admin with all existing module permissions...');
+
+  const superAdminRole = await authRepository.getRoleByName(RoleCode.SUPER_ADMIN);
+  if (!superAdminRole) {
+    logger.warn('⚠️ Super Admin role not found - skipping permission backfill');
+    return;
+  }
+
+  const { query: permissions } = await rbacRepository.getPermission(
+    {},
+    { pageSize: 10_000, pageNumber: 1 }
+  );
+
+  let assigned = 0;
+  for (const permission of permissions) {
+    const existing = await rbacRepository.getRolePermission({
+      roleId: superAdminRole.roleId,
+      permissionId: permission.permissionId,
+    });
+    if (existing.length === 0) {
+      await rbacRepository.createRolePermission({
+        roleId: superAdminRole.roleId,
+        permissionId: permission.permissionId,
+        createdBy: 'system',
+        updatedBy: 'system',
+      });
+      assigned += 1;
+    }
+  }
+
+  if (assigned > 0) {
+    logger.info(`✅ Super Admin backfill: assigned ${assigned} permission(s)`);
+  } else {
+    logger.info('✓ Super Admin already has all existing permissions');
+  }
+}
+
+/**
  * Create a user account
  */
 async function createUser(userData: CreateUserData): Promise<UserType> {
@@ -439,7 +481,10 @@ export async function initAccounts() {
     
     // Initialize RBAC modules and permissions
     await initRbacModule();
-    
+
+    // Backfill Super Admin with all existing module permissions (for existing deployments)
+    await initAllModulePermissionsForSuperAdmin();
+
     logger.info('✅ Accounts initialization complete!');
   } catch (error) {
     logger.error('❌ Error initializing accounts:', error);

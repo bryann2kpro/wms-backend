@@ -5,12 +5,13 @@
  */
 
 import { db } from '@/db';
-import { InventoryMovementsTable } from './inventory.model';
+import { InventoryMovementsTable, InventoryMovementType } from './inventory.model';
 import { eq, and, inArray, like, asc, desc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import type { DbTransaction } from '@/types/db-transaction';
-import { PaginationParams, PaginatedResponse } from '../rbac/rbac.model';
+import { PaginationParams, PaginatedResponse } from '../../rbac/rbac.model';
 import { pagination, PgQueryType } from '@/util/pagination';
+import { InventoryBalanceRepositoryClass } from '../inventory-balance/inventory.repository';
 
 export type InventoryMovementsType = typeof InventoryMovementsTable.$inferSelect;
 export type InventoryMovementsInsertType = typeof InventoryMovementsTable.$inferInsert;
@@ -22,21 +23,18 @@ export type InventoryMovementsInsertType = typeof InventoryMovementsTable.$infer
 export type InventoryMovementsFilter = {
   id?: string;
   skuId?: string | string[];
-  movementType?: string | string[];
+  regionId?: string | string[];
+  movementType?: InventoryMovementType | InventoryMovementType[];
   referenceNo?: string;
   reason?: string;
 }
-
-export type InventoryMovementsSort = {
-  field?: 'CREATED_AT' | 'MOVEMENT_TYPE' | 'QUANTITY' | 'BALANCE_AFTER' | 'REFERENCE_NO' | 'REASON' | 'CREATED_BY';
-  direction?: 'ASC' | 'DESC';
-}
-
-export class InventoryMovementsRepositoryClass {
-    constructor() {}
+export class InventoryMovementRepositoryClass {
+    constructor(
+      private readonly inventoryBalanceRepository: InventoryBalanceRepositoryClass
+    ) {}
 
       /**
-   * Get warehouses with optional filtering and pagination
+   * Get Inventory Movements with optional filtering and pagination
    */
   async getInventoryMovements(
     filter: InventoryMovementsFilter,
@@ -52,6 +50,12 @@ export class InventoryMovementsRepositoryClass {
         whereCondition.push(inArray(InventoryMovementsTable.skuId, filter.skuId));
       } else if (filter.skuId) {
         whereCondition.push(eq(InventoryMovementsTable.skuId, filter.skuId));
+      }
+
+      if (Array.isArray(filter.regionId)) {
+        whereCondition.push(inArray(InventoryMovementsTable.regionId, filter.regionId));
+      } else if (filter.regionId) {
+        whereCondition.push(eq(InventoryMovementsTable.regionId, filter.regionId));
       }
 
       if (Array.isArray(filter.movementType)) {
@@ -98,7 +102,7 @@ export class InventoryMovementsRepositoryClass {
   }
 
   /**
-   * Get warehouse by ID
+   * Get Inventory Movement by ID
    */
   async getInventoryMovementById(id: string): Promise<InventoryMovementsType | null> {
     try {
@@ -117,25 +121,119 @@ export class InventoryMovementsRepositoryClass {
     }
   }
   /**
-   * Create a new inventory movement
+   * Create one or multiple inventory movements
    */
-  async createWarehouse(
-    data: Omit<InventoryMovementsInsertType, "id" | "createdAt" | "updatedAt">,
+  async createInventoryMovement(
+    data: InventoryMovementsInsertType | InventoryMovementsInsertType[],
     tx?: DbTransaction
-  ): Promise<InventoryMovementsType> {
+  ): Promise<InventoryMovementsType | InventoryMovementsType[]> {
     try {
       const client = tx ?? db;
-      logger.info("ℹ️ [InventoryMovementsRepository.createInventoryMovement] Creating inventory movement...");
+      logger.info("ℹ️ [InventoryMovementsRepository.createInventoryMovement] Creating inventory movement(s)...");
 
-      const [warehouse] = await client
+      const movements = Array.isArray(data) ? data : [data];
+
+      if (movements.length === 0) {
+        return Array.isArray(data) ? [] : (null as unknown as InventoryMovementsType);
+      }
+
+      const skuIds = Array.from(
+        new Set(movements.map((movement) => movement.skuId as string)),
+      );
+
+      const existingBalances =
+        (await this.inventoryBalanceRepository.getInventoryBalanceBySkuIds(
+          skuIds,
+        )) ?? [];
+
+      const balanceMap = new Map<
+        string,
+        { onHand: number; loss: number; reserved: number }
+      >();
+
+      for (const balance of existingBalances) {
+        const skuId = balance.skuId as string;
+        balanceMap.set(skuId, {
+          onHand: Number(balance.onHandQty ?? "0"),
+          loss: Number(balance.lossQty ?? "0"),
+          reserved: Number(balance.reservedQty ?? "0"),
+        });
+      }
+
+      const movementsWithBalanceAfter = movements.map((movement) => {
+        const skuId = movement.skuId as string;
+
+        const current =
+          balanceMap.get(skuId) ??
+          {
+            onHand: 0,
+            loss: 0,
+            reserved: 0,
+          };
+
+        let { onHand, loss, reserved } = current;
+        const quantity = Number(movement.quantity ?? "0");
+
+        switch (movement.movementType) {
+          case InventoryMovementType.INBOUND:
+            onHand += quantity;
+            break;
+          case InventoryMovementType.RESERVED:
+            reserved += quantity;
+            break;
+          case InventoryMovementType.SHIPMENT:
+            reserved -= quantity;
+            onHand -= quantity;
+            break;
+          case InventoryMovementType.ADJUSTMENT:
+            onHand += quantity;
+            break;
+          case InventoryMovementType.DAMAGED:
+            onHand -= quantity;
+            loss += quantity;
+            break;
+        }
+
+        balanceMap.set(skuId, { onHand, loss, reserved });
+
+        const balanceAfter = onHand;
+
+        return {
+          ...movement,
+          balanceAfter: balanceAfter.toString(),
+        };
+      });
+
+      for (const [skuId, { onHand, loss, reserved }] of balanceMap.entries()) {
+        await this.inventoryBalanceRepository.upsertInventoryBalance(
+          {
+            skuId,
+            onHandQty: onHand.toString(),
+            lossQty: loss.toString(),
+            reservedQty: reserved.toString(),
+            updatedAt: new Date(),
+          },
+          tx,
+        );
+      }
+
+      const inventoryMovements = await client
         .insert(InventoryMovementsTable)
-        .values(data)
+        .values(movementsWithBalanceAfter)
         .returning();
 
-      logger.info("✅ [InventoryMovementsRepository.createInventoryMovement] Inventory Movement created successfully");
-      return warehouse;
+      logger.info(
+        "✅ [InventoryMovementsRepository.createInventoryMovement] Inventory Movement(s) created successfully",
+      );
+
+      return Array.isArray(data)
+        ? inventoryMovements
+        : inventoryMovements[0];
     } catch (error) {
-      logger.error("❌ [WarehousesRepository.createWarehouse] Error:", error);
+      logger.error(
+        "❌ [InventoryMovementsRepository.createInventoryMovement] Error:",
+        error,
+      );
       throw error;
     }
   }
@@ -159,4 +257,5 @@ export class InventoryMovementsRepositoryClass {
       throw error;
     }
   }
+  
 }

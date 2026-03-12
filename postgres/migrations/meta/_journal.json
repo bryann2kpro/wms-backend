@@ -253,6 +253,83 @@
       "when": 1772437887330,
       "tag": "0035_chubby_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1772465841067,
+      "tag": "0036_sturdy_sprite",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1772515603603,
+      "tag": "0037_round_jimmy_woo",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1772520782017,
+      "tag": "0038_low_scorpion",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1772524835886,
+      "tag": "0039_flawless_warlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1772524835887,
+      "tag": "0040_handy_christian_walker",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1773025775170,
+      "tag": "0041_jittery_human_cannonball",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1773108108884,
+      "tag": "0042_add-is-emergency-to-delivery-orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1773125255686,
+      "tag": "0043_aspiring_hellfire_club",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1773240496323,
+      "tag": "0044_clear_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1773294682785,
+      "tag": "0045_huge_lady_ursula",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1773301561173,
+      "tag": "0046_tan_stature",
+      "breakpoints": true
     }
   ]
 }

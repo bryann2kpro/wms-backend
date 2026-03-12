@@ -30,6 +30,22 @@ export const UsersTable = MainSchema.table('users', {
 });
 
 /**
+ * Password Reset Tokens Table
+ *
+ * @description Stores one-time tokens for password reset emails.
+ * Tokens expire after 1 hour and are deleted after use.
+ */
+export const PasswordResetTokensTable = MainSchema.table('password_reset_tokens', {
+  id: uuid('id').defaultRandom().notNull().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => UsersTable.id, { onDelete: 'cascade' }),
+  token: varchar('token', { length: 64 }).unique().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type PasswordResetTokenType = typeof PasswordResetTokensTable.$inferSelect;
+
+/**
  * User Login DTO
  * @description Data transfer object for user login requests
  */

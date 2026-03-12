@@ -9,7 +9,7 @@
  * - Role → RolePermission (junction) → Permission → Module
  */
 
-import { UsersTable, UserType, UserInsertType } from './auth.model.js';
+import { UsersTable, UserType, UserInsertType, PasswordResetTokensTable, PasswordResetTokenType } from './auth.model.js';
 import { 
   Role, 
   Module,
@@ -866,6 +866,39 @@ export class AuthRepositoryClass {
       logger.error('❌ [AuthRepository.getUserPermissions] Error:', error);
       return [];
     }
+  }
+  // ============================================
+  // PASSWORD RESET TOKEN OPERATIONS
+  // ============================================
+
+  async createPasswordResetToken(userId: string, token: string, expiresAt: Date): Promise<void> {
+    await db
+      .delete(PasswordResetTokensTable)
+      .where(eq(PasswordResetTokensTable.userId, userId));
+
+    await db.insert(PasswordResetTokensTable).values({ userId, token, expiresAt });
+  }
+
+  async getPasswordResetToken(token: string): Promise<PasswordResetTokenType | null> {
+    const rows = await db
+      .select()
+      .from(PasswordResetTokensTable)
+      .where(eq(PasswordResetTokensTable.token, token))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async deletePasswordResetToken(token: string): Promise<void> {
+    await db
+      .delete(PasswordResetTokensTable)
+      .where(eq(PasswordResetTokensTable.token, token));
+  }
+
+  async updateUserPassword(userId: string, passwordHash: string): Promise<void> {
+    await db
+      .update(UsersTable)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(UsersTable.id, userId));
   }
 }
 

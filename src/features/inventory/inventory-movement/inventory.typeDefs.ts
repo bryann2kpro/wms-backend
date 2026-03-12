@@ -11,8 +11,9 @@ export const typeDefs = `#graphql
   """
   type InventoryMovement {
     id: ID!
-    skuId: ID
-    movementType: String!
+    skuId: ID!
+    regionId: ID
+    movementType: InventoryMovementType!
     quantity: String!
     balanceAfter: String!
     referenceNo: String
@@ -30,6 +31,14 @@ export const typeDefs = `#graphql
     displayName: String!
   }
 
+  enum InventoryMovementType {
+    INBOUND
+    RESERVED
+    SHIPMENT
+    ADJUSTMENT
+    DAMAGED
+  }
+
   """
   Paginated Inventory Movements response
   """
@@ -45,10 +54,12 @@ export const typeDefs = `#graphql
     id: ID
     skuId: ID
     skuIds: [ID!]
-    movementType: String
-    movementTypes: [String!]
+    movementType: InventoryMovementType
+    movementTypes: [InventoryMovementType!]
     referenceNo: String
     reason: String
+    regionId: ID
+    regionIds: [ID!]
   }
 
   extend type Query {

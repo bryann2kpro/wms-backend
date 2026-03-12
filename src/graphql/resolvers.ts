@@ -16,7 +16,10 @@ import { resolvers as auditResolvers } from '@/features/audit-log/audit.resolver
 import { resolvers as grnsResolvers } from '@/features/inbound/grns.resolvers';
 import { resolvers as supplierDeliveriesResolvers } from '@/features/inbound/supplier-deliveries/supplier-deliveries.resolvers';
 import { resolvers as outboundResolvers } from '@/features/outbound/outbound.resolvers';
-import { resolvers as inventoryResolvers } from '@/features/inventory/inventory.resolvers';
+import { resolvers as invoicesResolvers } from "@/features/invoicing/invoices.resolver";
+import { resolvers as inventoryResolvers } from '@/features/inventory/inventory-movement/inventory.resolvers';
+import { resolvers as inventoryBalanceResolvers } from '@/features/inventory/inventory-balance/inventory.resolver';
+import { resolvers as stockCountResolvers } from '@/features/inventory/stock-count.resolver';
 // Master Data resolvers
 import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
 import { resolvers as deliveryScheduleResolvers } from '@/features/master-data/delivery-schedule.resolvers';
@@ -26,6 +29,7 @@ import { resolvers as stockUnitResolvers } from '@/features/master-data/stock-un
 import { resolvers as racksResolvers } from '@/features/master-data/racks.resolvers';
 import { resolvers as warehousesResolvers } from '@/features/master-data/warehouses.resolvers';
 import { resolvers as reportResolvers } from '@/features/report/report.resolvers';
+import { resolvers as dashboardResolvers } from '@/features/dashboard/dashboard.resolver';
 
 // ============================================
 // BASE RESOLVERS
@@ -34,16 +38,16 @@ import { resolvers as reportResolvers } from '@/features/report/report.resolvers
 /**
  * Custom JSON scalar type for handling arbitrary JSON data
  */
-const JSONScalar = new GraphQLScalarType({
+const JSONScalar: GraphQLScalarType = new GraphQLScalarType({
   name: 'JSON',
   description: 'Custom scalar type for JSON data',
-  serialize(value: unknown) {
+  serialize(value: unknown): unknown {
     return value;
   },
-  parseValue(value: unknown) {
+  parseValue(value: unknown): unknown {
     return value;
   },
-  parseLiteral(ast) {
+  parseLiteral(ast: any): unknown {
     switch (ast.kind) {
       case Kind.STRING:
         return JSON.parse(ast.value);
@@ -55,10 +59,10 @@ const JSONScalar = new GraphQLScalarType({
       case Kind.NULL:
         return null;
       case Kind.LIST:
-        return ast.values.map((v) => JSONScalar.parseLiteral(v, {}));
+        return ast.values.map((v: any) => JSONScalar.parseLiteral(v, {}));
       case Kind.OBJECT:
         const obj: Record<string, unknown> = {};
-        ast.fields.forEach((field) => {
+        ast.fields.forEach((field: any) => {
           obj[field.name.value] = JSONScalar.parseLiteral(field.value, {});
         });
         return obj;
@@ -98,7 +102,10 @@ export const resolvers = mergeResolvers([
   grnsResolvers,
   supplierDeliveriesResolvers,
   outboundResolvers,
+  invoicesResolvers,
   inventoryResolvers,
+  inventoryBalanceResolvers,
+  stockCountResolvers,
   // Master Data
   regionResolvers,
   deliveryScheduleResolvers,
@@ -108,4 +115,5 @@ export const resolvers = mergeResolvers([
   racksResolvers,
   warehousesResolvers,
   reportResolvers,
+  dashboardResolvers,
 ]);

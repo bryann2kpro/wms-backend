@@ -13,8 +13,10 @@ import { typeDefs as auditLogTypeDefs } from '@/features/audit-log/audit.typeDef
 import { typeDefs as grnsTypeDefs } from '@/features/inbound/grns.typeDefs';
 import { typeDefs as supplierDeliveriesTypeDefs } from '@/features/inbound/supplier-deliveries/supplier-deliveries.typeDefs';
 import { typeDefs as outboundTypeDefs } from '@/features/outbound/outbound.typeDefs';
-import { typeDefs as inventoryTypeDefs } from '@/features/inventory/inventory.typeDefs';
-
+import { typeDefs as invoicesTypeDefs } from "@/features/invoicing/invoices.typeDefs";
+import { typeDefs as inventoryTypeDefs } from '@/features/inventory/inventory-movement/inventory.typeDefs';
+import { typeDefs as inventoryBalanceTypeDefs } from '@/features/inventory/inventory-balance/inventory.typeDefs';
+import { typeDefs as stockCountTypeDefs } from '@/features/inventory/stock-count.typeDefs';
 // Master Data typeDefs
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
 import { typeDefs as deliveryScheduleTypeDefs } from '@/features/master-data/delivery-schedule.typeDefs';
@@ -24,6 +26,7 @@ import { typeDefs as stockUnitTypeDefs } from '@/features/master-data/stock-unit
 import { typeDefs as racksTypeDefs } from '@/features/master-data/racks.typeDefs';
 import { typeDefs as warehousesTypeDefs } from '@/features/master-data/warehouses.typeDefs';
 import { typeDefs as reportTypeDefs } from '@/features/report/report.typeDefs';
+import { typeDefs as dashboardTypeDefs } from '@/features/dashboard/dashboard.typeDefs';
 
 // Directive type definitions
 import { directiveTypeDefs } from './directives';
@@ -94,7 +97,10 @@ export const typeDefs = [
   grnsTypeDefs,
   supplierDeliveriesTypeDefs,
   outboundTypeDefs,
+  invoicesTypeDefs,
   inventoryTypeDefs,
+  inventoryBalanceTypeDefs,
+  stockCountTypeDefs,
   // Master Data
   regionTypeDefs,
   deliveryScheduleTypeDefs,
@@ -105,5 +111,5 @@ export const typeDefs = [
   warehousesTypeDefs,
   reportTypeDefs,
   auditLogTypeDefs,
-
+  dashboardTypeDefs,
 ];

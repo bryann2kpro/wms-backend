@@ -40,14 +40,17 @@ import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplie
 import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
 import { InboundServices } from './features/inbound/inbound.services';
 // Outbound Repositories & Services
-import { TransferOrdersRepositoryClass } from './features/outbound/transfer-orders.repository';
+import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
 import { ExceptionsRepositoryClass } from './features/outbound/exceptions.repository';
 import { OutboundServices } from './features/outbound/outbound.services';
 // Inventory
-import { InventoryRepositoryClass } from './features/inventory/inventory.repository';
-// Inventory Repositories
-import { InventoryMovementsRepositoryClass } from './features/inventory/inventory.repository';
+import { InventoryMovementRepositoryClass } from './features/inventory/inventory-movement/inventory.repository';
+import { InventoryBalanceRepositoryClass } from './features/inventory/inventory-balance/inventory.repository';
+import { StockCountServices } from './features/inventory/stock-count.services';
+// Dashboard
+import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
+import { InvoicesRepositoryClass } from './features/invoicing/invoices.repository';
 
 
 // ============================================
@@ -84,19 +87,28 @@ export const supplierDeliveryItemsRepository = new SupplierDeliveryItemsReposito
 export const supplierDeliveriesRepository = new SupplierDeliveriesRepositoryClass();
 
 // Outbound Repositories
-export const transferOrdersRepository = new TransferOrdersRepositoryClass();
+export const purchaseOrdersRepository = new PurchaseOrdersRepositoryClass();
 export const deliveryOrdersRepository = new DeliveryOrdersRepositoryClass();
 export const exceptionsRepository = new ExceptionsRepositoryClass();
 // Inventory Repositories
-export const inventoryMovementsRepository = new InventoryMovementsRepositoryClass();
+export const inventoryBalancesRepository = new InventoryBalanceRepositoryClass();
+export const inventoryMovementRepository = new InventoryMovementRepositoryClass(inventoryBalancesRepository);
+export const stockCountServices = new StockCountServices();
+
+// Dashboard
+export const dashboardRepository = new DashboardRepositoryClass();
+// Invoicing Repositories
+export const invoicesRepository = new InvoicesRepositoryClass();
 
 // Outbound Services
 export const outboundServices = new OutboundServices(
   deliveryOrdersRepository,
   skuRepository,
-  inventoryMovementsRepository,
+  inventoryBalancesRepository,
   deliveryScheduleRepository,
   outletsRepository,
+  purchaseOrdersRepository,
+  inventoryMovementRepository,
 );
 
 // ============================================
@@ -115,4 +127,5 @@ export const inboundServices = new InboundServices(
     supplierDeliveriesRepository,
     supplierDeliveryItemsRepository,
     grnItemsRepository,
+    inventoryMovementRepository,
 );

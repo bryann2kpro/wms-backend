@@ -1,13 +1,20 @@
 import { db } from "@/db";
 import { logger } from "@/util/logger";
 import { DbTransaction } from "@/types/db-transaction";
+import { invoicesRepository } from "@/composition-root";
+import { isWithinMonthEndWindow } from "@/util/date";
 import { DeliveryOrdersRepositoryClass } from "./delivery-orders.repository";
 import { DeliveryOrderItemInsertType } from "./delivery-orders.model";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
-import { InventoryRepositoryClass } from "../inventory/inventory.repository";
+import { InventoryBalanceRepositoryClass } from "../inventory/inventory-balance/inventory.repository";
 import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../master-data/delivery-schedule.repository";
 import { OutletsRepositoryClass } from "../master-data/outlets.repository";
 import { DeliveryOrderType } from "./delivery-orders.model";
+import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
+import { PurchaseOrderType } from "./purchase-orders.model";
+
+import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
+import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 
 /** Line item input: must have qtyRequired and either skuId or skuCode. */
 export type CreateDeliveryOrderItemInput = {
@@ -16,93 +23,305 @@ export type CreateDeliveryOrderItemInput = {
     qtyRequired: string | number;
 };
 
-export type CreateDeliveryOrderData = {
-    userId: string;
-    purchaseOrderNo: string;
-    deliveryOrderNo: string;
-    outletId: string;
-    orderCreatedAt?: Date;
-    items: CreateDeliveryOrderItemInput[];
+export type CompleteDeliveryOrderData = {
+  userId: string;
+  id: string;
+};
+
+export type CreatePurchaseOrderItemInput = {
+  skuCode: string;
+  skuId?: string;
+  qtyRequired: number;
+};
+
+export type CreatePurchaseOrderData = {
+  userId: string;
+  purchaseOrderNo: string;
+  outletId: string;
+  items: CreatePurchaseOrderItemInput[];
+  isEmergency?: boolean;
 };
 
 export class OutboundServices {
     constructor(
         private readonly deliveryOrderRepository: DeliveryOrdersRepositoryClass,
         private readonly skuRepository: SkuRepositoryClass,
-        private readonly inventoryRepository: InventoryRepositoryClass,
+        private readonly inventoryBalanceRepository: InventoryBalanceRepositoryClass,
         private readonly deliveryScheduleRepository: DeliveryScheduleRepositoryClass,
         private readonly outletsRepository: OutletsRepositoryClass,
+        private readonly purchaseOrdersRepository: PurchaseOrdersRepositoryClass,
+        private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
     ) {}
 
     /**
-     * Creates a delivery order: validates line items, checks stock, computes next delivery date,
-     * then creates the DO and items in a transaction. Returns the created delivery order.
+     * Creates a purchase order with automatic delivery order creation.
+     * Validates line items, checks stock, computes next delivery date,
+     * then creates the PO, DO, and items in a transaction.
      */
-    async createDeliveryOrder(data: CreateDeliveryOrderData): Promise<DeliveryOrderType> {
-        logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Creating delivery order...');
+    async createPurchaseOrder(data: CreatePurchaseOrderData): Promise<PurchaseOrderType> {
+        logger.info("ℹ️ [OutboundServices.createPurchaseOrder] Creating purchase order and delivery order...");
         try {
-            logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Starting Delivery Order Flow...');
-            const createdBy = data.userId;
-            const updatedBy = data.userId;
-            let createdOrder: DeliveryOrderType | null = null;
-
+            let created: PurchaseOrderType | null = null;
             await db.transaction(async (tx) => {
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 1: Check if skus are in stock...');
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 1: Check if skus are in stock...');
                 const resolvedLines = await this.resolveAndValidateLineItems(data.items, tx);
                 await this.assertSufficientStock(resolvedLines, tx);
 
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 2: Compute the next delivery date...');
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 2.1: Getting Region by Outlet ID...');
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 2: Compute the next delivery date...');
                 const outlet = await this.outletsRepository.getOutletById(data.outletId);
-
                 if (!outlet || !outlet.regionId) {
                     throw new Error('Outlet not found or has no region assigned.');
                 }
 
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 2.2: Compute next delivery date based on cutoff...');
-                const orderTime = data.orderCreatedAt ?? new Date();
-                const nextDelivery = await this.computeNextDeliveryDate(outlet.regionId, orderTime);
+                const isEmergency = data.isEmergency ?? false;
+                const nextDelivery = isEmergency
+                    ? await this.computeNextDeliveryDateEmergency(outlet.regionId, new Date())
+                    : await this.computeNextDeliveryDate(outlet.regionId, new Date());
 
                 if (!nextDelivery) {
                     throw new Error(`No delivery schedules found for region "${outlet.regionId}".`);
                 }
+                logger.info(`✅ [OutboundServices.createPurchaseOrder] Next delivery date: ${nextDelivery.deliveryDate.toISOString()} (${nextDelivery.schedule.dayName})${isEmergency ? ' [EMERGENCY]' : ''}`);
 
-                logger.info(`✅ [OutboundServices.createDeliveryOrder] Next delivery date: ${nextDelivery.deliveryDate.toISOString()} (${nextDelivery.schedule.dayName})`);
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 3: Create Purchase Order...');
+                created = await this.purchaseOrdersRepository.createPurchaseOrder(
+                    {
+                        purchaseOrderNo: data.purchaseOrderNo,
+                        outletId: data.outletId,
+                        status: "NEW",
+                        scheduledDeliveryDate: nextDelivery.deliveryDate,
+                        createdBy: data.userId,
+                        updatedBy: data.userId,
+                    },
+                    tx
+                );
 
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 3: Create Delivery Order...');
-                const deliveryOrder = await this.deliveryOrderRepository.createDeliveryOrder({
-                    doNo: data.deliveryOrderNo,
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 4: Create Purchase Order Items...');
+                const poItems = data.items.map((item) => ({
+                    purchaseOrderNo: data.purchaseOrderNo,
+                    skuCode: item.skuCode,
+                    qtyRequired: String(item.qtyRequired),
+                    createdBy: data.userId,
+                    updatedBy: data.userId,
+                }));
+                await this.purchaseOrdersRepository.createPurchaseOrderItems(poItems, tx);
+
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 5: Create Inventory Movements...');
+                const inventoryMovements: InventoryMovementsInsertType[] = resolvedLines.map((line) => ({
+                    skuId: line.skuId,
+                    regionId: outlet.regionId,
+                    quantity: line.qtyRequired,
+                    movementType: InventoryMovementType.RESERVED,
+                    createdBy: data.userId,
+                    updatedBy: data.userId,
+                }));
+
+                await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, tx);
+
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 6: Automatically Create Delivery Order...');
+                const doNo = data.purchaseOrderNo.startsWith('PO') 
+                    ? data.purchaseOrderNo.replace('PO', 'DO') 
+                    : `DO-${data.purchaseOrderNo}`;
+
+                await this.deliveryOrderRepository.createDeliveryOrder({
+                    doNo,
+                    purchaseOrderId: created!.id,
                     poNo: data.purchaseOrderNo,
-                    createdBy: createdBy,
-                    updatedBy: updatedBy,
+                    status: 'NEW',
+                    isEmergency,
+                    createdBy: data.userId,
+                    updatedBy: data.userId,
                 }, tx);
-                createdOrder = deliveryOrder;
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Delivery Order created successfully');
 
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Step 4: Create Delivery Order Items...');
-                const itemsToInsert: DeliveryOrderItemInsertType[] = resolvedLines.map((line) => ({
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 7: Create Delivery Order Items...');
+                const doItemsToInsert: DeliveryOrderItemInsertType[] = resolvedLines.map((line) => ({
+                    purchaseOrderId: created!.id,
                     purchaseOrderNo: data.purchaseOrderNo,
                     skuId: line.skuId,
                     qtyRequired: line.qtyRequired,
                     createdBy: data.userId,
                     updatedBy: data.userId,
                 }));
-                await this.deliveryOrderRepository.createDeliveryOrderItems(itemsToInsert, tx);
-                logger.info('ℹ️ [OutboundServices.createDeliveryOrder] Delivery Order Items created successfully');
+                await this.deliveryOrderRepository.createDeliveryOrderItems(doItemsToInsert, tx);
+            });
+            if (!created) throw new Error("Purchase order was not created.");
+            logger.info("✅ [OutboundServices.createPurchaseOrder] Purchase order and Delivery Order created");
+            return created;
+        } catch (error) {
+            logger.error("❌ [OutboundServices.createPurchaseOrder] Error:", error);
+            throw error;
+        }
+    }
 
-                // TODO: Step 5 - Update the PO with scheduledDeliveryDate (requires PO repository)
-                // await this.purchaseOrderRepository.updatePurchaseOrder(data.purchaseOrderNo, {
-                //     scheduledDeliveryDate: nextDelivery.deliveryDate,
-                //     updatedBy: data.userId,
-                // }, tx);
+    /**
+     * Marks a delivery order as completed.
+     */
+    async completeDeliveryOrder(data: CompleteDeliveryOrderData): Promise<DeliveryOrderType> {
+        logger.info('ℹ️ [OutboundServices.completeDeliveryOrder] Completing delivery order...');
+        try {
+            const updated = await this.deliveryOrderRepository.updateDeliveryOrder(data.id, {
+                status: 'COMPLETED',
+                updatedBy: data.userId,
+            });
+            logger.info('✅ [OutboundServices.completeDeliveryOrder] Delivery order completed');
+            return updated;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.completeDeliveryOrder] Error:', error);
+            throw error;
+        }
+    }
+
+    /** Allowed delivery order status flow: NEW -> PACKING -> SHIPPED (out from warehouse) -> DELIVERED. */
+    static readonly DO_STATUS_FLOW = ['NEW', 'PACKING', 'SHIPPED', 'DELIVERED'] as const;
+
+    /**
+     * Updates a delivery order (e.g. isEmergency, status).
+     * Status must follow the flow NEW -> PACKING -> DELIVERED.
+     */
+    async updateDeliveryOrder(
+        id: string,
+        data: { isEmergency?: boolean; status?: string; updatedBy: string }
+    ): Promise<DeliveryOrderType> {
+        logger.info('ℹ️ [OutboundServices.updateDeliveryOrder] Updating delivery order...');
+        try {
+            const payload: { isEmergency?: boolean; status?: string; updatedBy: string } = {
+                updatedBy: data.updatedBy,
+            };
+            if (data.isEmergency !== undefined) {
+                payload.isEmergency = data.isEmergency;
+            }
+            if (data.status !== undefined) {
+                const allowed = OutboundServices.DO_STATUS_FLOW;
+                if (!allowed.includes(data.status as typeof allowed[number])) {
+                    throw new Error(`Invalid status "${data.status}". Allowed: ${allowed.join(', ')}.`);
+                }
+                const existing = await this.deliveryOrderRepository.getDeliveryOrderById(id);
+                if (!existing) throw new Error('Delivery order not found');
+                const effectiveCurrent = existing.status === 'CREATED' ? 'NEW' : existing.status;
+                const currentIndex = allowed.indexOf(effectiveCurrent as typeof allowed[number]);
+                const nextIndex = allowed.indexOf(data.status as typeof allowed[number]);
+                if (currentIndex < 0 || nextIndex !== currentIndex + 1) {
+                    throw new Error(`Invalid transition: current status is "${existing.status}", next allowed is "${allowed[currentIndex + 1] ?? 'none'}".`);
+                }
+                payload.status = data.status;
+            }
+
+            const shouldTryCreateInvoice =
+                payload.status === "SHIPPED" || payload.status === "DELIVERED";
+            const updateTime = new Date();
+
+            const updated = await db.transaction(async (tx) => {
+                const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(id, payload, tx);
+
+                if (shouldTryCreateInvoice && isWithinMonthEndWindow(updateTime, { timeZone: "Asia/Kuala_Lumpur", daysFromEndInclusive: 2 })) {
+                    try {
+                        await invoicesRepository.createInvoiceFromDeliveryOrder(id, tx);
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        if (!message.includes("Invoice already exists for this delivery order")) {
+                            throw error;
+                        }
+                    }
+                }
+
+                return updatedDo;
             });
 
-            if (!createdOrder) {
-                throw new Error('Delivery order was not created.');
-            }
-            return createdOrder;
+            logger.info('✅ [OutboundServices.updateDeliveryOrder] Delivery order updated');
+            return updated;
         } catch (error) {
-            logger.error('❌ [OutboundServices.createDeliveryOrder] Error:', error);
+            logger.error('❌ [OutboundServices.updateDeliveryOrder] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Advances a delivery order to the next step: NEW -> PACKING -> SHIPPED (out from warehouse) -> DELIVERED.
+     * When DO advances to SHIPPED, the linked Purchase Order is updated to status SHIPPED.
+     */
+    async advanceDeliveryOrderStatus(data: { id: string; userId: string }): Promise<DeliveryOrderType> {
+        logger.info('ℹ️ [OutboundServices.advanceDeliveryOrderStatus] Advancing delivery order status...');
+        try {
+            const existing = await this.deliveryOrderRepository.getDeliveryOrderById(data.id);
+            if (!existing) throw new Error('Delivery order not found');
+            const flow = OutboundServices.DO_STATUS_FLOW;
+            const effectiveStatus = existing.status === 'CREATED' ? 'NEW' : existing.status;
+            const currentIndex = flow.indexOf(effectiveStatus as typeof flow[number]);
+            if (currentIndex < 0) {
+                throw new Error(`Delivery order has status "${existing.status}". Allowed flow: ${flow.join(' -> ')}.`);
+            }
+            if (currentIndex >= flow.length - 1) {
+                throw new Error('Delivery order is already DELIVERED; no next step.');
+            }
+            const nextStatus = flow[currentIndex + 1];
+            // const updateTime = new Date();
+            const updateTime = new Date('2026-03-30');
+
+            const updated = await db.transaction(async (tx) => {
+                const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(data.id, {
+                    status: nextStatus,
+                    updatedBy: data.userId,
+                }, tx);
+
+                if (nextStatus === 'SHIPPED') {
+                    await this.purchaseOrdersRepository.updatePurchaseOrder(existing.purchaseOrderId, {
+                        status: 'SHIPPED',
+                        updatedBy: data.userId,
+                    }, tx);
+                    logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] PO updated to SHIPPED');
+                }
+
+                if ((nextStatus === "SHIPPED" || nextStatus === "DELIVERED") && isWithinMonthEndWindow(updateTime, { timeZone: "Asia/Kuala_Lumpur", daysFromEndInclusive: 2 })) {
+                    try {
+                        await invoicesRepository.createInvoiceFromDeliveryOrder(data.id, tx);
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        if (!message.includes("Invoice already exists for this delivery order")) {
+                            throw error;
+                        }
+                    }
+                }
+
+                return updatedDo;
+            });
+
+            logger.info(`✅ [OutboundServices.advanceDeliveryOrderStatus] DO status advanced to ${nextStatus}`);
+            return updated;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.advanceDeliveryOrderStatus] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Applies emergency delivery to an existing purchase order.
+     * Re-computes the scheduledDeliveryDate ignoring cutoff rules, moving it to
+     * the next available delivery day for the outlet's region.
+     */
+    async applyEmergencyDelivery(poId: string, userId: string): Promise<PurchaseOrderType> {
+        logger.info('ℹ️ [OutboundServices.applyEmergencyDelivery] Applying emergency delivery...');
+        try {
+            const poResult = await this.purchaseOrdersRepository.getPurchaseOrders(
+                { id: poId },
+                { pageSize: 1, pageNumber: 1 }
+            );
+            const po = poResult.query[0];
+            if (!po) throw new Error('Purchase order not found');
+
+            const outlet = await this.outletsRepository.getOutletById(po.outletId);
+            if (!outlet || !outlet.regionId) throw new Error('Outlet not found or has no region assigned');
+
+            const nextDelivery = await this.computeNextDeliveryDateEmergency(outlet.regionId);
+            if (!nextDelivery) throw new Error(`No delivery schedules found for region "${outlet.regionId}"`);
+
+            const updated = await this.purchaseOrdersRepository.updatePurchaseOrder(poId, {
+                scheduledDeliveryDate: nextDelivery.deliveryDate,
+                updatedBy: userId,
+            });
+            logger.info(`✅ [OutboundServices.applyEmergencyDelivery] Scheduled delivery updated to ${nextDelivery.deliveryDate.toISOString()}`);
+            return updated;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.applyEmergencyDelivery] Error:', error);
             throw error;
         }
     }
@@ -150,8 +369,8 @@ export class OutboundServices {
     ): Promise<void> {
         if (lines.length === 0) return;
         const skuIds = [...new Set(lines.map((l) => l.skuId))];
-        const balances = await this.inventoryRepository.getBalancesBySkuIds(skuIds, tx);
-        const bySkuId = new Map(balances.map((b) => [b.skuId, b]));
+        const balances = await this.inventoryBalanceRepository.getInventoryBalanceBySkuIds(skuIds);
+        const bySkuId = new Map(balances?.map((b) => [b.skuId, b]) ?? []);
 
         const parseNum = (v: string | number): number => (typeof v === "number" ? v : parseFloat(String(v)) || 0);
 
@@ -248,5 +467,54 @@ export class OutboundServices {
         }
 
         return validDates;
+    }
+
+    /**
+     * Compute the next delivery date for emergency orders (bypasses cutoff).
+     * Returns the very next delivery day for the region, regardless of cutoff time.
+     * 
+     * @param regionId - The region ID
+     * @param orderCreatedAt - When the order was placed (defaults to now)
+     * @returns The next delivery date (ignoring cutoff), or null if no schedules exist
+     */
+    async computeNextDeliveryDateEmergency(
+        regionId: string,
+        orderCreatedAt: Date = new Date()
+    ): Promise<{ deliveryDate: Date; schedule: DeliveryScheduleWithRegion } | null> {
+        const schedules = await this.deliveryScheduleRepository.getSchedulesByRegion(regionId);
+        if (schedules.length === 0) return null;
+
+        const candidates: { deliveryDate: Date; schedule: DeliveryScheduleWithRegion }[] = [];
+
+        for (const schedule of schedules) {
+            const deliveryDate = this.getNextDeliveryDateForScheduleIgnoringCutoff(schedule, orderCreatedAt);
+            candidates.push({ deliveryDate, schedule });
+        }
+
+        candidates.sort((a, b) => a.deliveryDate.getTime() - b.deliveryDate.getTime());
+        return candidates[0];
+    }
+
+    /**
+     * Get the next delivery date for a schedule, ignoring cutoff time.
+     * Used for emergency deliveries where we want the very next delivery day.
+     */
+    private getNextDeliveryDateForScheduleIgnoringCutoff(
+        schedule: DeliveryScheduleWithRegion,
+        orderCreatedAt: Date
+    ): Date {
+        const { dayOfWeek } = schedule;
+        const now = new Date(orderCreatedAt);
+
+        const currentDayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+
+        let daysUntilDelivery = dayOfWeek - currentDayOfWeek;
+        if (daysUntilDelivery <= 0) daysUntilDelivery += 7;
+
+        const deliveryDate = new Date(now);
+        deliveryDate.setDate(now.getDate() + daysUntilDelivery);
+        deliveryDate.setHours(0, 0, 0, 0);
+
+        return deliveryDate;
     }
 }

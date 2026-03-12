@@ -7,7 +7,8 @@
 import { db } from '@/db';
 import { SkuTable } from './sku.model';
 import { SuppliersTable } from './suppliers.model';
-import { eq, and, like, inArray } from 'drizzle-orm';
+import { InventoryBalancesTable } from '@/features/inventory/inventory-balance/inventory.model';
+import { eq, and, like, inArray, asc, desc } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
@@ -25,6 +26,10 @@ export type SkuFilter = {
   skuCode?: string | string[];
   skuDescription?: string;
   isActive?: boolean;
+  /** Sort field: SKU_CODE, SKU_DESCRIPTION, UPDATED_AT, CREATED_AT. Default: SKU_CODE */
+  sortBy?: string;
+  /** ASC or DESC. Default: ASC */
+  sortOrder?: string;
 };
 
 export class SkuRepositoryClass {
@@ -65,10 +70,19 @@ export class SkuRepositoryClass {
         whereCondition.push(eq(SkuTable.isActive, filter.isActive));
       }
 
+      const sortOrderFn = filter.sortOrder?.toUpperCase() === 'DESC' ? desc : asc;
+      const sortBy = (filter.sortBy?.toUpperCase() ?? 'SKU_CODE') as string;
+      const orderByColumn =
+        sortBy === 'SKU_DESCRIPTION' ? SkuTable.skuDescription
+        : sortBy === 'UPDATED_AT' ? SkuTable.updatedAt
+        : sortBy === 'CREATED_AT' ? SkuTable.createdAt
+        : SkuTable.skuCode;
+
       const baseQuery = client
         .select()
         .from(SkuTable)
-        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+        .orderBy(sortOrderFn(orderByColumn));
 
       // If pagination params not provided, return all data
       if (!paginationParams || (!paginationParams.pageSize && !paginationParams.pageNumber)) {
@@ -183,6 +197,22 @@ export class SkuRepositoryClass {
         .insert(SkuTable)
         .values(data)
         .returning();
+
+      if (!sku) {
+        throw new Error('SKU insert did not return the created row');
+      }
+
+      // Create initial inventory balance record with zero on-hand quantity
+      logger.info('ℹ️ [SkuRepository.createSku] Creating initial inventory balance...');
+      await client
+        .insert(InventoryBalancesTable)
+        .values({
+          skuId: sku.skuId,
+          onHandQty: '0',
+          lossQty: '0',
+          reservedQty: '0',
+        });
+      logger.info('✅ [SkuRepository.createSku] Initial inventory balance created');
 
       logger.info('✅ [SkuRepository.createSku] SKU created successfully');
       return sku;

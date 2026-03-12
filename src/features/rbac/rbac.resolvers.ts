@@ -7,7 +7,9 @@
  * Type definitions are in rbac.typeDefs.ts
  */
 
-import { rbacRepository } from '@/composition-root';
+import { authRepository, rbacRepository } from '@/composition-root';
+import { db } from '@/db';
+import { RoleCode } from '@/features/rbac/rbac.model';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -136,19 +138,22 @@ export const resolvers = {
 
       for (const row of modules) {
         const existing = moduleMap.get(row.id);
-        
+
         if (existing) {
-          existing.permissions.push({
-            permissionId: row.permissionId,
-            moduleId: row.id,
-            permissionType: row.permissionType,
-            description: row.description,
-            status: row.status,
-            createdAt: row.createdAt.toISOString(),
-            updatedAt: row.updatedAt.toISOString(),
-            createdBy: row.createdBy,
-            updatedBy: row.updatedBy,
-          });
+          // Only push permission if the left join produced a real row (not null)
+          if (row.permissionId) {
+            existing.permissions.push({
+              permissionId: row.permissionId,
+              moduleId: row.id,
+              permissionType: row.permissionType!,
+              description: row.description,
+              status: row.status,
+              createdAt: row.createdAt.toISOString(),
+              updatedAt: row.updatedAt.toISOString(),
+              createdBy: row.createdBy,
+              updatedBy: row.updatedBy,
+            });
+          }
         } else {
           moduleMap.set(row.id, {
             moduleId: row.id,
@@ -158,17 +163,17 @@ export const resolvers = {
             updatedAt: row.updatedAt.toISOString(),
             createdBy: row.createdBy,
             updatedBy: row.updatedBy,
-            permissions: [{
+            permissions: row.permissionId ? [{
               permissionId: row.permissionId,
               moduleId: row.id,
-              permissionType: row.permissionType,
+              permissionType: row.permissionType!,
               description: row.description,
               status: row.status,
               createdAt: row.createdAt.toISOString(),
               updatedAt: row.updatedAt.toISOString(),
               createdBy: row.createdBy,
               updatedBy: row.updatedBy,
-            }],
+            }] : [],
           });
         }
       }
@@ -211,6 +216,122 @@ export const resolvers = {
   },
 
   Mutation: {
+    /**
+     * Create a new module (uses repository) — also auto-creates default permissions
+     */
+    createModule: async (_: unknown, { input }: { input: {
+      moduleName: string;
+      status?: string;
+      createdBy: string;
+      updatedBy: string;
+    }}) => {
+      const defaultPermissionTypes = ['Read', 'Create', 'Update', 'Delete'];
+
+      const { module, createdPermissions } = await db.transaction(async (tx) => {
+        const module = await rbacRepository.createModule({
+          moduleName: input.moduleName,
+          status: input.status || 'active',
+          createdBy: input.createdBy,
+          updatedBy: input.updatedBy,
+        }, tx);
+
+        const createdPermissions = await Promise.all(
+          defaultPermissionTypes.map((permissionType) =>
+            rbacRepository.createPermission({
+              moduleId: module.moduleId,
+              permissionType,
+              status: 'active',
+              createdBy: input.createdBy,
+              updatedBy: input.updatedBy,
+            }, tx)
+          )
+        );
+
+        // Auto-assign all new permissions to Super Admin role
+        const superAdminRole = await authRepository.getRoleByName(RoleCode.SUPER_ADMIN);
+        if (superAdminRole) {
+          await rbacRepository.createRolePermission(
+            createdPermissions.map((p) => ({
+              roleId: superAdminRole.roleId,
+              permissionId: p.permissionId,
+              createdBy: input.createdBy,
+              updatedBy: input.updatedBy,
+            })),
+            tx
+          );
+        }
+
+        return { module, createdPermissions };
+      });
+
+      return {
+        moduleId: module.moduleId,
+        moduleName: module.moduleName,
+        status: module.status,
+        createdAt: module.createdAt.toISOString(),
+        updatedAt: module.updatedAt.toISOString(),
+        createdBy: module.createdBy,
+        updatedBy: module.updatedBy,
+        permissions: createdPermissions.map((p) => ({
+          permissionId: p.permissionId,
+          moduleId: p.moduleId,
+          permissionType: p.permissionType,
+          description: p.description ?? null,
+          status: p.status,
+          createdAt: p.createdAt.toISOString(),
+          updatedAt: p.updatedAt.toISOString(),
+          createdBy: p.createdBy,
+          updatedBy: p.updatedBy,
+        })),
+      };
+    },
+
+    /**
+     * Update an existing module (uses repository)
+     */
+    updateModule: async (_: unknown, { id, input }: { id: string; input: {
+      moduleName?: string;
+      status?: string;
+      updatedBy: string;
+    }}) => {
+      const updateData: Record<string, unknown> = {
+        updatedBy: input.updatedBy,
+        updatedAt: new Date(),
+      };
+
+      if (input.moduleName !== undefined) updateData.moduleName = input.moduleName;
+      if (input.status !== undefined) updateData.status = input.status;
+
+      const module = await rbacRepository.updateModule(updateData, id);
+      if (!module) return null;
+
+      const rows = await rbacRepository.getModule({ moduleId: module.moduleId });
+      const permissions = rows
+        .filter((r: any) => r.permissionId)
+        .map((r: any) => ({
+          permissionId: r.permissionId,
+          moduleId: module.moduleId,
+          permissionType: r.permissionType,
+          description: r.description,
+          status: r.status,
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+          createdBy: r.createdBy,
+          updatedBy: r.updatedBy,
+        }));
+
+      return {
+        moduleId: module.moduleId,
+        moduleName: module.moduleName,
+        status: module.status,
+        createdAt: module.createdAt.toISOString(),
+        updatedAt: module.updatedAt.toISOString(),
+        createdBy: module.createdBy,
+        updatedBy: module.updatedBy,
+        permissions,
+      };
+    },
+
     /**
      * Create a new role (uses repository)
      */

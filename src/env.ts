@@ -32,15 +32,18 @@ export const env = createEnv({
     REDIS_DB: z.string().transform(val => Number(val)).pipe(z.number().min(1).max(10)).optional(),
 
     // SMTP stuffs
-    SMTP_HOST: z.string().optional(),
-    SMTP_PORT: z.string().transform(val => Number(val)).pipe(z.number().min(1).max(65535)).optional(),
-    SMTP_USER: z.string().optional(),
-    SMTP_PASSWORD: z.string().optional(),
+    SMTP_HOST: z.string(),
+    SMTP_PORT: z.string().transform(val => Number(val)).pipe(z.number().min(1).max(65535)),
+    SMTP_USER: z.string(),
+    SMTP_PASSWORD: z.string(),
     SMTP_FROM: z.string().optional(),
     FRONTEND_URL: z.url().optional(),
     COMPANY_NAME: z.string().optional(),
     COMPANY_EMAIL: z.string().optional(),
     COMPANY_ADDRESS: z.string().optional(),
+    // Invoice cron toggle (when not \"true\", cron does not start)
+    INVOICES_CRON_ENABLED: z.string().optional(),
+    SYSTEM_USER_UUID: z.uuid(),
   },
  
   /**

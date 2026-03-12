@@ -8,6 +8,8 @@
 import { outletsRepository } from '@/composition-root';
 import { OutletFilter } from './outlets.repository';
 import { withAudit } from '../audit-log/audit.wrapper';
+import type { GraphQLContext } from '@/graphql/context';
+import type { RegionType } from './region.model';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -39,11 +41,34 @@ function transformOutlet(outlet: {
   };
 }
 
+/** Transforms region DB row to GraphQL Region shape. */
+function transformRegion(region: RegionType) {
+  return {
+    regionId: region.regionId,
+    regionName: region.regionName,
+    regionCode: region.regionCode,
+    createdAt: region.createdAt.toISOString(),
+    updatedAt: region.updatedAt.toISOString(),
+    createdBy: region.createdBy,
+    updatedBy: region.updatedBy,
+  };
+}
+
 // ============================================
 // RESOLVERS
 // ============================================
 
 export const resolvers = {
+  /** Field resolvers for Outlet type. */
+  Outlet: {
+    /** Resolves Outlet.region using DataLoader to avoid N+1. */
+    region: async (parent: { regionId: string | null }, _args: unknown, context: GraphQLContext) => {
+      if (!parent.regionId) return null;
+      const region = await context.getRegionLoader().load(parent.regionId);
+      return region ? transformRegion(region) : null;
+    },
+  },
+
   Query: {
     /**
      * Get outlets with optional filtering and pagination

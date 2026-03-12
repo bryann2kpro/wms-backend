@@ -25,6 +25,7 @@ import { env } from "./env";
 import { exec } from "child_process";
 import { initAccounts } from "./scripts/init-accounts";
 import { initMasterData } from "./scripts/init-master-data";
+import { startInvoicesCron } from "./features/invoicing/invoices.cron";
 
 const app = express();
 
@@ -132,17 +133,41 @@ async function startApolloServer(): Promise<void> {
         includeCookies: true,
       }),
     ],
-    formatError: (formattedError, error) => {
-      // Log errors for debugging
+    formatError: (formattedError) => {
+      // Log full error for debugging
       logger.error('[GraphQL Error]', {
         message: formattedError.message,
         code: formattedError.extensions?.code,
         path: formattedError.path,
       });
-      
-      // Return formatted error to client
+
+      const rawMessage = formattedError.message;
+      const path = formattedError.path as string[] | undefined;
+      const firstOperation = path?.[0];
+
+      // Replace DB/query error messages with human-readable text for the frontend
+      const isDbOrQueryError =
+        typeof rawMessage === 'string' &&
+        (rawMessage.includes('Failed query') ||
+          rawMessage.includes('insert into') ||
+          rawMessage.includes('update ') ||
+          rawMessage.includes('params:'));
+
+      const operationMessages: Record<string, string> = {
+        createOutlet: 'Unable to create outlet. Please check the details (e.g. outlet code or region) and try again.',
+        updateOutlet: 'Unable to update outlet. Please check the details and try again.',
+        assignOutletToRegion: 'Unable to assign outlet to region. Please try again.',
+      };
+
+      const clientMessage =
+        isDbOrQueryError && firstOperation && operationMessages[firstOperation]
+          ? operationMessages[firstOperation]
+          : isDbOrQueryError
+            ? 'Something went wrong. Please try again or contact support.'
+            : rawMessage;
+
       return {
-        message: formattedError.message,
+        message: clientMessage,
         extensions: {
           code: formattedError.extensions?.code,
         },
@@ -190,6 +215,8 @@ ViteExpress.listen(app, Number(PORT), async () => {
     logger.info('🚀 Initializing master data...');
     await initMasterData();
     logger.info('✅ Master data initialized successfully');
+
+    startInvoicesCron();
   } catch (error) {
     console.error('❌ Error during initialization:', error);
   }
