@@ -159,10 +159,13 @@ export class OutboundServices {
     async completeDeliveryOrder(data: CompleteDeliveryOrderData): Promise<DeliveryOrderType> {
         logger.info('ℹ️ [OutboundServices.completeDeliveryOrder] Completing delivery order...');
         try {
-            const updated = await this.deliveryOrderRepository.updateDeliveryOrder(data.id, {
-                status: 'COMPLETED',
-                updatedBy: data.userId,
-            });
+            const updated = await this.deliveryOrderRepository.updateDeliveryOrder(
+                data.id,
+                {
+                    status: 'COMPLETED',
+                    updatedBy: data.userId,
+                },
+            );
             logger.info('✅ [OutboundServices.completeDeliveryOrder] Delivery order completed');
             return updated;
         } catch (error) {
@@ -211,7 +214,12 @@ export class OutboundServices {
             const updateTime = new Date();
 
             const updated = await db.transaction(async (tx) => {
-                const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(id, payload, tx);
+                const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(
+                    id,
+                    payload,
+                    undefined,
+                    tx,
+                );
 
                 if (shouldTryCreateInvoice && isWithinMonthEndWindow(updateTime, { timeZone: "Asia/Kuala_Lumpur", daysFromEndInclusive: 2 })) {
                     try {
@@ -258,16 +266,26 @@ export class OutboundServices {
             const updateTime = new Date('2026-03-30');
 
             const updated = await db.transaction(async (tx) => {
-                const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(data.id, {
-                    status: nextStatus,
-                    updatedBy: data.userId,
-                }, tx);
+                const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(
+                    data.id,
+                    {
+                        status: nextStatus,
+                        updatedBy: data.userId,
+                    },
+                    undefined,
+                    tx,
+                );
 
                 if (nextStatus === 'SHIPPED') {
-                    await this.purchaseOrdersRepository.updatePurchaseOrder(existing.purchaseOrderId, {
-                        status: 'SHIPPED',
-                        updatedBy: data.userId,
-                    }, tx);
+                    await this.purchaseOrdersRepository.updatePurchaseOrder(
+                        existing.purchaseOrderId,
+                        {
+                            status: 'SHIPPED',
+                            updatedBy: data.userId,
+                        },
+                        undefined,
+                        tx,
+                    );
                     logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] PO updated to SHIPPED');
                 }
 
