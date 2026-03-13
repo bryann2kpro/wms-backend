@@ -17,6 +17,7 @@ const invoiceFilterSchema = z
     doId: z.union([z.string().uuid(), z.array(z.string().uuid())]).optional(),
     poId: z.union([z.string().uuid(), z.array(z.string().uuid())]).optional(),
     status: z.union([z.string().min(1), z.array(z.string().min(1))]).optional(),
+    search: z.string().min(1).optional(),
     dateIssuedFrom: z.string().optional(),
     dateIssuedTo: z.string().optional(),
     createdAtFrom: z.string().optional(),
@@ -25,6 +26,17 @@ const invoiceFilterSchema = z
   .transform((data): InvoiceFilter => {
     return Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)) as InvoiceFilter;
   });
+
+function serializeInvoice(inv: Record<string, unknown>) {
+  return {
+    ...inv,
+    createdAt: (inv.createdAt as Date)?.toISOString?.() ?? String(inv.createdAt),
+    updatedAt: (inv.updatedAt as Date)?.toISOString?.() ?? String(inv.updatedAt),
+    issuedAt: inv.issuedAt ? (inv.issuedAt as Date)?.toISOString?.() ?? String(inv.issuedAt) : null,
+    dateIssued: inv.dateIssued ? (inv.dateIssued as Date)?.toISOString?.() ?? String(inv.dateIssued) : null,
+    doNo: (inv.doNo as string | null) ?? null,
+  };
+}
 
 export const resolvers = {
   Invoice: {
@@ -35,6 +47,7 @@ export const resolvers = {
         invoiceId: item.invoiceId,
         itemNo: item.itemNo ?? null,
         skuId: item.skuId,
+        skuCode: "skuCode" in item ? (item.skuCode as string | null) ?? null : null,
         description: item.description ?? null,
         qty: item.qty,
         unitPrice: item.unitPrice,
@@ -53,7 +66,7 @@ export const resolvers = {
     invoices: async (
       _: unknown,
       args: {
-        filter?: InvoiceFilter & { page?: number; pageSize?: number; pageNumber?: number };
+        filter?: InvoiceFilter & { page?: number; pageSize?: number; pageNumber?: number; search?: string };
         pageSize?: number;
         pageNumber?: number;
       },
@@ -68,18 +81,13 @@ export const resolvers = {
 
         const result = await invoicesRepository.getInvoices(filter, paginationParams);
         return {
-          query: result.query.map((inv) => ({
-            ...inv,
-            createdAt: inv.createdAt?.toISOString?.() ?? String(inv.createdAt),
-            updatedAt: inv.updatedAt?.toISOString?.() ?? String(inv.updatedAt),
-            issuedAt: inv.issuedAt ? (inv.issuedAt as unknown as Date).toISOString?.() ?? String(inv.issuedAt) : null,
-            dateIssued: inv.dateIssued ? (inv.dateIssued as unknown as Date).toISOString?.() ?? String(inv.dateIssued) : null,
-          })),
+          query: result.query.map((inv) => serializeInvoice(inv as unknown as Record<string, unknown>)),
           pagination: result.pagination,
+          summary: result.summary,
         };
       } catch (error) {
         logger.error("❌ [invoices.resolvers.invoices] Error:", error);
-        return false;
+        return { query: [], pagination: { count: 0, totalCount: 0, currentPage: 1, totalPages: 1, hasNextPage: false, hasPrevPage: false }, summary: { issued: 0, sent: 0, cancelled: 0, totalAmount: "0" } };
       }
     },
 
@@ -87,13 +95,7 @@ export const resolvers = {
       try {
         const row = await invoicesRepository.getInvoiceById(args.id);
         if (!row) return null;
-        return {
-          ...row,
-          createdAt: row.createdAt?.toISOString?.() ?? String(row.createdAt),
-          updatedAt: row.updatedAt?.toISOString?.() ?? String(row.updatedAt),
-          issuedAt: row.issuedAt ? (row.issuedAt as unknown as Date).toISOString?.() ?? String(row.issuedAt) : null,
-          dateIssued: row.dateIssued ? (row.dateIssued as unknown as Date).toISOString?.() ?? String(row.dateIssued) : null,
-        };
+        return serializeInvoice(row as unknown as Record<string, unknown>);
       } catch (error) {
         logger.error("❌ [invoices.resolvers.invoice] Error:", error);
         return null;
@@ -104,18 +106,24 @@ export const resolvers = {
       try {
         const row = await invoicesRepository.getInvoiceByDoId(args.doId);
         if (!row) return null;
-        return {
-          ...row,
-          createdAt: row.createdAt?.toISOString?.() ?? String(row.createdAt),
-          updatedAt: row.updatedAt?.toISOString?.() ?? String(row.updatedAt),
-          issuedAt: row.issuedAt ? (row.issuedAt as unknown as Date).toISOString?.() ?? String(row.issuedAt) : null,
-          dateIssued: row.dateIssued ? (row.dateIssued as unknown as Date).toISOString?.() ?? String(row.dateIssued) : null,
-        };
+        return serializeInvoice(row as unknown as Record<string, unknown>);
       } catch (error) {
         logger.error("❌ [invoices.resolvers.invoiceByDoId] Error:", error);
         return null;
       }
     },
   },
-};
 
+  Mutation: {
+    updateInvoiceStatus: async (_: unknown, args: { id: string; status: string }) => {
+      try {
+        const row = await invoicesRepository.updateInvoiceStatus(args.id, args.status);
+        if (!row) return null;
+        return serializeInvoice(row as unknown as Record<string, unknown>);
+      } catch (error) {
+        logger.error("❌ [invoices.resolvers.updateInvoiceStatus] Error:", error);
+        return null;
+      }
+    },
+  },
+};

@@ -15,6 +15,8 @@ import {
   InvoiceFilter,
   InvoiceItemType,
   InvoiceItemInsertType,
+  InvoiceSummaryData,
+  InvoiceWithDoNo,
 } from "./invoices.model";
 import {
   DeliveryOrdersTable,
@@ -25,7 +27,7 @@ import { SkuTable } from "@/features/master-data/sku.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
-import { eq, and, like, inArray, gte, lte, or, sql, isNull } from "drizzle-orm";
+import { eq, and, like, inArray, gte, lte, or, sql, isNull, count } from "drizzle-orm";
 import { RunningNoRepository } from "@/features/running-no/running-no.repository";
 
 /** Db or transaction client for methods that can run in or out of a transaction */
@@ -163,74 +165,191 @@ export class InvoicesRepositoryClass {
   async getInvoices(
     filter: InvoiceFilter,
     paginationParams: PaginationParams
-  ): Promise<PaginatedResponse<InvoiceType>> {
+  ): Promise<PaginatedResponse<InvoiceWithDoNo> & { summary: InvoiceSummaryData }> {
     try {
       logger.info("ℹ️ [InvoicesRepository.getInvoices] Getting invoices...");
-      const whereCondition: ReturnType<typeof eq>[] = [];
+
+      const conditions: ReturnType<typeof eq>[] = [];
 
       if (Array.isArray(filter.id)) {
-        whereCondition.push(inArray(InvoicesTable.id, filter.id));
+        conditions.push(inArray(InvoicesTable.id, filter.id));
       } else if (filter.id) {
-        whereCondition.push(eq(InvoicesTable.id, filter.id));
+        conditions.push(eq(InvoicesTable.id, filter.id));
       }
       if (filter.invoiceNo) {
-        whereCondition.push(like(InvoicesTable.invoiceNo, `%${filter.invoiceNo}%`));
+        conditions.push(like(InvoicesTable.invoiceNo, `%${filter.invoiceNo}%`));
       }
       if (Array.isArray(filter.doId)) {
-        whereCondition.push(inArray(InvoicesTable.doId, filter.doId));
+        conditions.push(inArray(InvoicesTable.doId, filter.doId));
       } else if (filter.doId) {
-        whereCondition.push(eq(InvoicesTable.doId, filter.doId));
+        conditions.push(eq(InvoicesTable.doId, filter.doId));
       }
       if (Array.isArray(filter.poId)) {
-        whereCondition.push(inArray(InvoicesTable.poId, filter.poId));
+        conditions.push(inArray(InvoicesTable.poId, filter.poId));
       } else if (filter.poId) {
-        whereCondition.push(eq(InvoicesTable.poId, filter.poId));
+        conditions.push(eq(InvoicesTable.poId, filter.poId));
       }
       if (Array.isArray(filter.status)) {
-        whereCondition.push(inArray(InvoicesTable.status, filter.status));
+        conditions.push(inArray(InvoicesTable.status, filter.status));
       } else if (filter.status) {
-        whereCondition.push(eq(InvoicesTable.status, filter.status));
+        conditions.push(eq(InvoicesTable.status, filter.status));
+      }
+      if (filter.search) {
+        const term = `%${filter.search}%`;
+        conditions.push(
+          or(
+            like(InvoicesTable.invoiceNo, term),
+            like(DeliveryOrdersTable.doNo, term),
+          ) as ReturnType<typeof eq>
+        );
       }
       if (filter.dateIssuedFrom) {
-        whereCondition.push(gte(InvoicesTable.dateIssued, new Date(filter.dateIssuedFrom)));
+        conditions.push(gte(InvoicesTable.dateIssued, new Date(filter.dateIssuedFrom)));
       }
       if (filter.dateIssuedTo) {
-        whereCondition.push(lte(InvoicesTable.dateIssued, new Date(filter.dateIssuedTo)));
+        conditions.push(lte(InvoicesTable.dateIssued, new Date(filter.dateIssuedTo)));
       }
       if (filter.createdAtFrom) {
-        whereCondition.push(gte(InvoicesTable.createdAt, new Date(filter.createdAtFrom)));
+        conditions.push(gte(InvoicesTable.createdAt, new Date(filter.createdAtFrom)));
       }
       if (filter.createdAtTo) {
-        whereCondition.push(lte(InvoicesTable.createdAt, new Date(filter.createdAtTo)));
+        conditions.push(lte(InvoicesTable.createdAt, new Date(filter.createdAtTo)));
       }
 
-      const baseQuery = db
-        .select()
-        .from(InvoicesTable)
-        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
       const pageSize = paginationParams.pageSize ?? 10;
       const pageNumber = paginationParams.pageNumber ?? 1;
-      const totalCount = (await baseQuery).length;
-      const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
-      const data = await paginatedQuery.query;
+      const offset = (pageNumber - 1) * pageSize;
+
+      // Count query
+      const [countRow] = await db
+        .select({ total: count() })
+        .from(InvoicesTable)
+        .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
+        .where(whereClause);
+      const totalCount = countRow?.total ?? 0;
+
+      // Data query with join
+      const rows = await db
+        .select({
+          id: InvoicesTable.id,
+          organizationId: InvoicesTable.organizationId,
+          invoiceNo: InvoicesTable.invoiceNo,
+          doId: InvoicesTable.doId,
+          poId: InvoicesTable.poId,
+          poNo: InvoicesTable.poNo,
+          billingAddressId: InvoicesTable.billingAddressId,
+          deliveryAddressId: InvoicesTable.deliveryAddressId,
+          customerAccount: InvoicesTable.customerAccount,
+          salesExecutive: InvoicesTable.salesExecutive,
+          pageNo: InvoicesTable.pageNo,
+          dateIssued: InvoicesTable.dateIssued,
+          totalExclTax: InvoicesTable.totalExclTax,
+          taxAmount: InvoicesTable.taxAmount,
+          totalInclTax: InvoicesTable.totalInclTax,
+          taxRate: InvoicesTable.taxRate,
+          status: InvoicesTable.status,
+          issuedBy: InvoicesTable.issuedBy,
+          issuedAt: InvoicesTable.issuedAt,
+          createdAt: InvoicesTable.createdAt,
+          updatedAt: InvoicesTable.updatedAt,
+          createdBy: InvoicesTable.createdBy,
+          updatedBy: InvoicesTable.updatedBy,
+          doNo: DeliveryOrdersTable.doNo,
+        })
+        .from(InvoicesTable)
+        .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
+        .where(whereClause)
+        .orderBy(sql`${InvoicesTable.createdAt} DESC`)
+        .limit(pageSize)
+        .offset(offset);
+
+      // Summary counts (across all invoices, ignoring current filter except status)
+      const summaryRows = await db
+        .select({
+          status: InvoicesTable.status,
+          cnt: count(),
+          total: sql<string>`COALESCE(SUM(${InvoicesTable.totalInclTax}), '0')`,
+        })
+        .from(InvoicesTable)
+        .groupBy(InvoicesTable.status);
+
+      const summary: InvoiceSummaryData = { issued: 0, sent: 0, cancelled: 0, totalAmount: "0" };
+      let grandTotal = 0;
+      for (const row of summaryRows) {
+        const s = row.status?.toUpperCase();
+        if (s === "ISSUED" || s === "GENERATED" || s === "DRAFT") summary.issued += row.cnt;
+        else if (s === "SENT") summary.sent += row.cnt;
+        else if (s === "CANCELLED") summary.cancelled += row.cnt;
+        grandTotal += parseFloat(row.total ?? "0");
+      }
+      summary.totalAmount = grandTotal.toFixed(2);
+
+      const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
       logger.info("✅ [InvoicesRepository.getInvoices] Invoices fetched successfully");
-      return { query: data as InvoiceType[], pagination: paginatedQuery.pagination };
+      return {
+        query: rows as InvoiceWithDoNo[],
+        pagination: {
+          count: rows.length,
+          totalCount,
+          currentPage: pageNumber,
+          totalPages,
+          hasNextPage: pageNumber < totalPages,
+          hasPrevPage: pageNumber > 1,
+        },
+        summary,
+      };
     } catch (error) {
       logger.error("❌ [InvoicesRepository.getInvoices] Error:", error);
       throw error;
     }
   }
 
-  async getInvoiceItemsByInvoiceId(invoiceId: string, tx?: DbClient): Promise<InvoiceItemType[]> {
+  async updateInvoiceStatus(id: string, status: string): Promise<InvoiceType | null> {
+    try {
+      logger.info(`ℹ️ [InvoicesRepository.updateInvoiceStatus] Updating invoice ${id} to status ${status}...`);
+      const [row] = await db
+        .update(InvoicesTable)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(InvoicesTable.id, id))
+        .returning();
+      if (!row) return null;
+      logger.info("✅ [InvoicesRepository.updateInvoiceStatus] Invoice status updated successfully");
+      return row;
+    } catch (error) {
+      logger.error("❌ [InvoicesRepository.updateInvoiceStatus] Error:", error);
+      throw error;
+    }
+  }
+
+  async getInvoiceItemsByInvoiceId(
+    invoiceId: string,
+    tx?: DbClient
+  ): Promise<(InvoiceItemType & { skuCode: string | null })[]> {
     try {
       const dbClient = tx ?? db;
       const rows = await dbClient
-        .select()
+        .select({
+          id: InvoiceItemsTable.id,
+          invoiceId: InvoiceItemsTable.invoiceId,
+          itemNo: InvoiceItemsTable.itemNo,
+          skuId: InvoiceItemsTable.skuId,
+          description: InvoiceItemsTable.description,
+          qty: InvoiceItemsTable.qty,
+          unitPrice: InvoiceItemsTable.unitPrice,
+          subTotal: InvoiceItemsTable.subTotal,
+          createdAt: InvoiceItemsTable.createdAt,
+          updatedAt: InvoiceItemsTable.updatedAt,
+          createdBy: InvoiceItemsTable.createdBy,
+          updatedBy: InvoiceItemsTable.updatedBy,
+          skuCode: SkuTable.skuCode,
+        })
         .from(InvoiceItemsTable)
+        .leftJoin(SkuTable, eq(InvoiceItemsTable.skuId, SkuTable.skuId))
         .where(eq(InvoiceItemsTable.invoiceId, invoiceId));
-      return rows;
+      return rows.map((r) => ({ ...r, skuCode: r.skuCode ?? null }));
     } catch (error) {
       logger.error("❌ [InvoicesRepository.getInvoiceItemsByInvoiceId] Error:", error);
       throw error;
