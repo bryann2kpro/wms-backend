@@ -45,6 +45,7 @@ import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orde
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
 import { ExceptionsRepositoryClass } from './features/outbound/exceptions.repository';
 import { OutboundServices } from './features/outbound/outbound.services';
+import { DocumentsRepository } from './features/documents/documents.repository.js';
 // Inventory
 import { InventoryMovementRepositoryClass } from './features/inventory/inventory-movement/inventory.repository';
 import { InventoryBalanceRepositoryClass } from './features/inventory/inventory-balance/inventory.repository';
@@ -103,6 +104,7 @@ export const dashboardRepository = new DashboardRepositoryClass();
 export const invoicesRepository = new InvoicesRepositoryClass();
 
 // Outbound Services
+export const documentsRepository = new DocumentsRepository();
 export const outboundServices = new OutboundServices(
   deliveryOrdersRepository,
   skuRepository,
@@ -111,6 +113,7 @@ export const outboundServices = new OutboundServices(
   outletsRepository,
   purchaseOrdersRepository,
   inventoryMovementRepository,
+  documentsRepository,
 );
 
 // ============================================

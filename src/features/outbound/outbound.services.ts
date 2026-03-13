@@ -12,6 +12,7 @@ import { OutletsRepositoryClass } from "../master-data/outlets.repository";
 import { DeliveryOrderType } from "./delivery-orders.model";
 import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
 import { PurchaseOrderType } from "./purchase-orders.model";
+import { DocumentsRepository } from "../documents/documents.repository";
 
 import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
@@ -51,6 +52,7 @@ export class OutboundServices {
         private readonly outletsRepository: OutletsRepositoryClass,
         private readonly purchaseOrdersRepository: PurchaseOrdersRepositoryClass,
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
+        private readonly documentsRepository: DocumentsRepository,
     ) {}
 
     /**
@@ -261,6 +263,9 @@ export class OutboundServices {
             if (currentIndex >= flow.length - 1) {
                 throw new Error('Delivery order is already DELIVERED; no next step.');
             }
+            if (effectiveStatus === 'SHIPPED') {
+                throw new Error('Delivery order is SHIPPED — upload proof of delivery to mark as DELIVERED.');
+            }
             const nextStatus = flow[currentIndex + 1];
             // const updateTime = new Date();
             const updateTime = new Date('2026-03-30');
@@ -340,6 +345,57 @@ export class OutboundServices {
             return updated;
         } catch (error) {
             logger.error('❌ [OutboundServices.applyEmergencyDelivery] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Submit proof of delivery for a SHIPPED delivery order.
+     * Saves a signed DO document record and advances DO status to DELIVERED.
+     */
+    async submitDeliveryProof(data: {
+        doId: string;
+        fileUrl: string;
+        fileName: string;
+        fileSizeBytes: number;
+        mimeType: string;
+        userId: string;
+    }): Promise<DeliveryOrderType> {
+        logger.info('ℹ️ [OutboundServices.submitDeliveryProof] Submitting delivery proof...');
+        try {
+            const existing = await this.deliveryOrderRepository.getDeliveryOrderById(data.doId);
+            if (!existing) throw new Error('Delivery order not found');
+            const effectiveStatus = existing.status === 'CREATED' ? 'NEW' : existing.status;
+            if (effectiveStatus !== 'SHIPPED') {
+                throw new Error(`Delivery order must be SHIPPED to submit proof. Current status: "${existing.status}".`);
+            }
+
+            const updated = await db.transaction(async (tx) => {
+                await this.documentsRepository.insertDocument({
+                    docType: 'SIGNED_DO_PROOF',
+                    refType: 'DO',
+                    refId: data.doId,
+                    fileName: data.fileName,
+                    fileSizeBytes: data.fileSizeBytes,
+                    mimeType: data.mimeType,
+                    storageKey: data.fileUrl,
+                    url: data.fileUrl,
+                    uploadedBy: data.userId,
+                });
+
+                const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(
+                    data.doId,
+                    { status: 'DELIVERED', updatedBy: data.userId },
+                    undefined,
+                    tx,
+                );
+                return updatedDo;
+            });
+
+            logger.info('✅ [OutboundServices.submitDeliveryProof] DO marked DELIVERED with proof document');
+            return updated;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.submitDeliveryProof] Error:', error);
             throw error;
         }
     }
