@@ -117,11 +117,21 @@ export type InvoiceFilter = {
   doId?: string | string[];
   poId?: string | string[];
   status?: string | string[];
+  search?: string;
   dateIssuedFrom?: string;
   dateIssuedTo?: string;
   createdAtFrom?: string;
   createdAtTo?: string;
 };
+
+export type InvoiceSummaryData = {
+  issued: number;
+  sent: number;
+  cancelled: number;
+  totalAmount: string;
+};
+
+export type InvoiceWithDoNo = InvoiceType & { doNo?: string | null };
 
 export type InvoiceItemType = typeof InvoiceItemsTable.$inferSelect;
 export type InvoiceItemInsertType = typeof InvoiceItemsTable.$inferInsert;
