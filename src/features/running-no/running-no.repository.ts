@@ -11,23 +11,33 @@ export class RunningNoRepository {
   /**
    * Generate the next running number within a transaction using an atomic UPSERT.
    *
-   * Requires a `main.running_no` table with UNIQUE(scope, partition_key).
+   * Requires a `main.running_no` table with UNIQUE(scope, prefix).
    */
   async generateRunningNo(params: GenerateRunningNoParams, tx: DbClient): Promise<number> {
     const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const dateKey = `${yyyy}${mm}${dd}`;
 
     const [row] = await tx
       .insert(RunningNoTable)
       .values({
         scope: params.scope,
-        partitionKey: params.partitionKey,
+        prefix: params.prefix,
+        dateKey,
         currentValue: 1,
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: [RunningNoTable.scope, RunningNoTable.partitionKey],
+        target: [RunningNoTable.scope, RunningNoTable.prefix],
         set: {
-          currentValue: sql<number>`${RunningNoTable.currentValue} + 1`,
+          dateKey,
+          currentValue: sql<number>`CASE
+            WHEN ${RunningNoTable.dateKey} = ${dateKey}
+            THEN ${RunningNoTable.currentValue} + 1
+            ELSE 1
+          END`,
           updatedAt: now,
         },
       })

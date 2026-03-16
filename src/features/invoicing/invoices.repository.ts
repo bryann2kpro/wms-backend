@@ -361,7 +361,7 @@ export class InvoicesRepositoryClass {
   // ============================================
 
   /**
-   * Generates a unique invoice number in format INV-YYYYMMDD-NNNN.
+   * Generates a unique invoice number in format PI-YYYYMMDD-NNNN.
    * Should be called within a transaction when used from createInvoiceFromDeliveryOrder.
    */
   async generateInvoiceNo(tx?: DbClient): Promise<string> {
@@ -369,15 +369,15 @@ export class InvoicesRepositoryClass {
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const dd = String(now.getDate()).padStart(2, "0");
-    const prefix = `INV-${yyyy}${mm}${dd}-`;
+    const datePart = `${yyyy}${mm}${dd}`;
+    const prefix = `PI-${datePart}-`;
 
     const run = async (dbClient: DbClient) => {
       const nextSeq = await this.runningNoRepo.generateRunningNo(
         {
           scope: "invoice",
-          partitionKey: `${yyyy}${mm}${dd}`,
+          prefix: "PI",
           width: 4,
-          matchPrefix: prefix,
         },
         dbClient
       );
@@ -438,8 +438,10 @@ export class InvoicesRepositoryClass {
 
       const invoice = await this.createInvoice(
         {
+          organizationId: doRow.organizationId,
           invoiceNo,
           doId: doRow.id,
+          doNo: doRow.doNo,
           poId: doRow.purchaseOrderId,
           poNo: doRow.poNo,
           billingAddressId: InvoicesRepositoryClass.INVOICE_ADDRESS_SNAPSHOT_ID,
@@ -451,7 +453,7 @@ export class InvoicesRepositoryClass {
         },
         dbClient
       );
-
++
       const invoiceItemInserts: InvoiceItemInsertType[] = doItems.map((item, index) => ({
         invoiceId: invoice.id,
         skuId: item.skuId,
