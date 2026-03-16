@@ -187,7 +187,7 @@ export async function getInvoiceSummaryData(
       proformaId: InvoicesTable.invoiceNo,
       dateIssued: InvoicesTable.dateIssued,
       poNumber: PurchaseOrdersTable.purchaseOrderNo,
-      doNumber: DeliveryOrdersTable.doNo,
+      doNumber: InvoicesTable.doNo,
       outlet: OutletsTable.outletName,
       region: sql<string>`coalesce(${RegionTable.regionName}, '—')`,
       ctn: sql<number>`coalesce(sum(${InvoiceItemsTable.qty}), 0)::float8`,
@@ -198,7 +198,6 @@ export async function getInvoiceSummaryData(
     .innerJoin(OutletsTable, eq(PurchaseOrdersTable.outletId, OutletsTable.outletId))
     .leftJoin(RegionTable, eq(OutletsTable.regionId, RegionTable.regionId))
     .leftJoin(InvoiceItemsTable, eq(InvoiceItemsTable.invoiceId, InvoicesTable.id))
-    .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
     .where(whereConditions.length > 0 ? and(...(whereConditions as any)) : undefined)
     .groupBy(
       InvoicesTable.id,
@@ -222,7 +221,7 @@ export async function getInvoiceSummaryData(
       proformaId: r.proformaId ?? '',
       invoiceDate,
       poNumber: (r.poNumber ?? '').startsWith('#') ? r.poNumber ?? '' : `#${r.poNumber ?? ''}`,
-      doNumber: '', // TODO: join DeliveryOrdersTable when DO linkage is finalized
+      doNumber: r.doNumber ?? '', // TODO: join DeliveryOrdersTable when DO linkage is finalized
       outlet: r.outlet ?? '',
       region: r.region ?? '—',
       ctn: Math.round(Number(r.ctn ?? 0)),
