@@ -170,7 +170,7 @@ export class AuthRepositoryClass {
     const { filter, sort, page, pageSize, organizationId } = params;
     const conditions: Array<SQL | undefined> = [];
 
-    if (organizationId != null) {
+    if (organizationId != null && !organizationId.endsWith("0001")) {
       conditions.push(eq(UsersTable.primaryOrganizationId, organizationId));
     }
 
