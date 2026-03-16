@@ -3,8 +3,8 @@ import { logger } from "@/util/logger";
 import { DbTransaction } from "@/types/db-transaction";
 import { invoicesRepository } from "@/composition-root";
 import { isWithinMonthEndWindow } from "@/util/date";
-import { DeliveryOrdersRepositoryClass } from "./delivery-orders.repository";
-import { DeliveryOrderItemInsertType } from "./delivery-orders.model";
+import { DeliveryOrdersRepositoryClass, DoItemAllocationWithDetails } from "./delivery-orders.repository";
+import { DeliveryOrderItemInsertType, DoItemAllocationInsertType } from "./delivery-orders.model";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
 import { InventoryBalanceRepositoryClass } from "../inventory/inventory-balance/inventory.repository";
 import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../master-data/delivery-schedule.repository";
@@ -176,8 +176,8 @@ export class OutboundServices {
         }
     }
 
-    /** Allowed delivery order status flow: NEW -> PACKING -> SHIPPED (out from warehouse) -> DELIVERED. */
-    static readonly DO_STATUS_FLOW = ['NEW', 'PACKING', 'SHIPPED', 'DELIVERED'] as const;
+    /** Allowed delivery order status flow: NEW -> PICKING (warehouse) -> PACKING (all picked) -> SHIPPED -> DELIVERED. */
+    static readonly DO_STATUS_FLOW = ['NEW', 'PICKING', 'PACKING', 'SHIPPED', 'DELIVERED'] as const;
 
     /**
      * Updates a delivery order (e.g. isEmergency, status).
@@ -246,7 +246,8 @@ export class OutboundServices {
     }
 
     /**
-     * Advances a delivery order to the next step: NEW -> PACKING -> SHIPPED (out from warehouse) -> DELIVERED.
+     * Advances a delivery order to the next step: NEW -> PICKING -> PACKING -> SHIPPED -> DELIVERED.
+     * (PICKING is set by allocatePickList when warehouse keeper first checks an item; this advances PICKING -> PACKING when all items are picked.)
      * When DO advances to SHIPPED, the linked Purchase Order is updated to status SHIPPED.
      */
     async advanceDeliveryOrderStatus(data: { id: string; userId: string }): Promise<DeliveryOrderType> {
@@ -396,6 +397,152 @@ export class OutboundServices {
             return updated;
         } catch (error) {
             logger.error('❌ [OutboundServices.submitDeliveryProof] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Computes and stores pick-list allocations for a delivery order.
+     * Called when the warehouse keeper begins picking (first checkbox check).
+     *
+     * For each DO item:
+     *  1. Finds all GRN batches for the SKU (with available qty = batch qty - already allocated).
+     *  2. Applies priority flag overlay: if only SOME batches are flagged, those go first.
+     *     If ALL or NONE are flagged, the flag has no effect.
+     *  3. Within each priority group, applies the SKU's picking_strategy (FIFO/LIFO/FEFO).
+     *  4. Greedily allocates qty from each batch until qty_required is met.
+     *  5. Inserts do_item_allocations rows (replacing any existing ones for this DO).
+     *
+     * Returns allocations grouped by doItemId.
+     */
+    async allocatePickList(data: {
+        deliveryOrderId: string;
+        userId: string;
+    }): Promise<Map<string, DoItemAllocationWithDetails[]>> {
+        logger.info(`ℹ️ [OutboundServices.allocatePickList] Allocating pick list for DO ${data.deliveryOrderId}...`);
+        try {
+            const result = await db.transaction(async (tx) => {
+                const doRow = await this.deliveryOrderRepository.getDeliveryOrderById(data.deliveryOrderId);
+                if (!doRow) throw new Error('Delivery order not found');
+
+                // When warehouse keeper starts picking, move DO from NEW/CREATED to PICKING
+                const effectiveStatus = doRow.status === 'CREATED' ? 'NEW' : doRow.status;
+                if (effectiveStatus === 'NEW') {
+                    await this.deliveryOrderRepository.updateDeliveryOrder(
+                        data.deliveryOrderId,
+                        { status: 'PICKING', updatedBy: data.userId },
+                        undefined,
+                        tx,
+                    );
+                }
+
+                // Get all items for this DO
+                const doItemsResult = await this.deliveryOrderRepository.getDeliveryOrderItemsWithDetails(
+                    { doNo: doRow.doNo },
+                    { pageSize: 1000, pageNumber: 1 }
+                );
+                const doItems = doItemsResult.query;
+                if (doItems.length === 0) return new Map<string, DoItemAllocationWithDetails[]>();
+
+                const doItemIds = doItems.map((i) => i.id);
+
+                // Delete stale allocations before re-computing
+                await this.deliveryOrderRepository.deleteDoItemAllocations(doItemIds, tx);
+
+                const allInserts: DoItemAllocationInsertType[] = [];
+
+                for (const doItem of doItems) {
+                    const qtyRequired = parseFloat(String(doItem.qtyRequired ?? '0'));
+                    if (qtyRequired <= 0) continue;
+
+                    // Get SKU picking strategy
+                    const skuResult = await this.skuRepository.getSku(
+                        { skuId: doItem.skuId },
+                        { pageSize: 1, pageNumber: 1 },
+                        tx
+                    );
+                    const sku = skuResult?.query?.[0];
+                    const strategy: string = (sku as (typeof sku & { pickingStrategy?: string }))?.pickingStrategy ?? 'FIFO';
+
+                    // Get GRN batches for this SKU with available qty
+                    const grnBatches = await this.deliveryOrderRepository.getGrnItemsWithAvailableQty(
+                        doItem.skuId,
+                        tx
+                    );
+
+                    // Compute available qty per batch
+                    const available = grnBatches
+                        .map((b) => ({
+                            ...b,
+                            available: parseFloat(b.qty) - parseFloat(b.allocatedQty),
+                        }))
+                        .filter((b) => b.available > 0);
+
+                    if (available.length === 0) {
+                        logger.warn(`⚠️ [OutboundServices.allocatePickList] No available stock for SKU ${doItem.skuId}`);
+                        continue;
+                    }
+
+                    // Determine if priority flags are selective (not all-or-none)
+                    const flaggedCount = available.filter((b) => b.priorityFlag).length;
+                    const useFlag = flaggedCount > 0 && flaggedCount < available.length;
+
+                    // Sort: priority group first, then by strategy within each group
+                    const sorted = [...available].sort((a, b) => {
+                        if (useFlag) {
+                            if (a.priorityFlag && !b.priorityFlag) return -1;
+                            if (!a.priorityFlag && b.priorityFlag) return 1;
+                        }
+                        switch (strategy) {
+                            case 'LIFO':
+                                return b.createdAt.getTime() - a.createdAt.getTime();
+                            case 'FEFO': {
+                                const aExp = a.expiryDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                                const bExp = b.expiryDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                                return aExp - bExp;
+                            }
+                            default: // FIFO
+                                return a.createdAt.getTime() - b.createdAt.getTime();
+                        }
+                    });
+
+                    // Greedy allocation
+                    let remaining = qtyRequired;
+                    for (const batch of sorted) {
+                        if (remaining <= 0) break;
+                        const take = Math.min(batch.available, remaining);
+                        allInserts.push({
+                            doItemId: doItem.id,
+                            grnItemId: batch.id,
+                            rackId: batch.rackId ?? undefined,
+                            qtyAllocated: String(take),
+                        });
+                        remaining -= take;
+                    }
+                }
+
+                if (allInserts.length > 0) {
+                    await this.deliveryOrderRepository.createDoItemAllocations(allInserts, tx);
+                }
+
+                // Re-fetch with details for the response (includes doItemId now)
+                const withDetails = await this.deliveryOrderRepository.getDoItemAllocationsWithDetails(doItemIds, tx);
+
+                // Group by doItemId
+                const byDoItemId = new Map<string, DoItemAllocationWithDetails[]>();
+                for (const alloc of withDetails) {
+                    const arr = byDoItemId.get(alloc.doItemId) ?? [];
+                    arr.push(alloc);
+                    byDoItemId.set(alloc.doItemId, arr);
+                }
+
+                return byDoItemId;
+            });
+
+            logger.info(`✅ [OutboundServices.allocatePickList] Pick list allocated`);
+            return result;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.allocatePickList] Error:', error);
             throw error;
         }
     }

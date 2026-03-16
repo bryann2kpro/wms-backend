@@ -9,6 +9,9 @@ import { logger } from "@/util/logger";
 import {
   DeliveryOrdersTable,
   DeliveryOrderItemsTable,
+  DoItemAllocationsTable,
+  DoItemAllocationInsertType,
+  DoItemAllocationType,
   DeliveryOrderType,
   DeliveryOrderInsertType,
   DeliveryOrderFilter,
@@ -17,20 +20,38 @@ import {
   DeliveryOrderItemFilter,
 } from "./delivery-orders.model";
 import { SkuTable } from "@/features/master-data/sku.model";
+import { GrnItemsTable } from "@/features/inbound/grns.model";
+import { GrnsTable } from "@/features/inbound/grns.model";
 import { InventoryBalancesTable } from "@/features/inventory/inventory-balance/inventory.model";
+import { RacksTable } from "@/features/master-data/racks.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
-import { eq, and, like, inArray, gte, lte, or } from "drizzle-orm";
+import { eq, and, like, inArray, gte, lte, or, sum, notInArray } from "drizzle-orm";
+
+export type DoItemAllocationWithDetails = {
+  id: string;
+  doItemId: string;
+  grnItemId: string;
+  grnNo: string | null;
+  rackId: string | null;
+  /** Display string for rack location (e.g. "A-3" from rackRow-rackColumn) */
+  rackName: string | null;
+  expiryDate: Date | null;
+  qtyAllocated: string;
+  priorityFlag: boolean;
+};
 
 export type DeliveryOrderItemWithDetails = DeliveryOrderItemType & {
   skuCode: string | null;
   skuDescription: string | null;
+  doId: string | null;
   doNo: string | null;
   doStatus: string | null;
   onHandQty: string | null;
   lossQty: string | null;
   reservedQty: string | null;
+  allocations?: DoItemAllocationWithDetails[];
 };
 
 export class DeliveryOrdersRepositoryClass {
@@ -381,6 +402,7 @@ export class DeliveryOrdersRepositoryClass {
           updatedBy: DeliveryOrderItemsTable.updatedBy,
           skuCode: SkuTable.skuCode,
           skuDescription: SkuTable.skuDescription,
+          doId: DeliveryOrdersTable.id,
           doNo: DeliveryOrdersTable.doNo,
           doStatus: DeliveryOrdersTable.status,
           onHandQty: InventoryBalancesTable.onHandQty,
@@ -405,6 +427,167 @@ export class DeliveryOrdersRepositoryClass {
       logger.error("❌ [DeliveryOrdersRepository.getDeliveryOrderItemsWithDetails] Error:", error);
       throw error;
     }
+  }
+
+  // ============================================
+  // DO Item Allocations
+  // ============================================
+
+  /**
+   * Returns GRN items for a SKU with their available (unallocated) quantity.
+   * Available = grn_item.qty minus any qty already allocated in active DOs.
+   * Joins with the grns table to get grnNo for display.
+   */
+  async getGrnItemsWithAvailableQty(
+    skuId: string,
+    tx?: DbTransaction
+  ): Promise<Array<{
+    id: string;
+    grnId: string;
+    grnNo: string | null;
+    rackId: string | null;
+    expiryDate: Date | null;
+    priorityFlag: boolean;
+    qty: string;
+    createdAt: Date;
+    allocatedQty: string;
+  }>> {
+    try {
+      const dbClient = tx ?? db;
+
+      // Get all grn items for this SKU with their GRN number
+      const grnItems = await dbClient
+        .select({
+          id: GrnItemsTable.id,
+          grnId: GrnItemsTable.grnId,
+          grnNo: GrnsTable.grnNo,
+          rackId: GrnItemsTable.rackId,
+          expiryDate: GrnItemsTable.expiryDate,
+          priorityFlag: GrnItemsTable.priorityFlag,
+          qty: GrnItemsTable.qty,
+          createdAt: GrnItemsTable.createdAt,
+        })
+        .from(GrnItemsTable)
+        .leftJoin(GrnsTable, eq(GrnItemsTable.grnId, GrnsTable.id))
+        .where(eq(GrnItemsTable.skuId, skuId));
+
+      if (grnItems.length === 0) return [];
+
+      // Get allocated quantities from active DOs (not SHIPPED/DELIVERED/CANCELLED)
+      const grnItemIds = grnItems.map((g) => g.id);
+      const allocated = await dbClient
+        .select({
+          grnItemId: DoItemAllocationsTable.grnItemId,
+          totalAllocated: sum(DoItemAllocationsTable.qtyAllocated),
+        })
+        .from(DoItemAllocationsTable)
+        .innerJoin(
+          DeliveryOrderItemsTable,
+          eq(DoItemAllocationsTable.doItemId, DeliveryOrderItemsTable.id)
+        )
+        .innerJoin(
+          DeliveryOrdersTable,
+          eq(DeliveryOrderItemsTable.purchaseOrderId, DeliveryOrdersTable.purchaseOrderId)
+        )
+        .where(
+          and(
+            inArray(DoItemAllocationsTable.grnItemId, grnItemIds),
+            notInArray(DeliveryOrdersTable.status, ['SHIPPED', 'DELIVERED', 'CANCELLED'])
+          )
+        )
+        .groupBy(DoItemAllocationsTable.grnItemId);
+
+      const allocatedMap = new Map(allocated.map((a) => [a.grnItemId, a.totalAllocated ?? '0']));
+
+      return grnItems.map((g) => ({
+        ...g,
+        grnNo: g.grnNo ?? null,
+        allocatedQty: allocatedMap.get(g.id) ?? '0',
+      }));
+    } catch (error) {
+      logger.error('❌ [DeliveryOrdersRepository.getGrnItemsWithAvailableQty] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Insert pick-list allocations for a delivery order.
+   * Replaces any existing allocations for the same DO items.
+   */
+  async createDoItemAllocations(
+    allocations: DoItemAllocationInsertType[],
+    tx?: DbTransaction
+  ): Promise<DoItemAllocationType[]> {
+    try {
+      if (allocations.length === 0) return [];
+      const dbClient = tx ?? db;
+      const rows = await dbClient
+        .insert(DoItemAllocationsTable)
+        .values(allocations.map((a) => ({ ...a, createdAt: new Date() })))
+        .returning();
+      logger.info(`✅ [DeliveryOrdersRepository.createDoItemAllocations] Inserted ${rows.length} allocation(s)`);
+      return rows;
+    } catch (error) {
+      logger.error('❌ [DeliveryOrdersRepository.createDoItemAllocations] Error:', error);
+      throw error;
+    }
+  }
+
+  /** Delete all allocations for a set of DO item IDs (used before re-allocating). */
+  async deleteDoItemAllocations(doItemIds: string[], tx?: DbTransaction): Promise<void> {
+    if (doItemIds.length === 0) return;
+    const dbClient = tx ?? db;
+    await dbClient
+      .delete(DoItemAllocationsTable)
+      .where(inArray(DoItemAllocationsTable.doItemId, doItemIds));
+  }
+
+  /**
+   * Get allocations for a set of DO item IDs, with GRN details for display.
+   */
+  async getDoItemAllocationsWithDetails(
+    doItemIds: string[],
+    tx?: DbTransaction
+  ): Promise<DoItemAllocationWithDetails[]> {
+    if (doItemIds.length === 0) return [];
+    const dbClient = tx ?? db;
+    const rows = await dbClient
+      .select({
+        id: DoItemAllocationsTable.id,
+        doItemId: DoItemAllocationsTable.doItemId,
+        grnItemId: DoItemAllocationsTable.grnItemId,
+        grnNo: GrnsTable.grnNo,
+        rackId: DoItemAllocationsTable.rackId,
+        rackRow: RacksTable.rackRow,
+        rackColumn: RacksTable.rackColumn,
+        rackLevel: RacksTable.rackLevel,
+        expiryDate: GrnItemsTable.expiryDate,
+        qtyAllocated: DoItemAllocationsTable.qtyAllocated,
+        priorityFlag: GrnItemsTable.priorityFlag,
+      })
+      .from(DoItemAllocationsTable)
+      .innerJoin(GrnItemsTable, eq(DoItemAllocationsTable.grnItemId, GrnItemsTable.id))
+      .leftJoin(GrnsTable, eq(GrnItemsTable.grnId, GrnsTable.id))
+      .leftJoin(RacksTable, eq(DoItemAllocationsTable.rackId, RacksTable.rackId))
+      .where(inArray(DoItemAllocationsTable.doItemId, doItemIds));
+
+    return rows.map((r) => {
+      const rackName =
+        r.rackRow != null && r.rackColumn != null
+          ? `${r.rackRow}-${r.rackColumn}${r.rackLevel != null ? `-${r.rackLevel}` : ""}`
+          : null;
+      return {
+        id: r.id,
+        doItemId: r.doItemId,
+        grnItemId: r.grnItemId,
+        grnNo: r.grnNo ?? null,
+        rackId: r.rackId ?? null,
+        rackName,
+        expiryDate: r.expiryDate ?? null,
+        qtyAllocated: r.qtyAllocated,
+        priorityFlag: r.priorityFlag,
+      };
+    });
   }
 
   /**

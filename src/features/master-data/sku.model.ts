@@ -29,6 +29,12 @@ export const SkuTable = MainSchema.table('skus', {
    * Mirrors the GRN item structure: one entry per expiry date with associated rack IDs.
    */
   skuBatches: jsonb('sku_batches').$type<Array<{ expiryDate: string | null; rackIds: string[] }>>(),
+  /**
+   * Stock picking strategy for outbound allocation.
+   * FIFO (default) | LIFO | FEFO (earliest expiry first, for perishables)
+   * Admin can also flag specific grn_items.priority_flag = true as an overlay.
+   */
+  pickingStrategy: text('picking_strategy').notNull().default('FIFO'),
   skuUom: uuid('sku_unit_of_measurement').notNull().references(() => StockUnitTable.stockUnitId),
   isActive: boolean('is_active').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
