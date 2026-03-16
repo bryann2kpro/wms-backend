@@ -1,0 +1,1 @@
+ALTER TABLE "main"."invoices" ADD COLUMN "do_no" text;

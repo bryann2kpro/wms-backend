@@ -33,6 +33,7 @@ export const InvoicesTable = MainSchema.table('invoices', {
   doId: uuid('do_id').unique().notNull(),
   poId: uuid('po_id'),
   poNo: text('po_no'),
+  doNo: text('do_no'),
 
   billingAddressId: uuid('billing_address_id'),
   deliveryAddressId: uuid('delivery_address_id'),

@@ -351,6 +351,13 @@
       "when": 1773639660592,
       "tag": "0049_overconfident_annihilus",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1773648510791,
+      "tag": "0050_pale_vivisector",
+      "breakpoints": true
     }
   ]
 }

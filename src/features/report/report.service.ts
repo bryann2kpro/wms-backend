@@ -18,6 +18,7 @@ import { InvoicesTable, InvoiceItemsTable } from '../invoicing/invoices.model';
 import { PurchaseOrdersTable } from '../outbound/purchase-orders.model';
 import { OutletsTable } from '../master-data/outlets.model';
 import { RegionTable } from '../master-data/region.model';
+import { DeliveryOrdersTable } from '../outbound/delivery-orders.model';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MOVEMENT_REPORT_HTML_PATH = path.join(__dirname, 'html', 'movement-report.html');
@@ -184,9 +185,10 @@ export async function getInvoiceSummaryData(
   const rows = await db
     .select({
       proformaId: InvoicesTable.invoiceNo,
+      dateIssued: InvoicesTable.dateIssued,
       poNumber: PurchaseOrdersTable.purchaseOrderNo,
+      doNumber: DeliveryOrdersTable.doNo,
       outlet: OutletsTable.outletName,
-      expectedArrivalDate: PurchaseOrdersTable.scheduledDeliveryDate,
       region: sql<string>`coalesce(${RegionTable.regionName}, '—')`,
       ctn: sql<number>`coalesce(sum(${InvoiceItemsTable.qty}), 0)::float8`,
       amount: sql<number>`coalesce(${InvoicesTable.totalInclTax}, 0)::float8`,
@@ -196,29 +198,37 @@ export async function getInvoiceSummaryData(
     .innerJoin(OutletsTable, eq(PurchaseOrdersTable.outletId, OutletsTable.outletId))
     .leftJoin(RegionTable, eq(OutletsTable.regionId, RegionTable.regionId))
     .leftJoin(InvoiceItemsTable, eq(InvoiceItemsTable.invoiceId, InvoicesTable.id))
+    .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
     .where(whereConditions.length > 0 ? and(...(whereConditions as any)) : undefined)
     .groupBy(
       InvoicesTable.id,
       InvoicesTable.invoiceNo,
+      InvoicesTable.dateIssued,
       InvoicesTable.totalInclTax,
       PurchaseOrdersTable.purchaseOrderNo,
-      PurchaseOrdersTable.scheduledDeliveryDate,
       OutletsTable.outletName,
       RegionTable.regionName
     )
     .orderBy(InvoicesTable.dateIssued);
 
-  return rows.map((r) => ({
-    proformaId: r.proformaId,
-    poNumber: r.poNumber.startsWith('#') ? r.poNumber : `#${r.poNumber}`,
-    outlet: r.outlet,
-    expectedArrivalDate: r.expectedArrivalDate
-      ? `${r.expectedArrivalDate.getUTCDate()}/${r.expectedArrivalDate.getUTCMonth() + 1}/${r.expectedArrivalDate.getUTCFullYear()}`
-      : '—',
-    region: r.region,
-    ctn: Math.round(Number(r.ctn)),
-    amount: Number(r.amount),
-  }));
+  return rows.map((r) => {
+    const issued = r.dateIssued instanceof Date ? r.dateIssued : r.dateIssued ? new Date(r.dateIssued as unknown as string) : undefined;
+    const invoiceDate =
+      issued && !Number.isNaN(issued.getTime())
+        ? `${issued.getUTCDate()}/${issued.getUTCMonth() + 1}/${issued.getUTCFullYear()}`
+        : '—';
+
+    return {
+      proformaId: r.proformaId ?? '',
+      invoiceDate,
+      poNumber: (r.poNumber ?? '').startsWith('#') ? r.poNumber ?? '' : `#${r.poNumber ?? ''}`,
+      doNumber: '', // TODO: join DeliveryOrdersTable when DO linkage is finalized
+      outlet: r.outlet ?? '',
+      region: r.region ?? '—',
+      ctn: Math.round(Number(r.ctn ?? 0)),
+      amount: Number(r.amount ?? 0),
+    };
+  });
 }
 
 // Number of columns that precede the two numeric summary columns (Ctn, Amount).
@@ -314,9 +324,9 @@ export async function renderProformaInvoicesHtml(
   ]);
 
   return template
-    .replace(/\{\{dateFrom\}\}/g, dateFrom ?? '—')
-    .replace(/\{\{dateTo\}\}/g, dateTo ?? '—')
-    .replace(/\{\{regionName\}\}/g, escapeHtml(regionName))
+    .replace(/\{\{dateFrom\}\}/g, escapeHtml(dateFrom ?? '—'))
+    .replace(/\{\{dateTo\}\}/g, escapeHtml(dateTo ?? '—'))
+    .replace(/\{\{regionName\}\}/g, escapeHtml(regionName ?? '—'))
     .replace(/\{\{tableRows\}\}/, buildInvoiceTableHtml(rows));
 }
 
