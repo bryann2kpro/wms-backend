@@ -144,4 +144,48 @@ export class GrnsRepositoryClass {
             return false;
         }
     }
+
+    /**
+     * Generate the next GRN number for a given date, following the pattern:
+     * GRN-YYYYMMDD-0001 and incrementing within the same day.
+     *
+     * This is used by the frontend to auto-suggest GRN numbers while keeping
+     * the backend as the single source of truth for the sequence logic.
+     */
+    async getNextGrnNoForDate(date: Date, organizationId?: string): Promise<string> {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const yyyymmdd = `${year}${month}${day}`;
+        const prefix = `GRN-${yyyymmdd}-`;
+
+        try {
+            const whereConds = [like(GrnsTable.grnNo, `${prefix}%`)];
+            if (organizationId) {
+                whereConds.push(eq(GrnsTable.organizationId, organizationId));
+            }
+
+            const [latest] = await db
+                .select({ grnNo: GrnsTable.grnNo })
+                .from(GrnsTable)
+                .where(and(...whereConds))
+                .orderBy(desc(GrnsTable.grnNo))
+                .limit(1);
+
+            if (!latest?.grnNo) {
+                return `${prefix}0001`;
+            }
+
+            const parts = latest.grnNo.split('-');
+            const lastPart = parts[parts.length - 1] ?? '';
+            const current = Number.parseInt(lastPart, 10);
+            const next = Number.isFinite(current) ? current + 1 : 1;
+            const suffix = String(Math.max(1, next)).padStart(4, '0');
+            return `${prefix}${suffix}`;
+        } catch (error) {
+            logger.error('❌ [GrnsRepository.getNextGrnNoForDate] Error:', error);
+            // Fallback to first sequence if anything goes wrong to avoid blocking GRN creation.
+            return `GRN-${yyyymmdd}-0001`;
+        }
+    }
 }

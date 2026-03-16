@@ -20,6 +20,7 @@ import { resolvers as invoicesResolvers } from "@/features/invoicing/invoices.re
 import { resolvers as inventoryResolvers } from '@/features/inventory/inventory-movement/inventory.resolvers';
 import { resolvers as inventoryBalanceResolvers } from '@/features/inventory/inventory-balance/inventory.resolver';
 import { resolvers as stockCountResolvers } from '@/features/inventory/stock-count.resolver';
+import { resolvers as stockCountSessionResolvers } from '@/features/inventory/stock-count-session.resolver';
 // Master Data resolvers
 import { resolvers as organizationResolvers } from '@/features/master-data/organization.resolver';
 import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
@@ -107,6 +108,7 @@ export const resolvers = mergeResolvers([
   inventoryResolvers,
   inventoryBalanceResolvers,
   stockCountResolvers,
+  stockCountSessionResolvers,
   // Master Data
   organizationResolvers,
   regionResolvers,

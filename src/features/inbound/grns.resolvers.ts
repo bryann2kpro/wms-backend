@@ -120,6 +120,20 @@ export const resolvers = {
                 return false;
             }
         },
+        nextGrnNumber: async (_: unknown, args: { date?: string | null }, context: GraphQLContext) => {
+            try {
+                const baseDate = args.date ? new Date(args.date) : new Date();
+                if (Number.isNaN(baseDate.getTime())) {
+                    throw new GraphQLError('Invalid date format for nextGrnNumber', {
+                        extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+                    });
+                }
+                return await grnsRepository.getNextGrnNoForDate(baseDate, context.organizationId ?? undefined);
+            } catch (error) {
+                logger.error('[grns.resolvers] nextGrnNumber Error:', error);
+                throw error;
+            }
+        },
     },
     Grn: {
         createdByUser: async (parent: { createdBy?: string | null }) => {

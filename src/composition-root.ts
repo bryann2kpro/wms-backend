@@ -50,6 +50,8 @@ import { DocumentsRepository } from './features/documents/documents.repository.j
 import { InventoryMovementRepositoryClass } from './features/inventory/inventory-movement/inventory.repository';
 import { InventoryBalanceRepositoryClass } from './features/inventory/inventory-balance/inventory.repository';
 import { StockCountServices } from './features/inventory/stock-count.services';
+import { StockCountSessionRepositoryClass } from './features/inventory/stock-count-session.repository';
+import { StockCountSessionService } from './features/inventory/stock-count-session.service';
 // Dashboard
 import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
 import { InvoicesRepositoryClass } from './features/invoicing/invoices.repository';
@@ -97,6 +99,8 @@ export const exceptionsRepository = new ExceptionsRepositoryClass();
 export const inventoryBalancesRepository = new InventoryBalanceRepositoryClass();
 export const inventoryMovementRepository = new InventoryMovementRepositoryClass(inventoryBalancesRepository);
 export const stockCountServices = new StockCountServices();
+export const stockCountSessionRepository = new StockCountSessionRepositoryClass();
+export const stockCountSessionService = new StockCountSessionService(stockCountSessionRepository);
 
 // Dashboard
 export const dashboardRepository = new DashboardRepositoryClass();
