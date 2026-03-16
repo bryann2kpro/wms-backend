@@ -14,6 +14,10 @@ import { db } from '@/db';
 import { eq, and, gte, lt, sql } from 'drizzle-orm';
 import { InventoryMovementsTable, InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
 import { SkuTable } from '../master-data/sku.model';
+import { InvoicesTable, InvoiceItemsTable } from '../invoicing/invoices.model';
+import { PurchaseOrdersTable } from '../outbound/purchase-orders.model';
+import { OutletsTable } from '../master-data/outlets.model';
+import { RegionTable } from '../master-data/region.model';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MOVEMENT_REPORT_HTML_PATH = path.join(__dirname, 'html', 'movement-report.html');
@@ -167,11 +171,54 @@ export async function getInvoiceSummaryData(
   _dateTo?: string,
   regionId?: string
 ): Promise<InvoiceSummaryRow[]> {
-  // TODO: filter by dateFrom, dateTo, regionId when querying DB
-  if (!regionId) return INVOICE_SUMMARY_MOCK_ROWS;
-  const region = await regionRepository.getRegionById(regionId);
-  if (!region) return INVOICE_SUMMARY_MOCK_ROWS;
-  return INVOICE_SUMMARY_MOCK_ROWS.filter((r) => r.region === region.regionName);
+  const dateFrom = _dateFrom ? new Date(_dateFrom) : undefined;
+  const dateToExclusive = _dateTo ? new Date(_dateTo) : undefined;
+  if (dateToExclusive) dateToExclusive.setUTCDate(dateToExclusive.getUTCDate() + 1);
+
+  const whereConditions = [
+    dateFrom ? gte(InvoicesTable.dateIssued, dateFrom) : undefined,
+    dateToExclusive ? lt(InvoicesTable.dateIssued, dateToExclusive) : undefined,
+    regionId ? eq(OutletsTable.regionId, regionId) : undefined,
+  ].filter(Boolean) as unknown as Parameters<typeof and>;
+
+  const rows = await db
+    .select({
+      proformaId: InvoicesTable.invoiceNo,
+      poNumber: PurchaseOrdersTable.purchaseOrderNo,
+      outlet: OutletsTable.outletName,
+      expectedArrivalDate: PurchaseOrdersTable.scheduledDeliveryDate,
+      region: sql<string>`coalesce(${RegionTable.regionName}, '—')`,
+      ctn: sql<number>`coalesce(sum(${InvoiceItemsTable.qty}), 0)::float8`,
+      amount: sql<number>`coalesce(${InvoicesTable.totalInclTax}, 0)::float8`,
+    })
+    .from(InvoicesTable)
+    .innerJoin(PurchaseOrdersTable, eq(InvoicesTable.poId, PurchaseOrdersTable.id))
+    .innerJoin(OutletsTable, eq(PurchaseOrdersTable.outletId, OutletsTable.outletId))
+    .leftJoin(RegionTable, eq(OutletsTable.regionId, RegionTable.regionId))
+    .leftJoin(InvoiceItemsTable, eq(InvoiceItemsTable.invoiceId, InvoicesTable.id))
+    .where(whereConditions.length > 0 ? and(...(whereConditions as any)) : undefined)
+    .groupBy(
+      InvoicesTable.id,
+      InvoicesTable.invoiceNo,
+      InvoicesTable.totalInclTax,
+      PurchaseOrdersTable.purchaseOrderNo,
+      PurchaseOrdersTable.scheduledDeliveryDate,
+      OutletsTable.outletName,
+      RegionTable.regionName
+    )
+    .orderBy(InvoicesTable.dateIssued);
+
+  return rows.map((r) => ({
+    proformaId: r.proformaId,
+    poNumber: r.poNumber.startsWith('#') ? r.poNumber : `#${r.poNumber}`,
+    outlet: r.outlet,
+    expectedArrivalDate: r.expectedArrivalDate
+      ? `${r.expectedArrivalDate.getUTCDate()}/${r.expectedArrivalDate.getUTCMonth() + 1}/${r.expectedArrivalDate.getUTCFullYear()}`
+      : '—',
+    region: r.region,
+    ctn: Math.round(Number(r.ctn)),
+    amount: Number(r.amount),
+  }));
 }
 
 // Number of columns that precede the two numeric summary columns (Ctn, Amount).
