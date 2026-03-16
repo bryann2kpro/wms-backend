@@ -23,16 +23,24 @@ export class WarehousesRepositoryClass {
 
   /**
    * Get warehouses with optional filtering and pagination
+   * @param filter - Filter options
+   * @param paginationParams - Pagination parameters
+   * @param organizationId - Organization ID for multi-tenant filtering
    */
   async getWarehouse(
     filter: WarehouseFilter,
-    paginationParams: PaginationParams
+    paginationParams: PaginationParams,
+    organizationId?: string
   ): Promise<PaginatedResponse<any>> {
     try {
       logger.info("ℹ️ [WarehousesRepository.getWarehouse] Getting warehouses...");
       logger.debug("Filter:", filter);
 
       const whereCondition = [];
+
+      if (organizationId) {
+        whereCondition.push(eq(WarehousesTable.organizationId, organizationId));
+      }
 
       if (Array.isArray(filter.warehouseId)) {
         whereCondition.push(inArray(WarehousesTable.warehouseId, filter.warehouseId));
@@ -77,14 +85,20 @@ export class WarehousesRepositoryClass {
 
   /**
    * Get warehouse by ID
+   * @param id - Warehouse ID
+   * @param organizationId - Organization ID for multi-tenant filtering
    */
-  async getWarehouseById(id: string): Promise<WarehouseType | null> {
+  async getWarehouseById(id: string, organizationId?: string): Promise<WarehouseType | null> {
     try {
       logger.info("ℹ️ [WarehousesRepository.getWarehouseById] Getting warehouse by ID...");
+      const whereConditions = [eq(WarehousesTable.warehouseId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(WarehousesTable.organizationId, organizationId));
+      }
       const [warehouse] = await db
         .select()
         .from(WarehousesTable)
-        .where(eq(WarehousesTable.warehouseId, id))
+        .where(and(...whereConditions))
         .limit(1);
 
       logger.info("✅ [WarehousesRepository.getWarehouseById] Warehouse fetched successfully");
@@ -125,20 +139,29 @@ export class WarehousesRepositoryClass {
 
   /**
    * Update an existing warehouse
+   * @param id - Warehouse ID
+   * @param data - Partial warehouse data
+   * @param organizationId - Organization ID for multi-tenant filtering
+   * @param tx - Optional transaction
    */
   async updateWarehouse(
     id: string,
     data: Partial<WarehouseInsertType>,
+    organizationId?: string,
     tx?: DbTransaction
   ): Promise<WarehouseType | null> {
     try {
       const client = tx ?? db;
       logger.info("ℹ️ [WarehousesRepository.updateWarehouse] Updating warehouse...");
+      const whereConditions = [eq(WarehousesTable.warehouseId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(WarehousesTable.organizationId, organizationId));
+      }
 
       const [warehouse] = await client
         .update(WarehousesTable)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(WarehousesTable.warehouseId, id))
+        .where(and(...whereConditions))
         .returning();
 
       logger.info("✅ [WarehousesRepository.updateWarehouse] Warehouse updated successfully");
@@ -151,15 +174,22 @@ export class WarehousesRepositoryClass {
 
   /**
    * Delete a warehouse
+   * @param id - Warehouse ID
+   * @param organizationId - Organization ID for multi-tenant filtering
+   * @param tx - Optional transaction
    */
-  async deleteWarehouse(id: string, tx?: DbTransaction): Promise<boolean> {
+  async deleteWarehouse(id: string, organizationId?: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const client = tx ?? db;
       logger.info("ℹ️ [WarehousesRepository.deleteWarehouse] Deleting warehouse...");
+      const whereConditions = [eq(WarehousesTable.warehouseId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(WarehousesTable.organizationId, organizationId));
+      }
 
       await client
         .delete(WarehousesTable)
-        .where(eq(WarehousesTable.warehouseId, id));
+        .where(and(...whereConditions));
 
       logger.info("✅ [WarehousesRepository.deleteWarehouse] Warehouse deleted successfully");
       return true;

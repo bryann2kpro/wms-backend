@@ -42,14 +42,19 @@ export class DeliveryScheduleRepositoryClass {
    * Get delivery schedules with optional filtering and pagination
    * @param filter - Filter options
    * @param paginationParams - Pagination parameters
+   * @param organizationId - Organization ID for multi-tenant filtering
    * @returns Paginated delivery schedules with region info
    */
-  async getDeliverySchedule(filter: DeliveryScheduleFilter, paginationParams: PaginationParams): Promise<PaginatedResponse<any>> {
+  async getDeliverySchedule(filter: DeliveryScheduleFilter, paginationParams: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any>> {
     try {
       logger.info('ℹ️ [DeliveryScheduleRepository.getDeliverySchedule] Getting schedules...');
       logger.debug('Filter:', filter);
 
       const whereCondition = [];
+
+      if (organizationId) {
+        whereCondition.push(eq(RegionDeliveryScheduleTable.organizationId, organizationId));
+      }
 
       if (Array.isArray(filter.scheduleId)) {
         whereCondition.push(inArray(RegionDeliveryScheduleTable.scheduleId, filter.scheduleId));
@@ -116,10 +121,19 @@ export class DeliveryScheduleRepositoryClass {
   /**
    * Get all active delivery schedules for a region.
    * Returns all delivery days (with cutoff info) for the given region.
+   * @param regionId - Region ID
+   * @param organizationId - Organization ID for multi-tenant filtering
    */
-  async getSchedulesByRegion(regionId: string): Promise<DeliveryScheduleWithRegion[]> {
+  async getSchedulesByRegion(regionId: string, organizationId?: string): Promise<DeliveryScheduleWithRegion[]> {
     try {
       logger.info('ℹ️ [DeliveryScheduleRepository.getSchedulesByRegion] Getting schedules for region...');
+      const whereConditions = [
+        eq(RegionDeliveryScheduleTable.regionId, regionId),
+        eq(RegionDeliveryScheduleTable.isActive, true)
+      ];
+      if (organizationId) {
+        whereConditions.push(eq(RegionDeliveryScheduleTable.organizationId, organizationId));
+      }
       const schedules = await db
         .select({
           scheduleId: RegionDeliveryScheduleTable.scheduleId,
@@ -137,12 +151,7 @@ export class DeliveryScheduleRepositoryClass {
         })
         .from(RegionDeliveryScheduleTable)
         .innerJoin(RegionTable, eq(RegionDeliveryScheduleTable.regionId, RegionTable.regionId))
-        .where(
-          and(
-            eq(RegionDeliveryScheduleTable.regionId, regionId),
-            eq(RegionDeliveryScheduleTable.isActive, true)
-          )
-        );
+        .where(and(...whereConditions));
 
       return schedules.map((s) => ({
         ...s,
@@ -157,12 +166,24 @@ export class DeliveryScheduleRepositoryClass {
   /**
    * Get the delivery schedule (cutoff) for a region and day of week.
    * Use when you need the next cutoff for a specific region + day inside a transaction.
+   * @param regionId - Region ID
+   * @param dayOfWeek - Day of week
+   * @param organizationId - Organization ID for multi-tenant filtering
    */
   async getScheduleByRegionAndDay(
     regionId: string,
     dayOfWeek: number,
+    organizationId?: string,
   ): Promise<DeliveryScheduleWithRegion | null> {
     try {
+      const whereConditions = [
+        eq(RegionDeliveryScheduleTable.regionId, regionId),
+        eq(RegionDeliveryScheduleTable.dayOfWeek, dayOfWeek),
+        eq(RegionDeliveryScheduleTable.isActive, true)
+      ];
+      if (organizationId) {
+        whereConditions.push(eq(RegionDeliveryScheduleTable.organizationId, organizationId));
+      }
       const [schedule] = await db
         .select({
           scheduleId: RegionDeliveryScheduleTable.scheduleId,
@@ -180,13 +201,7 @@ export class DeliveryScheduleRepositoryClass {
         })
         .from(RegionDeliveryScheduleTable)
         .innerJoin(RegionTable, eq(RegionDeliveryScheduleTable.regionId, RegionTable.regionId))
-        .where(
-          and(
-            eq(RegionDeliveryScheduleTable.regionId, regionId),
-            eq(RegionDeliveryScheduleTable.dayOfWeek, dayOfWeek),
-            eq(RegionDeliveryScheduleTable.isActive, true)
-          )
-        )
+        .where(and(...whereConditions))
         .limit(1);
 
       if (!schedule) return null;
@@ -202,10 +217,16 @@ export class DeliveryScheduleRepositoryClass {
 
   /**
    * Get schedule by ID
+   * @param id - Schedule ID
+   * @param organizationId - Organization ID for multi-tenant filtering
    */
-  async getScheduleById(id: string): Promise<DeliveryScheduleWithRegion | null> {
+  async getScheduleById(id: string, organizationId?: string): Promise<DeliveryScheduleWithRegion | null> {
     try {
       logger.info('ℹ️ [DeliveryScheduleRepository.getScheduleById] Getting schedule by ID...');
+      const whereConditions = [eq(RegionDeliveryScheduleTable.scheduleId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(RegionDeliveryScheduleTable.organizationId, organizationId));
+      }
       const [schedule] = await db
         .select({
           scheduleId: RegionDeliveryScheduleTable.scheduleId,
@@ -223,7 +244,7 @@ export class DeliveryScheduleRepositoryClass {
         })
         .from(RegionDeliveryScheduleTable)
         .innerJoin(RegionTable, eq(RegionDeliveryScheduleTable.regionId, RegionTable.regionId))
-        .where(eq(RegionDeliveryScheduleTable.scheduleId, id))
+        .where(and(...whereConditions))
         .limit(1);
       
       if (!schedule) {
@@ -273,17 +294,22 @@ export class DeliveryScheduleRepositoryClass {
    * Update an existing delivery schedule
    * @param data - Partial schedule data
    * @param id - Schedule ID
+   * @param organizationId - Organization ID for multi-tenant filtering
    * @param tx - Optional transaction
    */
-  async updateDeliverySchedule(data: Partial<RegionDeliveryScheduleInsertType>, id: string, tx?: DbTransaction): Promise<RegionDeliveryScheduleType> {
+  async updateDeliverySchedule(data: Partial<RegionDeliveryScheduleInsertType>, id: string, organizationId?: string, tx?: DbTransaction): Promise<RegionDeliveryScheduleType> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [DeliveryScheduleRepository.updateDeliverySchedule] Updating schedule...');
-      
+      const whereConditions = [eq(RegionDeliveryScheduleTable.scheduleId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(RegionDeliveryScheduleTable.organizationId, organizationId));
+      }
+
       const [schedule] = await dbClient
         .update(RegionDeliveryScheduleTable)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(RegionDeliveryScheduleTable.scheduleId, id))
+        .where(and(...whereConditions))
         .returning();
       
       logger.info('✅ [DeliveryScheduleRepository.updateDeliverySchedule] Schedule updated successfully');
@@ -297,16 +323,21 @@ export class DeliveryScheduleRepositoryClass {
   /**
    * Delete a delivery schedule
    * @param id - Schedule ID
+   * @param organizationId - Organization ID for multi-tenant filtering
    * @param tx - Optional transaction
    */
-  async deleteDeliverySchedule(id: string, tx?: DbTransaction): Promise<boolean> {
+  async deleteDeliverySchedule(id: string, organizationId?: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [DeliveryScheduleRepository.deleteDeliverySchedule] Deleting schedule...');
-      
+      const whereConditions = [eq(RegionDeliveryScheduleTable.scheduleId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(RegionDeliveryScheduleTable.organizationId, organizationId));
+      }
+
       await dbClient
         .delete(RegionDeliveryScheduleTable)
-        .where(eq(RegionDeliveryScheduleTable.scheduleId, id));
+        .where(and(...whereConditions));
       
       logger.info('✅ [DeliveryScheduleRepository.deleteDeliverySchedule] Schedule deleted successfully');
       return true;
@@ -321,17 +352,22 @@ export class DeliveryScheduleRepositoryClass {
    * @param id - Schedule ID
    * @param isActive - New active status
    * @param updatedBy - User who made the update
+   * @param organizationId - Organization ID for multi-tenant filtering
    * @param tx - Optional transaction
    */
-  async toggleScheduleActive(id: string, isActive: boolean, updatedBy: string, tx?: DbTransaction): Promise<RegionDeliveryScheduleType> {
+  async toggleScheduleActive(id: string, isActive: boolean, updatedBy: string, organizationId?: string, tx?: DbTransaction): Promise<RegionDeliveryScheduleType> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [DeliveryScheduleRepository.toggleScheduleActive] Toggling schedule status...');
-      
+      const whereConditions = [eq(RegionDeliveryScheduleTable.scheduleId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(RegionDeliveryScheduleTable.organizationId, organizationId));
+      }
+
       const [schedule] = await dbClient
         .update(RegionDeliveryScheduleTable)
         .set({ isActive, updatedAt: new Date(), updatedBy })
-        .where(eq(RegionDeliveryScheduleTable.scheduleId, id))
+        .where(and(...whereConditions))
         .returning();
       
       logger.info('✅ [DeliveryScheduleRepository.toggleScheduleActive] Schedule status updated');

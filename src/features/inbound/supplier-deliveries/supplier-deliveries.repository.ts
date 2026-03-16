@@ -32,9 +32,12 @@ export type SupplierDeliveryFilter = {
 export class SupplierDeliveriesRepositoryClass {
     constructor() { }
 
-    async getSupplierDeliveries(filter: SupplierDeliveryFilter, paginationParams?: PaginationParams): Promise<PaginatedResponse<any> | false> {
+    async getSupplierDeliveries(filter: SupplierDeliveryFilter, paginationParams?: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any> | false> {
         try {
             const whereCondition = [];
+            if (organizationId) {
+                whereCondition.push(eq(SupplierDeliveriesTable.organizationId, organizationId));
+            }
             if (filter.id) {
                 whereCondition.push(eq(SupplierDeliveriesTable.id, filter.id));
             }

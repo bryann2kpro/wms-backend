@@ -4,10 +4,60 @@ import { hashPassword } from '@/util/password-checker';
 import { UserType } from '@/features/auth/auth.model';
 import { RoleCode, ModuleName, PermissionTypeCode, ModuleType, PermissionType } from '@/features/rbac/rbac.model';
 import { logger } from '@/util/logger';
-import { authRepository, rbacRepository } from '@/composition-root';
+import { authRepository, rbacRepository, organizationRepository } from '@/composition-root';
 import { db } from '@/db';
 
+/** Default organization ID used by migrations and init (single-tenant / default org). */
+const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+
 type CreateUserData = Omit<UserType, 'id' | 'createdAt' | 'updatedAt'>;
+
+// ============================================
+// DEFAULT ORGANIZATION
+// ============================================
+
+/**
+ * Get or create the default organization (used by migrations and init).
+ * Returns the default organization ID.
+ */
+async function getOrCreateDefaultOrganization(): Promise<string> {
+  const existing = await organizationRepository.getOrganizationByCode('DEFAULT_ORG');
+  if (existing) {
+    logger.info('✓ Default organization already exists');
+    return existing.organizationId;
+  }
+  await organizationRepository.createOrganization({
+    organizationId: DEFAULT_ORG_ID,
+    organizationName: 'Default Organization',
+    organizationCode: 'DEFAULT_ORG',
+    status: 'active',
+    createdBy: 'system',
+    updatedBy: 'system',
+  });
+  logger.info('✅ Default organization created successfully');
+  return DEFAULT_ORG_ID;
+}
+
+/**
+ * Get or create the SME-Ederan organization (used for all non-superadmin accounts).
+ * Returns the organization ID.
+ */
+async function getOrCreateSmeEderanOrganization(): Promise<string> {
+  const existing = await organizationRepository.getOrganizationByCode('SME');
+  if (existing) {
+    logger.info('✓ SME-Ederan organization already exists');
+    return existing.organizationId;
+  }
+  const org = await organizationRepository.createOrganization({
+    organizationName: 'SME-Ederan',
+    organizationCode: 'SME',
+    status: 'active',
+    createdBy: 'system',
+    updatedBy: 'system',
+  });
+  logger.info('✅ SME-Ederan organization created successfully');
+  return org.organizationId;
+}
 
 // ============================================
 // RBAC MODULE INITIALIZATION
@@ -200,9 +250,9 @@ async function createUser(userData: CreateUserData): Promise<UserType> {
 }
 
 /**
- * Get or create a role by name, returns the role ID
+ * Get or create a role by name in the given organization, returns the role ID
  */
-async function getOrCreateRole(roleName: string): Promise<string> {
+async function getOrCreateRole(roleName: string, organizationId: string): Promise<string> {
   // Check if role exists
   const existingRole = await authRepository.getRoleByName(roleName);
   
@@ -213,6 +263,7 @@ async function getOrCreateRole(roleName: string): Promise<string> {
 
   // Create the role if it doesn't exist
   const newRole = await authRepository.createRole({
+    organizationId,
     roleName,
     status: 'active',
     createdBy: 'system',
@@ -256,7 +307,7 @@ async function assignRoleToUserIfNeeded(userId: string, roleId: string): Promise
 /**
  * Create admin user account if it doesn't exist
  */
-async function initAdminUser(): Promise<void> {
+async function initAdminUser(defaultOrgId: string): Promise<void> {
   const email = 'admin@smee.com.my';
   const password = 'admin123';
   
@@ -264,7 +315,7 @@ async function initAdminUser(): Promise<void> {
   
   if (!existingAdminUser) {
     // Get or create the ADMIN role first
-    const adminRoleId = await getOrCreateRole(RoleCode.ADMIN);
+    const adminRoleId = await getOrCreateRole(RoleCode.ADMIN, defaultOrgId);
     
     const hashedPassword = await hashPassword(password);
 
@@ -274,6 +325,7 @@ async function initAdminUser(): Promise<void> {
       passwordHash: hashedPassword,
       contactNo: '+60123567891',
       isActive: true,
+      primaryOrganizationId: defaultOrgId,
       createdBy: 'system',
       updatedBy: 'system',
     });
@@ -286,9 +338,15 @@ async function initAdminUser(): Promise<void> {
     logger.debug(`   Password: ${password}`);
   } else {
     logger.info('✓ Admin user account already exists');
-    
+    // Ensure user is assigned to this organization (e.g. after adding SME-Ederan)
+    if (existingAdminUser.primaryOrganizationId !== defaultOrgId) {
+      await authRepository.updateUser(existingAdminUser.id, {
+        primaryOrganizationId: defaultOrgId,
+        updatedBy: 'system',
+      });
+    }
     // Ensure role is assigned even if user exists
-    const adminRoleId = await getOrCreateRole(RoleCode.ADMIN);
+    const adminRoleId = await getOrCreateRole(RoleCode.ADMIN, defaultOrgId);
     await assignRoleToUserIfNeeded(existingAdminUser.id, adminRoleId);
   }
 }
@@ -296,14 +354,14 @@ async function initAdminUser(): Promise<void> {
 /**
  * Create storekeeper user account if it doesn't exist
  */
-async function initStorekeeperUser(): Promise<void> {
+async function initStorekeeperUser(defaultOrgId: string): Promise<void> {
   const email = 'storekeeper@smee.com.my';
   const password = 'storekeeper123';
   
   const existingUser = await authRepository.getUserByEmail(email);
   
   if (!existingUser) {
-    const roleId = await getOrCreateRole(RoleCode.STOREKEEPER);
+    const roleId = await getOrCreateRole(RoleCode.STOREKEEPER, defaultOrgId);
     const hashedPassword = await hashPassword(password);
 
     const user = await createUser({
@@ -312,6 +370,7 @@ async function initStorekeeperUser(): Promise<void> {
       passwordHash: hashedPassword,
       contactNo: '+60123567892',
       isActive: true,
+      primaryOrganizationId: defaultOrgId,
       createdBy: 'system',
       updatedBy: 'system',
     });
@@ -324,9 +383,13 @@ async function initStorekeeperUser(): Promise<void> {
     logger.debug(`   Password: ${password}`);
   } else {
     logger.info('✓ Storekeeper user account already exists');
-    
-    // Ensure role is assigned even if user exists
-    const roleId = await getOrCreateRole(RoleCode.STOREKEEPER);
+    if (existingUser.primaryOrganizationId !== defaultOrgId) {
+      await authRepository.updateUser(existingUser.id, {
+        primaryOrganizationId: defaultOrgId,
+        updatedBy: 'system',
+      });
+    }
+    const roleId = await getOrCreateRole(RoleCode.STOREKEEPER, defaultOrgId);
     await assignRoleToUserIfNeeded(existingUser.id, roleId);
   }
 }
@@ -334,14 +397,14 @@ async function initStorekeeperUser(): Promise<void> {
 /**
  * Create logistic/driver user account if it doesn't exist
  */
-async function initLogisticUser(): Promise<void> {
+async function initLogisticUser(defaultOrgId: string): Promise<void> {
   const email = 'driver@smee.com.my';
   const password = 'driver123';
   
   const existingUser = await authRepository.getUserByEmail(email);
   
   if (!existingUser) {
-    const roleId = await getOrCreateRole(RoleCode.LOGISTIC);
+    const roleId = await getOrCreateRole(RoleCode.LOGISTIC, defaultOrgId);
     const hashedPassword = await hashPassword(password);
 
     const user = await createUser({
@@ -350,6 +413,7 @@ async function initLogisticUser(): Promise<void> {
       passwordHash: hashedPassword,
       contactNo: '+60123567893',
       isActive: true,
+      primaryOrganizationId: defaultOrgId,
       createdBy: 'system',
       updatedBy: 'system',
     });
@@ -362,9 +426,13 @@ async function initLogisticUser(): Promise<void> {
     logger.debug(`   Password: ${password}`);
   } else {
     logger.info('✓ Logistic user account already exists');
-    
-    // Ensure role is assigned even if user exists
-    const roleId = await getOrCreateRole(RoleCode.LOGISTIC);
+    if (existingUser.primaryOrganizationId !== defaultOrgId) {
+      await authRepository.updateUser(existingUser.id, {
+        primaryOrganizationId: defaultOrgId,
+        updatedBy: 'system',
+      });
+    }
+    const roleId = await getOrCreateRole(RoleCode.LOGISTIC, defaultOrgId);
     await assignRoleToUserIfNeeded(existingUser.id, roleId);
   }
 }
@@ -372,14 +440,14 @@ async function initLogisticUser(): Promise<void> {
 /**
  * Create management user account if it doesn't exist
  */
-async function initManagementUser(): Promise<void> {
+async function initManagementUser(defaultOrgId: string): Promise<void> {
   const email = 'management@smee.com.my';
   const password = 'management123';
   
   const existingUser = await authRepository.getUserByEmail(email);
   
   if (!existingUser) {
-    const roleId = await getOrCreateRole(RoleCode.MANAGEMENT);
+    const roleId = await getOrCreateRole(RoleCode.MANAGEMENT, defaultOrgId);
     const hashedPassword = await hashPassword(password);
 
     const user = await createUser({
@@ -388,6 +456,7 @@ async function initManagementUser(): Promise<void> {
       passwordHash: hashedPassword,
       contactNo: '+60123567894',
       isActive: true,
+      primaryOrganizationId: defaultOrgId,
       createdBy: 'system',
       updatedBy: 'system',
     });
@@ -400,36 +469,40 @@ async function initManagementUser(): Promise<void> {
     logger.debug(`   Password: ${password}`);
   } else {
     logger.info('✓ Management user account already exists');
-    
-    // Ensure role is assigned even if user exists
-    const roleId = await getOrCreateRole(RoleCode.MANAGEMENT);
+    if (existingUser.primaryOrganizationId !== defaultOrgId) {
+      await authRepository.updateUser(existingUser.id, {
+        primaryOrganizationId: defaultOrgId,
+        updatedBy: 'system',
+      });
+    }
+    const roleId = await getOrCreateRole(RoleCode.MANAGEMENT, defaultOrgId);
     await assignRoleToUserIfNeeded(existingUser.id, roleId);
   }
 }
 
-async function initSuperAdminUser(): Promise<void> {
+async function initSuperAdminUser(defaultOrgId: string): Promise<void> {
   const email = 'superadmin@smee.com.my';
   const password = 'superadmin123';
   
   const existingUser = await authRepository.getUserByEmail(email);
   
   if (!existingUser) {
-    const roleId = await getOrCreateRole(RoleCode.SUPER_ADMIN);
     const hashedPassword = await hashPassword(password);
 
-    const result = await db.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       let roleId = '';
 
       // Check if SUPER ADMIN role exists
       const superAdminRole = await authRepository.getRoleByName(RoleCode.SUPER_ADMIN);
       if (!superAdminRole) {
-        const superAdminRole = await authRepository.createRole({
+        const newRole = await authRepository.createRole({
+          organizationId: defaultOrgId,
           roleName: RoleCode.SUPER_ADMIN,
           status: 'active',
           createdBy: 'system',
           updatedBy: 'system',
         }, tx);
-        roleId = superAdminRole.roleId;
+        roleId = newRole.roleId;
       } else {
         roleId = superAdminRole.roleId;
       }
@@ -440,6 +513,9 @@ async function initSuperAdminUser(): Promise<void> {
         passwordHash: hashedPassword,
         contactNo: '+60123567895',
         isActive: true,
+        primaryOrganizationId: defaultOrgId,
+        createdBy: 'system',
+        updatedBy: 'system',
       }, tx);
 
       await authRepository.assignRoleToUser({
@@ -449,7 +525,6 @@ async function initSuperAdminUser(): Promise<void> {
         createdBy: 'system',
         updatedBy: 'system',
       }, tx);
-
     });
     
     logger.info('✅ Super Admin user account created successfully!');
@@ -459,7 +534,7 @@ async function initSuperAdminUser(): Promise<void> {
     logger.info('✓ Super Admin user account already exists');
     
     // Ensure role is assigned even if user exists
-    const roleId = await getOrCreateRole(RoleCode.SUPER_ADMIN);
+    const roleId = await getOrCreateRole(RoleCode.SUPER_ADMIN, defaultOrgId);
     await assignRoleToUserIfNeeded(existingUser.id, roleId);
   }
 }
@@ -470,14 +545,18 @@ async function initSuperAdminUser(): Promise<void> {
 export async function initAccounts() {
   try {
     logger.info('🚀 Starting accounts initialization...');
-    
-    // Initialize users and roles first
-    await initAdminUser();
-    await initStorekeeperUser();
-    await initLogisticUser();
-    await initManagementUser();
 
-    await initSuperAdminUser();
+    // Ensure default organization exists (same ID as migrations); used for Super Admin only
+    const defaultOrgId = await getOrCreateDefaultOrganization();
+    // SME-Ederan organization for all other accounts (admin, storekeeper, logistic, management)
+    const smeOrgId = await getOrCreateSmeEderanOrganization();
+
+    // Initialize users and roles: non-superadmin accounts → SME-Ederan; Super Admin → default org
+    await initAdminUser(smeOrgId);
+    await initStorekeeperUser(smeOrgId);
+    await initLogisticUser(smeOrgId);
+    await initManagementUser(smeOrgId);
+    await initSuperAdminUser(defaultOrgId);
     
     // Initialize RBAC modules and permissions
     await initRbacModule();

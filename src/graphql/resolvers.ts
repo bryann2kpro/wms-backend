@@ -21,6 +21,7 @@ import { resolvers as inventoryResolvers } from '@/features/inventory/inventory-
 import { resolvers as inventoryBalanceResolvers } from '@/features/inventory/inventory-balance/inventory.resolver';
 import { resolvers as stockCountResolvers } from '@/features/inventory/stock-count.resolver';
 // Master Data resolvers
+import { resolvers as organizationResolvers } from '@/features/master-data/organization.resolver';
 import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
 import { resolvers as deliveryScheduleResolvers } from '@/features/master-data/delivery-schedule.resolvers';
 import { resolvers as outletsResolvers } from '@/features/master-data/outlets.resolvers';
@@ -107,6 +108,7 @@ export const resolvers = mergeResolvers([
   inventoryBalanceResolvers,
   stockCountResolvers,
   // Master Data
+  organizationResolvers,
   regionResolvers,
   deliveryScheduleResolvers,
   outletsResolvers,

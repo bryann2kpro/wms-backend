@@ -1,6 +1,7 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, timestamp } from "drizzle-orm/pg-core";
 import { RegionTable } from "./region.model";
+import { OrganizationsTable } from "./organization.model";
 
 /**
  * Outlets Table
@@ -16,8 +17,9 @@ import { RegionTable } from "./region.model";
  */
 export const OutletsTable = MainSchema.table('outlets', {
   outletId: uuid('outlet_id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   outletName: text('outlet_name').notNull(),
-  outletCode: text('outlet_code').unique().notNull(),
+  outletCode: text('outlet_code').notNull(),
   outletAddress: text('outlet_address'),
   regionId: uuid('region_id').references(() => RegionTable.regionId),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

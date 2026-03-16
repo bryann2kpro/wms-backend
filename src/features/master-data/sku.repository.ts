@@ -42,13 +42,17 @@ export class SkuRepositoryClass {
    * @param tx - Optional transaction for atomic operations
    * @returns Paginated SKUs or all SKUs if pagination not provided
    */
-  async getSku(filter: SkuFilter, paginationParams?: PaginationParams, tx?: DbTransaction): Promise<PaginatedResponse<any>> {
+  async getSku(filter: SkuFilter, paginationParams?: PaginationParams, tx?: DbTransaction, organizationId?: string): Promise<PaginatedResponse<any>> {
     try {
       logger.info('ℹ️ [SkuRepository.getSku] Getting SKUs...');
       logger.debug('Filter:', filter);
 
       const whereCondition = [];
       const client = tx ?? db;
+
+      if (organizationId) {
+        whereCondition.push(eq(SkuTable.organizationId, organizationId));
+      }
 
       if (Array.isArray(filter.skuId)) {
         whereCondition.push(inArray(SkuTable.skuId, filter.skuId));
@@ -136,14 +140,18 @@ export class SkuRepositoryClass {
    * Get SKU by ID
    * @param tx - Optional transaction for atomic operations
    */
-  async getSkuById(id: string, tx?: DbTransaction): Promise<SkuType | null> {
+  async getSkuById(id: string, tx?: DbTransaction, organizationId?: string): Promise<SkuType | null> {
     try {
       logger.info('ℹ️ [SkuRepository.getSkuById] Getting SKU by ID...');
       const client = tx ?? db;
+      const whereConditions = [eq(SkuTable.skuId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(SkuTable.organizationId, organizationId));
+      }
       const [sku] = await client
         .select()
         .from(SkuTable)
-        .where(eq(SkuTable.skuId, id))
+        .where(and(...whereConditions))
         .limit(1);
       
       logger.info('✅ [SkuRepository.getSkuById] SKU fetched successfully');
@@ -182,7 +190,7 @@ export class SkuRepositoryClass {
    * Create a new SKU
    * @param tx - Optional transaction for atomic operations
    */
-  async createSku(data: Omit<SkuInsertType, 'skuId' | 'createdAt' | 'updatedAt'>, tx?: DbTransaction): Promise<SkuType> {
+  async createSku(data: Omit<SkuInsertType, 'skuId' | 'createdAt' | 'updatedAt'> & { organizationId: string }, tx?: DbTransaction): Promise<SkuType> {
     try {
       logger.info('ℹ️ [SkuRepository.createSku] Creating SKU...');
 
@@ -226,21 +234,25 @@ export class SkuRepositoryClass {
    * Update an existing SKU
    * @param tx - Optional transaction for atomic operations
    */
-  async updateSku(id: string, data: Partial<SkuInsertType>, tx?: DbTransaction): Promise<SkuType | null> {
+  async updateSku(id: string, data: Partial<SkuInsertType>, organizationId?: string, tx?: DbTransaction): Promise<SkuType | null> {
     try {
       logger.info('ℹ️ [SkuRepository.updateSku] Updating SKU...');
-      
+
       // Validate supplier IDs reference existing suppliers if skuSuppliers is being updated
       if (data.skuSuppliers && Array.isArray(data.skuSuppliers)) {
         const supplierIds = data.skuSuppliers.map(s => s.supplierId);
         await this.validateSupplierIds(supplierIds);
       }
-      
+
       const client = tx ?? db;
+      const whereConditions = [eq(SkuTable.skuId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(SkuTable.organizationId, organizationId));
+      }
       const [sku] = await client
         .update(SkuTable)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(SkuTable.skuId, id))
+        .where(and(...whereConditions))
         .returning();
       
       logger.info('✅ [SkuRepository.updateSku] SKU updated successfully');
@@ -254,10 +266,14 @@ export class SkuRepositoryClass {
   /**
    * Delete a SKU
    */
-  async deleteSku(id: string): Promise<boolean> {
+  async deleteSku(id: string, organizationId?: string): Promise<boolean> {
     try {
       logger.info('ℹ️ [SkuRepository.deleteSku] Deleting SKU...');
-      await db.delete(SkuTable).where(eq(SkuTable.skuId, id));
+      const whereConditions = [eq(SkuTable.skuId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(SkuTable.organizationId, organizationId));
+      }
+      await db.delete(SkuTable).where(and(...whereConditions));
       logger.info('✅ [SkuRepository.deleteSku] SKU deleted successfully');
       return true;
     } catch (error) {

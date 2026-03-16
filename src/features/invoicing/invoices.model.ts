@@ -1,5 +1,6 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
  * Invoices Table
@@ -26,6 +27,7 @@ import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
  */
 export const InvoicesTable = MainSchema.table('invoices', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   invoiceNo: text('invoice_no').unique().notNull(),
 
   doId: uuid('do_id').unique().notNull(),
@@ -115,11 +117,21 @@ export type InvoiceFilter = {
   doId?: string | string[];
   poId?: string | string[];
   status?: string | string[];
+  search?: string;
   dateIssuedFrom?: string;
   dateIssuedTo?: string;
   createdAtFrom?: string;
   createdAtTo?: string;
 };
+
+export type InvoiceSummaryData = {
+  issued: number;
+  sent: number;
+  cancelled: number;
+  totalAmount: string;
+};
+
+export type InvoiceWithDoNo = InvoiceType & { doNo?: string | null };
 
 export type InvoiceItemType = typeof InvoiceItemsTable.$inferSelect;
 export type InvoiceItemInsertType = typeof InvoiceItemsTable.$inferInsert;

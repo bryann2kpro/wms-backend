@@ -1,5 +1,6 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
  * Transfer Orders Table
@@ -26,6 +27,7 @@ import { uuid, text, numeric, timestamp, jsonb } from "drizzle-orm/pg-core";
  */
 export const PurchaseOrdersTable = MainSchema.table('purchase_orders', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   purchaseOrderNo: text('purchase_order_no').unique().notNull(),
   outletId: uuid('outlet_id').notNull(),
 

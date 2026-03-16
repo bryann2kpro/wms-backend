@@ -34,12 +34,16 @@ export class SuppliersRepositoryClass {
    * @param paginationParams - Pagination parameters
    * @returns Paginated suppliers
    */
-  async getSupplier(filter: SupplierFilter, paginationParams: PaginationParams): Promise<PaginatedResponse<any>> {
+  async getSupplier(filter: SupplierFilter, paginationParams: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any>> {
     try {
       logger.info('ℹ️ [SuppliersRepository.getSupplier] Getting suppliers...');
       logger.debug('Filter:', filter);
 
       const whereCondition = [];
+
+      if (organizationId) {
+        whereCondition.push(eq(SuppliersTable.organizationId, organizationId));
+      }
 
       if (Array.isArray(filter.supplierId)) {
         whereCondition.push(inArray(SuppliersTable.supplierId, filter.supplierId));
@@ -79,13 +83,17 @@ export class SuppliersRepositoryClass {
   /**
    * Get supplier by ID
    */
-  async getSupplierById(id: string): Promise<SupplierType | null> {
+  async getSupplierById(id: string, organizationId?: string): Promise<SupplierType | null> {
     try {
       logger.info('ℹ️ [SuppliersRepository.getSupplierById] Getting supplier by ID...');
+      const whereConditions = [eq(SuppliersTable.supplierId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(SuppliersTable.organizationId, organizationId));
+      }
       const [supplier] = await db
         .select()
         .from(SuppliersTable)
-        .where(eq(SuppliersTable.supplierId, id))
+        .where(and(...whereConditions))
         .limit(1);
       
       logger.info('✅ [SuppliersRepository.getSupplierById] Supplier fetched successfully');
@@ -99,13 +107,17 @@ export class SuppliersRepositoryClass {
   /**
    * Get supplier by code
    */
-  async getSupplierByCode(code: string): Promise<SupplierType | null> {
+  async getSupplierByCode(code: string, organizationId?: string): Promise<SupplierType | null> {
     try {
       logger.info('ℹ️ [SuppliersRepository.getSupplierByCode] Getting supplier by code...');
+      const whereConditions = [eq(SuppliersTable.supplierCode, code)];
+      if (organizationId) {
+        whereConditions.push(eq(SuppliersTable.organizationId, organizationId));
+      }
       const [supplier] = await db
         .select()
         .from(SuppliersTable)
-        .where(eq(SuppliersTable.supplierCode, code))
+        .where(and(...whereConditions))
         .limit(1);
       
       logger.info('✅ [SuppliersRepository.getSupplierByCode] Supplier fetched successfully');
@@ -121,11 +133,11 @@ export class SuppliersRepositoryClass {
    * @param data - Supplier data
    * @param tx - Optional transaction
    */
-  async createSupplier(data: Omit<SupplierInsertType, 'supplierId' | 'createdAt' | 'updatedAt'>, tx?: DbTransaction): Promise<SupplierType> {
+  async createSupplier(data: Omit<SupplierInsertType, 'supplierId' | 'createdAt' | 'updatedAt'> & { organizationId: string }, tx?: DbTransaction): Promise<SupplierType> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [SuppliersRepository.createSupplier] Creating supplier...');
-      
+
       const [supplier] = await dbClient
         .insert(SuppliersTable)
         .values({
@@ -149,15 +161,19 @@ export class SuppliersRepositoryClass {
    * @param id - Supplier ID
    * @param tx - Optional transaction
    */
-  async updateSupplier(data: Partial<SupplierInsertType>, id: string, tx?: DbTransaction): Promise<SupplierType> {
+  async updateSupplier(data: Partial<SupplierInsertType>, id: string, organizationId?: string, tx?: DbTransaction): Promise<SupplierType> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [SuppliersRepository.updateSupplier] Updating supplier...');
-      
+      const whereConditions = [eq(SuppliersTable.supplierId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(SuppliersTable.organizationId, organizationId));
+      }
+
       const [supplier] = await dbClient
         .update(SuppliersTable)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(SuppliersTable.supplierId, id))
+        .where(and(...whereConditions))
         .returning();
       
       logger.info('✅ [SuppliersRepository.updateSupplier] Supplier updated successfully');
@@ -171,16 +187,21 @@ export class SuppliersRepositoryClass {
   /**
    * Delete a supplier
    * @param id - Supplier ID
+   * @param organizationId - Organization ID (for multi-tenant filtering)
    * @param tx - Optional transaction
    */
-  async deleteSupplier(id: string, tx?: DbTransaction): Promise<boolean> {
+  async deleteSupplier(id: string, organizationId?: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx || db;
       logger.info('ℹ️ [SuppliersRepository.deleteSupplier] Deleting supplier...');
-      
+      const whereConditions = [eq(SuppliersTable.supplierId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(SuppliersTable.organizationId, organizationId));
+      }
+
       await dbClient
         .delete(SuppliersTable)
-        .where(eq(SuppliersTable.supplierId, id));
+        .where(and(...whereConditions));
       
       logger.info('✅ [SuppliersRepository.deleteSupplier] Supplier deleted successfully');
       return true;

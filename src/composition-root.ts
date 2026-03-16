@@ -23,6 +23,7 @@ import { UploadControllerClass } from '@/features/upload/upload.controller.js';
 import { S3Repository } from '@/features/upload/aws_s3.repository.js';
 
 // Master Data Repositories
+import { OrganizationRepositoryClass } from '@/features/master-data/organization.repository.js';
 import { SkuRepositoryClass } from '@/features/master-data/sku.repository.js';
 import { RegionRepositoryClass } from '@/features/master-data/region.repository.js';
 import { DeliveryScheduleRepositoryClass } from '@/features/master-data/delivery-schedule.repository.js';
@@ -44,6 +45,7 @@ import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orde
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
 import { ExceptionsRepositoryClass } from './features/outbound/exceptions.repository';
 import { OutboundServices } from './features/outbound/outbound.services';
+import { DocumentsRepository } from './features/documents/documents.repository.js';
 // Inventory
 import { InventoryMovementRepositoryClass } from './features/inventory/inventory-movement/inventory.repository';
 import { InventoryBalanceRepositoryClass } from './features/inventory/inventory-balance/inventory.repository';
@@ -71,6 +73,7 @@ export const authRepository = new AuthRepositoryClass(jwtController);
 export const rbacRepository = new RbacRepositoryClass();
 
 // Master Data Repositories
+export const organizationRepository = new OrganizationRepositoryClass();
 export const skuRepository = new SkuRepositoryClass();
 export const regionRepository = new RegionRepositoryClass();
 export const deliveryScheduleRepository = new DeliveryScheduleRepositoryClass();
@@ -101,6 +104,7 @@ export const dashboardRepository = new DashboardRepositoryClass();
 export const invoicesRepository = new InvoicesRepositoryClass();
 
 // Outbound Services
+export const documentsRepository = new DocumentsRepository();
 export const outboundServices = new OutboundServices(
   deliveryOrdersRepository,
   skuRepository,
@@ -109,6 +113,7 @@ export const outboundServices = new OutboundServices(
   outletsRepository,
   purchaseOrdersRepository,
   inventoryMovementRepository,
+  documentsRepository,
 );
 
 // ============================================

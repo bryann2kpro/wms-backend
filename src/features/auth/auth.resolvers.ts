@@ -8,6 +8,7 @@
 
 import type { UserType } from './auth.model';
 import { authRepository, jwtController } from '@/composition-root';
+import type { GraphQLContext } from '@/graphql/context';
 import { comparePassword, hashPassword } from '@/util/password';
 import { GraphQLError } from 'graphql';
 import { logger } from '@/util/logger';
@@ -72,8 +73,13 @@ export const resolvers = {
   Query: {
     /**
      * Get all users with filtering, sorting, and pagination. DB in repository (getUsersPaginated).
+     * Only returns users belonging to the caller's organization.
      */
-    users: async (_: unknown, args: { filter?: UserFilter; sort?: UserSort; pagination?: PaginationInput }) => {
+    users: async (
+      _: unknown,
+      args: { filter?: UserFilter; sort?: UserSort; pagination?: PaginationInput },
+      context: GraphQLContext,
+    ) => {
       const page = args.pagination?.page ?? 1;
       const pageSize = args.pagination?.pageSize ?? 10;
 
@@ -82,6 +88,7 @@ export const resolvers = {
         sort: args.sort,
         page,
         pageSize,
+        organizationId: context.organizationId ?? undefined,
       });
 
       const userIds = users.map((u) => u.id);
@@ -108,22 +115,36 @@ export const resolvers = {
     },
 
     /**
-     * Get a single user by ID (uses repository)
+     * Get a single user by ID (uses repository).
+     * Returns null if the user belongs to a different organization.
      */
-    user: async (_: unknown, { id }: { id: string }) => {
+    user: async (_: unknown, { id }: { id: string }, context: GraphQLContext) => {
       const user = await authRepository.getUserById(id);
       if (!user) return null;
+      if (
+        context.organizationId != null &&
+        user.primaryOrganizationId !== context.organizationId
+      ) {
+        return null;
+      }
 
       const roles = await authRepository.getUserRoles(id);
       return transformUser(user, roles.map(r => ({ roleId: r.roleId, roleName: r.roleName })));
     },
 
     /**
-     * Get a user by email (uses repository)
+     * Get a user by email (uses repository).
+     * Returns null if the user belongs to a different organization.
      */
-    userByEmail: async (_: unknown, { email }: { email: string }) => {
+    userByEmail: async (_: unknown, { email }: { email: string }, context: GraphQLContext) => {
       const user = await authRepository.getUserByEmail(email);
       if (!user) return null;
+      if (
+        context.organizationId != null &&
+        user.primaryOrganizationId !== context.organizationId
+      ) {
+        return null;
+      }
 
       const roles = await authRepository.getUserRoles(user.id);
       return transformUser(user, roles.map(r => ({ roleId: r.roleId, roleName: r.roleName })));
@@ -170,7 +191,11 @@ export const resolvers = {
       }
 
       // Generate tokens
-      const tokenPayload = { username: email, loginType: 'EMAIL' as const };
+      const tokenPayload = {
+        username: email,
+        loginType: 'EMAIL' as const,
+        organizationId: user.primaryOrganizationId || '00000000-0000-0000-0000-000000000001', // Default org if not assigned
+      };
       const accessToken = jwtController.generateAccessToken(tokenPayload);
       const refreshToken = jwtController.generateRefreshToken(tokenPayload);
       const decodedToken = jwtController.verifyToken(accessToken);

@@ -306,5 +306,17 @@ export const typeDefs = `#graphql
         moving it to the next available delivery day for the outlet's region.
         """
         applyEmergencyDelivery(id: ID!): PurchaseOrder!
+
+        """
+        Submit proof of delivery for a SHIPPED delivery order.
+        Saves a signed DO document record and advances the DO status to DELIVERED.
+        """
+        submitDeliveryProof(
+            doId: ID!
+            fileUrl: String!
+            fileName: String!
+            fileSizeBytes: Int!
+            mimeType: String!
+        ): DeliveryOrder!
     }
 `;

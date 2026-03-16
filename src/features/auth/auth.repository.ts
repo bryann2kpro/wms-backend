@@ -165,9 +165,14 @@ export class AuthRepositoryClass {
     sort?: { field: 'EMAIL' | 'DISPLAY_NAME' | 'CREATED_AT' | 'UPDATED_AT'; direction: 'ASC' | 'DESC' };
     page: number;
     pageSize: number;
+    organizationId?: string | null;
   }): Promise<{ users: UserType[]; totalCount: number }> {
-    const { filter, sort, page, pageSize } = params;
+    const { filter, sort, page, pageSize, organizationId } = params;
     const conditions: Array<SQL | undefined> = [];
+
+    if (organizationId != null) {
+      conditions.push(eq(UsersTable.primaryOrganizationId, organizationId));
+    }
 
     // Search (frontend sends same term in email + displayName) – treat as OR across both fields, case-insensitive
     if (filter?.email && filter?.displayName && filter.email === filter.displayName) {

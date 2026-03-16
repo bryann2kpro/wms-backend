@@ -1,5 +1,6 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
  * Exceptions Table
@@ -25,6 +26,7 @@ import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
  */
 export const ExceptionsTable = MainSchema.table('exceptions', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   doId: uuid('do_id').notNull(),
   skuId: uuid('sku_id').notNull(),
 

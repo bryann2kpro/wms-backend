@@ -33,14 +33,19 @@ export class RacksRepositoryClass {
    * Get racks with optional filtering and pagination
    * @param filter - Filter options
    * @param paginationParams - Pagination parameters
+   * @param organizationId - Organization ID for multi-tenant filtering
    * @returns Paginated racks with region info
    */
-  async getRack(filter: RackFilter, paginationParams: PaginationParams): Promise<PaginatedResponse<any>> {
+  async getRack(filter: RackFilter, paginationParams: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any>> {
     try {
       logger.info('ℹ️ [RacksRepository.getRack] Getting racks...');
       logger.debug('Filter:', filter);
 
       const whereCondition = [];
+
+      if (organizationId) {
+        whereCondition.push(eq(RacksTable.organizationId, organizationId));
+      }
 
       if (Array.isArray(filter.rackId)) {
         whereCondition.push(inArray(RacksTable.rackId, filter.rackId));
@@ -92,17 +97,23 @@ export class RacksRepositoryClass {
   }
 
   /**
-   * Get outlet by ID
+   * Get rack by ID
+   * @param id - Rack ID
+   * @param organizationId - Organization ID for multi-tenant filtering
    */
-  async getRackById(id: string): Promise<RackType | null> {
+  async getRackById(id: string, organizationId?: string): Promise<RackType | null> {
     try {
       logger.info('ℹ️ [RacksRepository.getRackById] Getting rack by ID...');
+      const whereConditions = [eq(RacksTable.rackId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(RacksTable.organizationId, organizationId));
+      }
       const [rack] = await db
         .select()
         .from(RacksTable)
-        .where(eq(RacksTable.rackId, id))
+        .where(and(...whereConditions))
         .limit(1);
-      
+
       logger.info('✅ [RacksRepository.getRackById] Rack fetched successfully');
       return rack || null;
     } catch (error) {
@@ -114,13 +125,20 @@ export class RacksRepositoryClass {
   /**
    * Create a new rack
    * @param rack - Rack data
+   * @param organizationId - Organization ID for multi-tenant filtering
+   * @param tx - Optional transaction
    * @returns Created rack
    */
-  async createRack(rack: RackInsertType): Promise<RackType> {
+  async createRack(rack: Omit<RackInsertType, 'rackId' | 'createdAt' | 'updatedAt'> & { organizationId: string }, organizationId?: string, tx?: DbTransaction): Promise<RackType> {
     try {
       logger.info('ℹ️ [RacksRepository.createRack] Creating rack...');
       logger.debug('Rack:', rack);
-      const [newRack] = await db.insert(RacksTable).values(rack).returning();
+      const dbClient = tx || db;
+      const [newRack] = await dbClient.insert(RacksTable).values({
+        ...rack,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
       logger.info('✅ [RacksRepository.createRack] Rack created successfully');
       return newRack || null;
     } catch (error) {
@@ -132,13 +150,21 @@ export class RacksRepositoryClass {
   /**
    * Update an existing rack
    * @param rack - Rack data
+   * @param id - Rack ID
+   * @param organizationId - Organization ID for multi-tenant filtering
+   * @param tx - Optional transaction
    * @returns Updated rack
    */
-  async updateRack(rack: Partial<RackInsertType>, id: string): Promise<RackType | null> {
+  async updateRack(rack: Partial<RackInsertType>, id: string, organizationId?: string, tx?: DbTransaction): Promise<RackType | null> {
     try {
       logger.info('ℹ️ [RacksRepository.updateRack] Updating rack...');
       logger.debug('Rack:', rack);
-      const [updatedRack] = await db.update(RacksTable).set(rack).where(eq(RacksTable.rackId, id)).returning();
+      const dbClient = tx || db;
+      const whereConditions = [eq(RacksTable.rackId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(RacksTable.organizationId, organizationId));
+      }
+      const [updatedRack] = await dbClient.update(RacksTable).set({ ...rack, updatedAt: new Date() }).where(and(...whereConditions)).returning();
       logger.info('✅ [RacksRepository.updateRack] Rack updated successfully');
       return updatedRack || null;
     } catch (error) {
@@ -150,13 +176,20 @@ export class RacksRepositoryClass {
   /**
    * Delete an existing rack
    * @param id - Rack ID
+   * @param organizationId - Organization ID for multi-tenant filtering
+   * @param tx - Optional transaction
    * @returns Deleted rack boolean
    */
-  async deleteRack(id: string): Promise<boolean> {
+  async deleteRack(id: string, organizationId?: string, tx?: DbTransaction): Promise<boolean> {
     try {
       logger.info('ℹ️ [RacksRepository.deleteRack] Deleting rack...');
       logger.debug('Rack ID:', id);
-      const result = await db.delete(RacksTable).where(eq(RacksTable.rackId, id)).returning();
+      const dbClient = tx || db;
+      const whereConditions = [eq(RacksTable.rackId, id)];
+      if (organizationId) {
+        whereConditions.push(eq(RacksTable.organizationId, organizationId));
+      }
+      const result = await dbClient.delete(RacksTable).where(and(...whereConditions)).returning();
       logger.info('✅ [RacksRepository.deleteRack] Rack deleted successfully');
       return result.length > 0 ? true : false;
     } catch (error) {

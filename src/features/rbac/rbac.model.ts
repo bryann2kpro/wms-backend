@@ -14,6 +14,7 @@
 import { timestamp, uuid, varchar, unique } from "drizzle-orm/pg-core";
 import { MainSchema } from "@/db/db.schema";
 import { UsersTable } from "@/features/auth/auth.model";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 // ============================================
 // ROLE TABLE
@@ -32,13 +33,16 @@ import { UsersTable } from "@/features/auth/auth.model";
  */
 export const Role = MainSchema.table('m_role', {
   roleId: uuid('role_id').defaultRandom().primaryKey().notNull(),
-  roleName: varchar('role_name', { length: 50 }).notNull().unique(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
+  roleName: varchar('role_name', { length: 50 }).notNull(),
   status: varchar('status', { length: 20 }).notNull().default('active'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   createdBy: varchar('created_by', { length: 40 }).notNull(),
   updatedBy: varchar('updated_by', { length: 40 }).notNull(),
-});
+}, (table) => ({
+  uniqueOrgRole: unique().on(table.organizationId, table.roleName),
+}));
 
 export type RoleFilter = {
   roleId?: string;

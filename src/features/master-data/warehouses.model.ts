@@ -1,5 +1,6 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, timestamp } from "drizzle-orm/pg-core";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
  * Warehouses Table
@@ -14,8 +15,9 @@ import { uuid, text, timestamp } from "drizzle-orm/pg-core";
  */
 export const WarehousesTable = MainSchema.table("m_warehouses", {
   warehouseId: uuid("warehouse_id").defaultRandom().notNull().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => OrganizationsTable.organizationId),
   warehouseName: text("warehouse_name").notNull(),
-  warehouseCode: text("warehouse_code").unique(),
+  warehouseCode: text("warehouse_code"),
   warehouseAddress: text("warehouse_address"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

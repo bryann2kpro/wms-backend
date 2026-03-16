@@ -1,5 +1,6 @@
 import { timestamp, uuid, varchar, boolean } from 'drizzle-orm/pg-core';
 import { MainSchema } from '@/db/db.schema';
+import { OrganizationsTable } from '@/features/master-data/organization.model';
 
 /**
  * Users Table
@@ -22,6 +23,7 @@ export const UsersTable = MainSchema.table('users', {
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   contactNo: varchar('contact_no', { length: 20 }),
   isActive: boolean('is_active').notNull().default(true),
+  primaryOrganizationId: uuid('primary_organization_id').references(() => OrganizationsTable.organizationId),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

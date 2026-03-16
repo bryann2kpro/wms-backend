@@ -1,6 +1,7 @@
 import { MainSchema } from "@/db/db.schema"
 import { text, timestamp, uuid, smallint, boolean, time, unique } from "drizzle-orm/pg-core";
 import { RegionTable } from "./region.model";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
  * Region Delivery Schedule Table
@@ -21,6 +22,7 @@ import { RegionTable } from "./region.model";
  */
 export const RegionDeliveryScheduleTable = MainSchema.table('region_delivery_schedules', {
   scheduleId: uuid('schedule_id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   regionId: uuid('region_id').notNull().references(() => RegionTable.regionId),
   dayOfWeek: smallint('day_of_week').notNull(), // 1=Monday, 2=Tuesday, ..., 7=Sunday
   cutoffDaysBefore: smallint('cutoff_days_before').notNull().default(1),

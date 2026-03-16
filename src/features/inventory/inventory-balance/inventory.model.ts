@@ -1,6 +1,7 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
 import { SkuTable } from "../../master-data/sku.model";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
  * Inventory Balances Table
@@ -18,6 +19,7 @@ import { SkuTable } from "../../master-data/sku.model";
  */
 export const InventoryBalancesTable = MainSchema.table('inventory_balances', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
+  organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   skuId: uuid('sku_id').unique().notNull().references(() => SkuTable.skuId).unique(),
   onHandQty: numeric('on_hand_qty', { precision: 12, scale: 2 }).notNull().default('0'),
   lossQty: numeric('loss_qty', { precision: 12, scale: 2 }).notNull().default('0'),

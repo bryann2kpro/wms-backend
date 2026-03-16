@@ -602,5 +602,37 @@ export const resolvers = {
         return transformDeliveryOrderItemWithDetails(result.query[0]);
       }
     ),
+
+    submitDeliveryProof: withAudit<
+      unknown,
+      { doId: string; fileUrl: string; fileName: string; fileSizeBytes: number; mimeType: string },
+      unknown
+    >(
+      {
+        entity: "DeliveryOrder",
+        action: "UPDATE",
+        getEntityId: (result) =>
+          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
+      },
+      async (_: unknown, { doId, fileUrl, fileName, fileSizeBytes, mimeType }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to submit delivery proof", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+        logger.info("ℹ️ [outbound.resolvers.submitDeliveryProof] Submitting delivery proof...");
+        const deliveryOrder = await outboundServices.submitDeliveryProof({
+          doId,
+          fileUrl,
+          fileName,
+          fileSizeBytes,
+          mimeType,
+          userId,
+        });
+        logger.info("✅ [outbound.resolvers.submitDeliveryProof] Proof submitted, DO marked DELIVERED:", doId);
+        return transformDeliveryOrder(deliveryOrder);
+      }
+    ),
   },
 };

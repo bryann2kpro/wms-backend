@@ -77,8 +77,9 @@ export const resolvers = {
             filter?: GrnFilter & { page?: number; pageSize?: number; pageNumber?: number };
             pageSize?: number;
             pageNumber?: number;
-        }) => {
+        }, context: GraphQLContext) => {
             try {
+                const organizationId = context.organizationId;
                 const filter: GrnFilter = args.filter || {};
                 if (args.filter) {
                     if (args.filter.id) {
@@ -108,7 +109,7 @@ export const resolvers = {
                 } else {
                     paginationParams = undefined;
                 }
-                const result = await grnsRepository.getGrns(filter, paginationParams);
+                const result = await grnsRepository.getGrns(filter, paginationParams, organizationId ?? undefined);
                 if (result === false) return false;
                 return {
                     query: result.query.map(transformGrn),
@@ -282,7 +283,8 @@ export const resolvers = {
                     // Check for duplicate GRN code before creating
                     const existingResult = await grnsRepository.getGrns(
                         { grnNo: input.grnNo },
-                        { pageSize: 1, pageNumber: 1 }
+                        { pageSize: 1, pageNumber: 1 },
+                        context.organizationId ?? undefined
                     );
                     if (existingResult && existingResult.query?.length > 0) {
                         throw new GraphQLError('Repeated GRN code found', {
@@ -480,7 +482,7 @@ export const resolvers = {
                         return false;
                     }
 
-                    const grnResult = await grnsRepository.getGrns({ id });
+                    const grnResult = await grnsRepository.getGrns({ id }, undefined, context.organizationId ?? undefined);
                     const existingGrn = (grnResult && 'query' in grnResult && grnResult.query?.[0]) ? grnResult.query[0] : null;
                     if (!existingGrn) {
                         logger.error('[grns.resolvers]: GRN not found', { id });
@@ -490,7 +492,8 @@ export const resolvers = {
                     if (input.grnNo != null && input.grnNo !== existingGrn.grnNo) {
                         const existingResult = await grnsRepository.getGrns(
                             { grnNo: input.grnNo },
-                            { pageSize: 1, pageNumber: 1 }
+                            { pageSize: 1, pageNumber: 1 },
+                            context.organizationId ?? undefined
                         );
                         const existingByGrnNo = existingResult && existingResult.query?.[0];
                         if (existingByGrnNo && existingByGrnNo.id !== id) {
@@ -703,12 +706,12 @@ export const resolvers = {
                 entity: 'GRN',
                 action: 'DELETE',
                 getEntityId: (_, args) => args.id,
-                getOldData: async (args) => grnsRepository.getGrns({ id: args.id }),
+                getOldData: async (args, context) => grnsRepository.getGrns({ id: args.id }, undefined, (context as GraphQLContext).organizationId ?? undefined),
             },
-            async (_: unknown, { id }: { id: string }) => {
+            async (_: unknown, { id }: { id: string }, context: GraphQLContext) => {
                 try {
                     await db.transaction(async (tx) => {
-                        const grnResult = await grnsRepository.getGrns({ id });
+                        const grnResult = await grnsRepository.getGrns({ id }, undefined, context.organizationId ?? undefined);
                         const grn = grnResult && 'query' in grnResult && grnResult.query?.[0] ? grnResult.query[0] : null;
                         const supplierDeliveryId = grn?.supplierDeliveryId ?? null;
                         if (supplierDeliveryId) {

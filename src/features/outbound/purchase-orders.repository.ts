@@ -31,11 +31,16 @@ export class PurchaseOrdersRepositoryClass {
 
   async getPurchaseOrders(
     filter: PurchaseOrderFilter,
-    paginationParams: PaginationParams
+    paginationParams: PaginationParams,
+    organizationId?: string
   ): Promise<PaginatedResponse<PurchaseOrderType>> {
     try {
       logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrders] Getting purchase orders...");
       const whereCondition: ReturnType<typeof eq>[] = [];
+
+      if (organizationId) {
+        whereCondition.push(eq(PurchaseOrdersTable.organizationId, organizationId));
+      }
 
       if (Array.isArray(filter.id)) {
         whereCondition.push(inArray(PurchaseOrdersTable.id, filter.id));
@@ -94,7 +99,8 @@ export class PurchaseOrdersRepositoryClass {
   async getPurchaseOrdersByScheduledDateRange(
     fromDate: Date,
     toDate: Date,
-    filter?: Partial<PurchaseOrderFilter>
+    filter?: Partial<PurchaseOrderFilter>,
+    organizationId?: string
   ): Promise<PurchaseOrderType[]> {
     try {
       logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrdersByScheduledDateRange] Getting POs by date range...");
@@ -102,6 +108,10 @@ export class PurchaseOrdersRepositoryClass {
         gte(PurchaseOrdersTable.scheduledDeliveryDate, fromDate),
         lte(PurchaseOrdersTable.scheduledDeliveryDate, toDate),
       ];
+
+      if (organizationId) {
+        whereCondition.push(eq(PurchaseOrdersTable.organizationId, organizationId));
+      }
 
       if (filter) {
         if (Array.isArray(filter.id)) {
@@ -137,7 +147,7 @@ export class PurchaseOrdersRepositoryClass {
     }
   }
 
-  async createPurchaseOrder(data: PurchaseOrderInsertType, tx?: DbTransaction): Promise<PurchaseOrderType> {
+  async createPurchaseOrder(data: PurchaseOrderInsertType & { organizationId: string }, tx?: DbTransaction): Promise<PurchaseOrderType> {
     try {
       const dbClient = tx ?? db;
       logger.info("ℹ️ [PurchaseOrdersRepository.createPurchaseOrder] Creating purchase order...");
@@ -160,15 +170,20 @@ export class PurchaseOrdersRepositoryClass {
   async updatePurchaseOrder(
     id: string,
     data: Partial<PurchaseOrderInsertType>,
+    organizationId?: string,
     tx?: DbTransaction
   ): Promise<PurchaseOrderType> {
     try {
       const dbClient = tx ?? db;
       logger.info("ℹ️ [PurchaseOrdersRepository.updatePurchaseOrder] Updating purchase order...");
+      const whereConditions = [eq(PurchaseOrdersTable.id, id)];
+      if (organizationId) {
+        whereConditions.push(eq(PurchaseOrdersTable.organizationId, organizationId));
+      }
       const [row] = await dbClient
         .update(PurchaseOrdersTable)
         .set({ ...data, updatedAt: new Date() })
-        .where(eq(PurchaseOrdersTable.id, id))
+        .where(and(...whereConditions))
         .returning();
       if (!row) throw new Error("[PurchaseOrdersRepository.updatePurchaseOrder] Purchase order not found");
       logger.info("✅ [PurchaseOrdersRepository.updatePurchaseOrder] Purchase order updated successfully");
@@ -179,10 +194,14 @@ export class PurchaseOrdersRepositoryClass {
     }
   }
 
-  async deletePurchaseOrder(id: string, tx?: DbTransaction): Promise<boolean> {
+  async deletePurchaseOrder(id: string, organizationId?: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx ?? db;
-      await dbClient.delete(PurchaseOrdersTable).where(eq(PurchaseOrdersTable.id, id));
+      const whereConditions = [eq(PurchaseOrdersTable.id, id)];
+      if (organizationId) {
+        whereConditions.push(eq(PurchaseOrdersTable.organizationId, organizationId));
+      }
+      await dbClient.delete(PurchaseOrdersTable).where(and(...whereConditions));
       logger.info("✅ [PurchaseOrdersRepository.deletePurchaseOrder] Purchase order deleted successfully");
       return true;
     } catch (error) {

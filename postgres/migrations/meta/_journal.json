@@ -330,6 +330,13 @@
       "when": 1773301561173,
       "tag": "0046_tan_stature",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1773329221935,
+      "tag": "0047_add_organization_support",
+      "breakpoints": true
     }
   ]
 }

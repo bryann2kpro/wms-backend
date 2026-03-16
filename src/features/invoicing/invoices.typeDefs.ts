@@ -13,6 +13,7 @@ export const typeDefs = `#graphql
     id: ID!
     invoiceNo: String!
     doId: ID!
+    doNo: String
     poId: ID
     poNo: String
 
@@ -48,6 +49,7 @@ export const typeDefs = `#graphql
     invoiceId: ID!
     itemNo: String
     skuId: ID!
+    skuCode: String
     description: String
     qty: String!
     unitPrice: String!
@@ -67,6 +69,7 @@ export const typeDefs = `#graphql
     doId: ID
     poId: ID
     status: String
+    search: String
     dateIssuedFrom: String
     dateIssuedTo: String
     createdAtFrom: String
@@ -77,11 +80,29 @@ export const typeDefs = `#graphql
   }
 
   """
+  Summary counts for invoices.
+  """
+  type InvoiceSummary {
+    issued: Int!
+    sent: Int!
+    cancelled: Int!
+    totalAmount: String!
+  }
+
+  """
   Paginated response for invoices.
   """
   type InvoicesPaginatedResponse {
     query: [Invoice!]!
     pagination: Pagination!
+    summary: InvoiceSummary!
+  }
+
+  extend type Mutation {
+    """
+    Update the status of an invoice (e.g. ISSUED → SENT).
+    """
+    updateInvoiceStatus(id: ID!, status: String!): Invoice
   }
 
   extend type Query {
