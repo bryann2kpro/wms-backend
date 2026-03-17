@@ -55,6 +55,12 @@ import { StockCountSessionService } from './features/inventory/stock-count-sessi
 // Dashboard
 import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
 import { InvoicesRepositoryClass } from './features/invoicing/invoices.repository';
+// API Keys
+import { ApiKeysRepositoryClass } from '@/features/api-keys/api-keys.repository.js';
+import { ApiKeysControllerClass } from '@/features/api-keys/api-keys.controller.js';
+// ES Integration
+import { EsAdvanceNoticeRepositoryClass } from '@/features/es/es-advance-notice.repository.js';
+import { EsAdvanceNoticeControllerClass } from '@/features/es/es-advance-notice.controller.js';
 
 
 // ============================================
@@ -138,3 +144,11 @@ export const inboundServices = new InboundServices(
     grnItemsRepository,
     inventoryMovementRepository,
 );
+
+// API Keys
+export const apiKeysRepository = new ApiKeysRepositoryClass();
+export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
+
+// ES Integration
+export const esAdvanceNoticeRepository = new EsAdvanceNoticeRepositoryClass();
+export const esAdvanceNoticeController = new EsAdvanceNoticeControllerClass(esAdvanceNoticeRepository);
