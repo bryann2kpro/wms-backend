@@ -55,6 +55,7 @@ import { StockCountSessionService } from './features/inventory/stock-count-sessi
 // Dashboard
 import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
 import { InvoicesRepositoryClass } from './features/invoicing/invoices.repository';
+import { RunningNoRepositoryClass } from './features/running-no/running-no.repository';
 // API Keys
 import { ApiKeysRepositoryClass } from '@/features/api-keys/api-keys.repository.js';
 import { ApiKeysControllerClass } from '@/features/api-keys/api-keys.controller.js';
@@ -79,6 +80,7 @@ export const uploadService = new UploadServices(s3Repository);
 
 export const authRepository = new AuthRepositoryClass(jwtController);
 export const rbacRepository = new RbacRepositoryClass();
+export const runningNoRepository = new RunningNoRepositoryClass();
 
 // Master Data Repositories
 export const organizationRepository = new OrganizationRepositoryClass();
@@ -92,7 +94,7 @@ export const racksRepository = new RacksRepositoryClass();
 export const warehousesRepository = new WarehousesRepositoryClass();
 
 // Inbound Repositories
-export const grnsRepository = new GrnsRepositoryClass();
+export const grnsRepository = new GrnsRepositoryClass(runningNoRepository);
 export const grnItemsRepository = new GrnItemsRepositoryClass();
 export const supplierDeliveryItemsRepository = new SupplierDeliveryItemsRepositoryClass();
 export const supplierDeliveriesRepository = new SupplierDeliveriesRepositoryClass();
@@ -111,7 +113,7 @@ export const stockCountSessionService = new StockCountSessionService(stockCountS
 // Dashboard
 export const dashboardRepository = new DashboardRepositoryClass();
 // Invoicing Repositories
-export const invoicesRepository = new InvoicesRepositoryClass();
+export const invoicesRepository = new InvoicesRepositoryClass(runningNoRepository);
 
 // Outbound Services
 export const documentsRepository = new DocumentsRepository();
@@ -143,6 +145,7 @@ export const inboundServices = new InboundServices(
     supplierDeliveryItemsRepository,
     grnItemsRepository,
     inventoryMovementRepository,
+    authRepository,
 );
 
 // API Keys

@@ -66,14 +66,28 @@ export const resolvers = {
     invoices: async (
       _: unknown,
       args: {
-        filter?: InvoiceFilter & { page?: number; pageSize?: number; pageNumber?: number; search?: string };
+        filter?: InvoiceFilter & {
+          page?: number;
+          pageSize?: number;
+          pageNumber?: number;
+          search?: string;
+          statuses?: string[];
+        };
         pageSize?: number;
         pageNumber?: number;
       },
       _context: GraphQLContext
     ) => {
       try {
-        const filter = invoiceFilterSchema.parse(args.filter ?? {});
+        const rawFilter = args.filter ?? {};
+        const normalizedFilter = {
+          ...rawFilter,
+          status:
+            rawFilter.status ??
+            (Array.isArray((rawFilter as any).statuses) ? (rawFilter as any).statuses : undefined),
+        };
+
+        const filter = invoiceFilterSchema.parse(normalizedFilter);
         const paginationParams = {
           pageSize: args.pageSize ?? args.filter?.pageSize ?? 10,
           pageNumber: args.pageNumber ?? args.filter?.pageNumber ?? args.filter?.page ?? 1,
