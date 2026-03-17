@@ -69,6 +69,7 @@ export const typeDefs = `#graphql
     doId: ID
     poId: ID
     status: String
+    statuses: [String!]
     search: String
     dateIssuedFrom: String
     dateIssuedTo: String
