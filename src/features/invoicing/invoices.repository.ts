@@ -453,7 +453,7 @@ export class InvoicesRepositoryClass {
         },
         dbClient
       );
-+
+
       const invoiceItemInserts: InvoiceItemInsertType[] = doItems.map((item, index) => ({
         invoiceId: invoice.id,
         skuId: item.skuId,

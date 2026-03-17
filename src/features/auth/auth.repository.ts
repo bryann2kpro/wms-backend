@@ -364,6 +364,7 @@ export class AuthRepositoryClass {
       const results = await db
         .select({
           userRoleId: UserRole.id,
+          organizationId: Role.organizationId,
           roleId: Role.roleId,
           roleName: Role.roleName,
           status: Role.status,
