@@ -12,6 +12,7 @@ import { logger } from '@/util/logger';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
 import { pagination, PgQueryType } from '@/util/pagination';
 import type { DbTransaction } from '@/types/db-transaction';
+import { RunningNoRepositoryClass } from '../running-no/running-no.repository';
 
 // ============================================
 // FILTER TYPES
@@ -29,7 +30,9 @@ export type GrnFilter = {
 };
 
 export class GrnsRepositoryClass {
-    constructor() { }
+    constructor(
+        private readonly runningNoRepository: RunningNoRepositoryClass,
+    ) { }
 
     async getGrns(filter: GrnFilter, paginationParams?: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any> | false> {
         try {
@@ -187,5 +190,21 @@ export class GrnsRepositoryClass {
             // Fallback to first sequence if anything goes wrong to avoid blocking GRN creation.
             return `GRN-${yyyymmdd}-0001`;
         }
+    }
+
+    async generateGrnNo(tx?: DbTransaction): Promise<string> {
+        const run = async (dbClient: typeof db | DbTransaction) => {
+            const nextNo = await this.runningNoRepository.generateRunningNo(
+                {
+                    scope: "grn",
+                    prefix: "GRN",
+                    width: 4,
+                },
+                dbClient
+            );
+            return nextNo;
+        };
+        if (tx) return run(tx);
+        return db.transaction(async (dbTx) => run(dbTx));
     }
 }

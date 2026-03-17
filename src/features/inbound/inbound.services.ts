@@ -95,15 +95,7 @@ export class InboundServices {
                 const receivedAt = data.receivedAt != null ? new Date(data.receivedAt) : null;
                 const deliveryDate = receivedAt ?? new Date();
                 let supplierDeliveryId: string | undefined = data.supplierDeliveryId ?? undefined;
-
-                const existingGrn = await this.grnsRepository.getGrns(
-                    { grnNo: data.grnNo },
-                    { pageSize: 1, pageNumber: 1 }
-                );
-                if (existingGrn && existingGrn.query?.length > 0) {
-                    throw new Error('Repeated GRN code found');
-                }
-                
+  
                 const user = await this.authRepository.getUserById(createdBy);
                 if (!user) {
                     throw new Error('User not found');
@@ -148,10 +140,13 @@ export class InboundServices {
                     }
                 }
 
+                // generate grn no
+                const grnNo = await this.grnsRepository.generateGrnNo(tx);
+
                 // 3. Create GRN (same payload as createGrn)
                 const grn = await this.grnsRepository.createGrn({
+                    grnNo: grnNo,
                     organizationId: organizationId,
-                    grnNo: data.grnNo,
                     supplierId: process.env.DEFAULT_SUPPLIER_ID,
                     supplierDeliveryId,
                     poNo: data.poNo ?? undefined,

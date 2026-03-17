@@ -28,7 +28,7 @@ import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model"
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
 import { eq, and, like, inArray, gte, lte, or, sql, isNull, count } from "drizzle-orm";
-import { RunningNoRepository } from "@/features/running-no/running-no.repository";
+import { RunningNoRepositoryClass } from "@/features/running-no/running-no.repository";
 
 /** Db or transaction client for methods that can run in or out of a transaction */
 type DbClient = typeof db | DbTransaction;
@@ -36,11 +36,12 @@ type DbClient = typeof db | DbTransaction;
 const ELIGIBLE_DO_STATUSES = ["SHIPPED", "DELIVERED"] as const;
 
 export class InvoicesRepositoryClass {
-  constructor() {}
-
-  private static readonly INVOICE_ADDRESS_SNAPSHOT_ID = "02858010-2dcf-4ef1-82f5-1a5f677a01b1";
-  private readonly runningNoRepo = new RunningNoRepository();
-
+  constructor(
+    private readonly runningNoRepository: RunningNoRepositoryClass,
+  ) {}
+  
+  private static readonly INVOICE_ADDRESS_SNAPSHOT_ID = process.env.INVOICE_ADDRESS_SNAPSHOT_ID || "02858010-2dcf-4ef1-82f5-1a5f677a01b1";
+  
   // ============================================
   // Eligibility (n+2 rule)
   // ============================================
@@ -365,15 +366,8 @@ export class InvoicesRepositoryClass {
    * Should be called within a transaction when used from createInvoiceFromDeliveryOrder.
    */
   async generateInvoiceNo(tx?: DbClient): Promise<string> {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const dd = String(now.getDate()).padStart(2, "0");
-    const datePart = `${yyyy}${mm}${dd}`;
-    const prefix = `PI-${datePart}-`;
-
     const run = async (dbClient: DbClient) => {
-      const nextSeq = await this.runningNoRepo.generateRunningNo(
+      const nextNo = await this.runningNoRepository.generateRunningNo(
         {
           scope: "invoice",
           prefix: "PI",
@@ -382,11 +376,9 @@ export class InvoicesRepositoryClass {
         dbClient
       );
 
-      const suffix = String(nextSeq).padStart(4, "0");
-      return `${prefix}${suffix}`;
+      return nextNo;
     };
 
-    // Ensure the advisory lock lives for the whole operation
     if (tx) return run(tx);
     return db.transaction(async (dbTx) => run(dbTx));
   }
