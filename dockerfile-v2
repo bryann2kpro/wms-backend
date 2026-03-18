@@ -11,6 +11,7 @@ COPY package.json .
 COPY ./src ./src
 COPY ./postgres ./postgres
 COPY ./drizzle.config.ts ./drizzle.config.ts
+COPY tsconfig.json .
 
 # Copy agent directory for Python gold evaluator
 # COPY agent ./agent
@@ -43,11 +44,15 @@ ENV NODE_ENV=production
 # RUN npm install -g pnpm
 
 # Copy only necessary files
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/dist-bun ./dist-bun
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/package.json /package.json
 COPY --from=builder /app/postgres ./postgres
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
+
+RUN mkdir -p /dist/client && \
+    printf 'export default {};\n' > /dist/client/client.mjs
 
 COPY .env .env.production
 
@@ -74,7 +79,7 @@ EXPOSE 7777
 
 # CMD ["pnpm", "run", "dev"]
 
-CMD ["bun", "run", "start"]
+CMD ["bun", "run", "start:bun"]
 
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD wget --quiet --spider http://localhost:7777/api/v1/health || exit 1
