@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { EsAdvanceNoticeRepositoryClass } from './es-advance-notice.repository.js';
 import { Error } from '@/error/index.js';
 import { logger } from '@/util/logger.js';
+import z, { prettifyError } from 'zod';
 
 export class EsAdvanceNoticeControllerClass {
   constructor(private esAdvanceNoticeRepository: EsAdvanceNoticeRepositoryClass) {}
@@ -18,13 +19,14 @@ export class EsAdvanceNoticeControllerClass {
     try {
       logger.info('ℹ️ [EsAdvanceNoticeController.receiveAdvanceNotice] Receiving advance notice...');
 
-      const payload = req.body;
+      const { success, data: payload, error } = z.object({}).safeParse(req.body);
 
-      if (payload === undefined || payload === null) {
+      if (!success) {
+        logger.warn("⚠️ [EsAdvanceNoticeController.receiveAdvanceNotice] Validation failed:", prettifyError(error));
         return res.status(400).json({
           success: false,
           message: Error.BAD_REQUEST,
-          detail: 'Request body is required',
+          detail: 'Validation Failed, please check the request body!',
         });
       }
 
