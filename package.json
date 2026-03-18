@@ -7,6 +7,7 @@
     "dev": "tsx watch --clear-screen=false src/main.ts src/**/*.ts",
     "start": "node dist/main.js",
     "build": "esbuild src/main.ts --bundle --platform=node --target=node18 --minify --format=esm --outfile=dist/main.js --packages=external",
+    "build:bun": "bun run build",
     "migrate": "drizzle-kit generate && drizzle-kit migrate",
     "initialize": "node init.js",
     "test": "vitest"
