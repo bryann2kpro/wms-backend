@@ -5,7 +5,7 @@
  * Provides CRUD operations for managing organizations in a multi-tenant system.
  */
 
-import { eq, and, like, ilike } from 'drizzle-orm';
+import { eq, and, like, ilike, count } from 'drizzle-orm';
 import { OrganizationsTable, OrganizationType, OrganizationInsertType } from './organization.model';
 import { db } from '@/db';
 import { logger } from '@/util/logger';
@@ -90,10 +90,10 @@ export class OrganizationRepositoryClass {
 
     // Get total count
     const countResult = await client
-      .select({ count: baseQuery })
+      .select({ count: count(OrganizationsTable.organizationId) })
       .from(OrganizationsTable)
       .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
-    const totalCount = (await client.execute(countResult)).length;
+    const totalCount = countResult[0]?.count ?? 0;
 
     // Apply pagination
     const offset = (pageNumber - 1) * pageSize;

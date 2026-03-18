@@ -62,7 +62,7 @@ const createPurchaseOrderInputSchema = z.object({
 
 const updateDeliveryOrderInputSchema = z.object({
   isEmergency: z.boolean().optional(),
-  status: z.enum(["NEW", "PACKING", "SHIPPED", "DELIVERED"]).optional(),
+  status: z.enum(["NEW", "PICKING", "PACKING", "SHIPPED", "DELIVERED"]).optional(),
 });
 
 // ============================================
@@ -189,11 +189,23 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
     updatedBy: item.updatedBy ?? null,
     skuCode: item.skuCode ?? null,
     skuDescription: item.skuDescription ?? null,
+    doId: item.doId ?? null,
     doNo: item.doNo ?? null,
     doStatus: item.doStatus ?? null,
     onHandQty: item.onHandQty ?? "0",
     lossQty: item.lossQty ?? "0",
     reservedQty: item.reservedQty ?? "0",
+    allocations: (item.allocations ?? []).map((a) => ({
+      id: a.id,
+      doItemId: a.doItemId,
+      grnItemId: a.grnItemId,
+      grnNo: a.grnNo ?? null,
+      rackId: a.rackId ?? null,
+      rackName: a.rackName ?? null,
+      expiryDate: a.expiryDate ? a.expiryDate.toISOString() : null,
+      qtyAllocated: a.qtyAllocated,
+      priorityFlag: a.priorityFlag,
+    })),
   };
 }
 
@@ -396,10 +408,25 @@ export const resolvers = {
         };
 
         const result = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(filter, paginationParams);
+        const items = result.query;
+        const doItemIds = items.map((i) => i.id);
+        const allocations = doItemIds.length > 0
+          ? await deliveryOrdersRepository.getDoItemAllocationsWithDetails(doItemIds)
+          : [];
+        const allocByItemId = new Map<string, typeof allocations>();
+        for (const a of allocations) {
+          const arr = allocByItemId.get(a.doItemId) ?? [];
+          arr.push(a);
+          allocByItemId.set(a.doItemId, arr);
+        }
+        const itemsWithAllocations = items.map((item) => ({
+          ...item,
+          allocations: allocByItemId.get(item.id) ?? [],
+        }));
 
-        logger.info("✅ [outbound.resolvers.deliveryOrderItems] Delivery order items fetched:", result.query.length);
+        logger.info("✅ [outbound.resolvers.deliveryOrderItems] Delivery order items fetched:", items.length);
         return {
-          query: result.query.map(transformDeliveryOrderItemWithDetails),
+          query: itemsWithAllocations.map(transformDeliveryOrderItemWithDetails),
           pagination: result.pagination,
         };
       } catch (error) {
@@ -600,6 +627,55 @@ export const resolvers = {
 
         logger.info("✅ [outbound.resolvers.markDeliveryOrderItemPicked] Item marked as picked:", id);
         return transformDeliveryOrderItemWithDetails(result.query[0]);
+      }
+    ),
+
+    allocatePickList: withAudit<
+      unknown,
+      { deliveryOrderId: string },
+      unknown
+    >(
+      {
+        entity: "DeliveryOrder",
+        action: "UPDATE",
+        getEntityId: (_result, args) => (args as { deliveryOrderId: string }).deliveryOrderId ?? null,
+      },
+      async (_: unknown, { deliveryOrderId }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to allocate pick list", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+        logger.info(`ℹ️ [outbound.resolvers.allocatePickList] Allocating pick list for DO ${deliveryOrderId}...`);
+        await outboundServices.allocatePickList({ deliveryOrderId, userId });
+
+        // Re-fetch items with allocations for the response
+        const doRow = await deliveryOrdersRepository.getDeliveryOrderById(deliveryOrderId);
+        if (!doRow) throw new GraphQLError("Delivery order not found", { extensions: { code: "NOT_FOUND" } });
+
+        const itemsResult = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(
+          { doNo: doRow.doNo },
+          { pageSize: 1000, pageNumber: 1 }
+        );
+        const doItemIds = itemsResult.query.map((i) => i.id);
+        const allocations = await deliveryOrdersRepository.getDoItemAllocationsWithDetails(doItemIds);
+
+        // Attach allocations to items
+        const allocByItemId = new Map<string, typeof allocations>();
+        for (const alloc of allocations) {
+          const arr = allocByItemId.get(alloc.doItemId) ?? [];
+          arr.push(alloc);
+          allocByItemId.set(alloc.doItemId, arr);
+        }
+
+        const itemsWithAllocations = itemsResult.query.map((item) => ({
+          ...item,
+          allocations: allocByItemId.get(item.id) ?? [],
+        }));
+
+        logger.info(`✅ [outbound.resolvers.allocatePickList] Pick list allocated, returning ${itemsWithAllocations.length} items`);
+        return itemsWithAllocations.map(transformDeliveryOrderItemWithDetails);
       }
     ),
 

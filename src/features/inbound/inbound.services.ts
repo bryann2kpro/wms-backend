@@ -9,8 +9,8 @@ import type { DbTransaction } from "@/types/db-transaction";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
 import { GrnItemRacksTable } from "./grns.model";
-
-const DEFAULT_SUPPLIER_ID = 'b3e317c5-4bec-49aa-82f3-0a83115a8e70';
+import { AuthRepositoryClass } from "../auth/auth.repository";
+import { OrganizationRepositoryClass } from "../master-data/organization.repository";
 
 /**
  * Item input for creating a GRN (same shape as CreateGrnItemInput).
@@ -60,6 +60,7 @@ export class InboundServices {
         private readonly supplierDeliveryItemsRepository: SupplierDeliveryItemsRepositoryClass,
         private readonly grnItemsRepository: GrnItemsRepositoryClass,
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
+        private readonly authRepository: AuthRepositoryClass,
     ) {}
 
     /**
@@ -82,18 +83,25 @@ export class InboundServices {
             try {
                 logger.info('ℹ️ [InboundServices.createInbound] Starting Inbound Flow...');
 
+                if (!process.env.DEFAULT_SUPPLIER_ID) {
+                    throw new Error('DEFAULT_SUPPLIER_ID is not set');
+                }
+
+                if (!process.env.DEFAULT_ORGANIZATION_ID) {
+                    throw new Error('DEFAULT_ORGANIZATION_ID is not set');
+                }
+
                 const updatedBy = createdBy;
                 const receivedAt = data.receivedAt != null ? new Date(data.receivedAt) : null;
                 const deliveryDate = receivedAt ?? new Date();
                 let supplierDeliveryId: string | undefined = data.supplierDeliveryId ?? undefined;
-
-                const existingGrn = await this.grnsRepository.getGrns(
-                    { grnNo: data.grnNo },
-                    { pageSize: 1, pageNumber: 1 }
-                );
-                if (existingGrn && existingGrn.query?.length > 0) {
-                    throw new Error('Repeated GRN code found');
+  
+                const user = await this.authRepository.getUserById(createdBy);
+                if (!user) {
+                    throw new Error('User not found');
                 }
+                
+                const organizationId = user.primaryOrganizationId || process.env.DEFAULT_ORGANIZATION_ID;
 
                 // 2. If supplierDeliveryNo: create supplier delivery + supplier delivery items
                 if (data.supplierDeliveryNo) {
@@ -104,8 +112,10 @@ export class InboundServices {
                     if (existingDo && existingDo.query?.length > 0) {
                         throw new Error('Repeated supplier delivery number found');
                     }
+
                     const supplierDelivery = await this.supplierDeliveriesRepository.createSupplierDelivery({
-                        supplierId: DEFAULT_SUPPLIER_ID,
+                        organizationId: organizationId,
+                        supplierId: process.env.DEFAULT_SUPPLIER_ID,
                         supplierDeliveryNo: data.supplierDeliveryNo,
                         deliveryDate,
                         status: 'RECEIVED_DRAFT',
@@ -130,10 +140,14 @@ export class InboundServices {
                     }
                 }
 
+                // generate grn no
+                const grnNo = await this.grnsRepository.generateGrnNo(tx);
+
                 // 3. Create GRN (same payload as createGrn)
                 const grn = await this.grnsRepository.createGrn({
-                    grnNo: data.grnNo,
-                    supplierId: DEFAULT_SUPPLIER_ID,
+                    grnNo: grnNo,
+                    organizationId: organizationId,
+                    supplierId: process.env.DEFAULT_SUPPLIER_ID,
                     supplierDeliveryId,
                     poNo: data.poNo ?? undefined,
                     notes: data.notes ?? undefined,
@@ -196,7 +210,7 @@ export class InboundServices {
                         cartonQuantity: String(data.inboundQty),
                         updatedBy: createdBy,
                         updatedAt: new Date(),
-                    }, tx);
+                    }, organizationId, tx);
                 }
 
                 logger.info('✅ [InboundServices.createInbound] Inbound Flow completed successfully');

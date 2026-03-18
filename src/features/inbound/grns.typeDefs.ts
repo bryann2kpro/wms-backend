@@ -141,6 +141,14 @@ export const typeDefs = `#graphql
         sortOrder: String
     }
 
+    extend type Query {
+        """
+        Get the next GRN number for a given date. If date is omitted, the server's current date is used.
+        The format is GRN-YYYYMMDD-0001 and increments within the same day.
+        """
+        nextGrnNumber(date: String): String!
+    }
+
     type GrnPaginatedResponse {
         query: [Grn!]!
         pagination: Pagination!

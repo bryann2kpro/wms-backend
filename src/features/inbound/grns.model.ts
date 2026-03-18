@@ -1,5 +1,5 @@
 import { MainSchema } from "@/db/db.schema";
-import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
+import { uuid, text, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
 import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
@@ -72,6 +72,12 @@ export const GrnItemsTable = MainSchema.table('grn_items', {
    * Multiple GRN items may exist for the same SKU with different expiry dates.
    */
   expiryDate: timestamp('expiry_date'),
+  /**
+   * Priority flag — when true, this batch is sorted to the top of the pick list
+   * ahead of other batches for the same SKU (regardless of FIFO/LIFO/FEFO).
+   * If ALL batches for a SKU are flagged, the flags cancel out and base strategy applies.
+   */
+  priorityFlag: boolean('priority_flag').notNull().default(false),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

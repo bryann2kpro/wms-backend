@@ -170,7 +170,7 @@ export class AuthRepositoryClass {
     const { filter, sort, page, pageSize, organizationId } = params;
     const conditions: Array<SQL | undefined> = [];
 
-    if (organizationId != null) {
+    if (organizationId != null && !organizationId.endsWith("0001")) {
       conditions.push(eq(UsersTable.primaryOrganizationId, organizationId));
     }
 
@@ -364,6 +364,7 @@ export class AuthRepositoryClass {
       const results = await db
         .select({
           userRoleId: UserRole.id,
+          organizationId: Role.organizationId,
           roleId: Role.roleId,
           roleName: Role.roleName,
           status: Role.status,

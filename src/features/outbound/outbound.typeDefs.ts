@@ -23,6 +23,28 @@ export const typeDefs = `#graphql
     }
 
     """
+    A single batch allocation for a delivery order item pick list.
+    Tells the warehouse keeper which GRN batch/rack to pick from and how much.
+    """
+    type DoItemAllocation {
+        id: ID!
+        doItemId: ID!
+        grnItemId: ID!
+        "GRN number this batch came from (for display)"
+        grnNo: String
+        "Rack ID where the batch is stored"
+        rackId: ID
+        "Rack location display (e.g. row-column-level)"
+        rackName: String
+        "Batch expiry date (ISO string), null if not tracked"
+        expiryDate: String
+        "Quantity to pick from this batch"
+        qtyAllocated: String!
+        "Whether this batch was flagged as priority by admin"
+        priorityFlag: Boolean!
+    }
+
+    """
     Delivery Order Item with SKU and inventory details - for work queue views
     """
     type DeliveryOrderItemWithDetails {
@@ -41,6 +63,8 @@ export const typeDefs = `#graphql
         skuCode: String
         "SKU description from master data"
         skuDescription: String
+        "Delivery order ID"
+        doId: ID
         "Delivery order number"
         doNo: String
         "Delivery order status"
@@ -51,6 +75,8 @@ export const typeDefs = `#graphql
         lossQty: String
         "Reserved quantity from inventory balance"
         reservedQty: String
+        "Pick list allocations — which GRN batches to pick from and how much (populated after allocatePickList)"
+        allocations: [DoItemAllocation!]!
     }
 
     """
@@ -318,5 +344,14 @@ export const typeDefs = `#graphql
             fileSizeBytes: Int!
             mimeType: String!
         ): DeliveryOrder!
+
+        """
+        Compute and store the pick list for a delivery order.
+        Called when warehouse keeper begins picking (first item checked).
+        Determines which GRN batches to use for each item based on the SKU's
+        picking strategy (FIFO/LIFO/FEFO) and any priority flags on batches.
+        Returns the updated delivery order items with allocations.
+        """
+        allocatePickList(deliveryOrderId: ID!): [DeliveryOrderItemWithDetails!]!
     }
 `;

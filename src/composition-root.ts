@@ -50,9 +50,18 @@ import { DocumentsRepository } from './features/documents/documents.repository.j
 import { InventoryMovementRepositoryClass } from './features/inventory/inventory-movement/inventory.repository';
 import { InventoryBalanceRepositoryClass } from './features/inventory/inventory-balance/inventory.repository';
 import { StockCountServices } from './features/inventory/stock-count.services';
+import { StockCountSessionRepositoryClass } from './features/inventory/stock-count-session.repository';
+import { StockCountSessionService } from './features/inventory/stock-count-session.service';
 // Dashboard
 import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
 import { InvoicesRepositoryClass } from './features/invoicing/invoices.repository';
+import { RunningNoRepositoryClass } from './features/running-no/running-no.repository';
+// API Keys
+import { ApiKeysRepositoryClass } from '@/features/api-keys/api-keys.repository.js';
+import { ApiKeysControllerClass } from '@/features/api-keys/api-keys.controller.js';
+// ES Integration
+import { EsAdvanceNoticeRepositoryClass } from '@/features/es/es-advance-notice.repository.js';
+import { EsAdvanceNoticeControllerClass } from '@/features/es/es-advance-notice.controller.js';
 
 
 // ============================================
@@ -71,6 +80,7 @@ export const uploadService = new UploadServices(s3Repository);
 
 export const authRepository = new AuthRepositoryClass(jwtController);
 export const rbacRepository = new RbacRepositoryClass();
+export const runningNoRepository = new RunningNoRepositoryClass();
 
 // Master Data Repositories
 export const organizationRepository = new OrganizationRepositoryClass();
@@ -84,7 +94,7 @@ export const racksRepository = new RacksRepositoryClass();
 export const warehousesRepository = new WarehousesRepositoryClass();
 
 // Inbound Repositories
-export const grnsRepository = new GrnsRepositoryClass();
+export const grnsRepository = new GrnsRepositoryClass(runningNoRepository);
 export const grnItemsRepository = new GrnItemsRepositoryClass();
 export const supplierDeliveryItemsRepository = new SupplierDeliveryItemsRepositoryClass();
 export const supplierDeliveriesRepository = new SupplierDeliveriesRepositoryClass();
@@ -97,11 +107,13 @@ export const exceptionsRepository = new ExceptionsRepositoryClass();
 export const inventoryBalancesRepository = new InventoryBalanceRepositoryClass();
 export const inventoryMovementRepository = new InventoryMovementRepositoryClass(inventoryBalancesRepository);
 export const stockCountServices = new StockCountServices();
+export const stockCountSessionRepository = new StockCountSessionRepositoryClass();
+export const stockCountSessionService = new StockCountSessionService(stockCountSessionRepository);
 
 // Dashboard
 export const dashboardRepository = new DashboardRepositoryClass();
 // Invoicing Repositories
-export const invoicesRepository = new InvoicesRepositoryClass();
+export const invoicesRepository = new InvoicesRepositoryClass(runningNoRepository);
 
 // Outbound Services
 export const documentsRepository = new DocumentsRepository();
@@ -133,4 +145,13 @@ export const inboundServices = new InboundServices(
     supplierDeliveryItemsRepository,
     grnItemsRepository,
     inventoryMovementRepository,
+    authRepository,
 );
+
+// API Keys
+export const apiKeysRepository = new ApiKeysRepositoryClass();
+export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
+
+// ES Integration
+export const esAdvanceNoticeRepository = new EsAdvanceNoticeRepositoryClass();
+export const esAdvanceNoticeController = new EsAdvanceNoticeControllerClass(esAdvanceNoticeRepository);

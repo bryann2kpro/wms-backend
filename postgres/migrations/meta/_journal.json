@@ -337,6 +337,41 @@
       "when": 1773329221935,
       "tag": "0047_add_organization_support",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1773629798305,
+      "tag": "0048_light_wiccan",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1773639660592,
+      "tag": "0049_overconfident_annihilus",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1773648510791,
+      "tag": "0050_pale_vivisector",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1773713632029,
+      "tag": "0051_bizarre_northstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1773718613280,
+      "tag": "0052_acoustic_the_order",
+      "breakpoints": true
     }
   ]
 }

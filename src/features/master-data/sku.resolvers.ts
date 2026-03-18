@@ -53,6 +53,7 @@ function transformSku(sku: {
   skuExpiryDate: Date | null;
   skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }> | null;
   skuUom: string;
+  pickingStrategy: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -68,6 +69,7 @@ function transformSku(sku: {
     lossQuantity: parseFloat(sku.lossQuantity),
     skuExpiryDate: sku.skuExpiryDate ? sku.skuExpiryDate.toISOString() : null,
     skuUom: sku.skuUom,
+    pickingStrategy: sku.pickingStrategy,
     skuSuppliers: sku.skuSuppliers ?? [],
     isActive: sku.isActive,
     createdAt: sku.createdAt.toISOString(),
@@ -230,6 +232,7 @@ export const resolvers = {
       skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }>;
       skuUom: string;
       isActive: boolean;
+      pickingStrategy?: string | null;
       createdBy?: string | null;
       updatedBy?: string | null;
     }}, context: GraphQLContext) => {
@@ -256,6 +259,7 @@ export const resolvers = {
           skuExpiryDate: expiryDate,
           skuSuppliers: skuSuppliersData ?? null,
           skuUom: input.skuUom,
+          pickingStrategy: input.pickingStrategy ?? 'FIFO',
           isActive: input.isActive,
           createdBy,
           updatedBy,
@@ -290,6 +294,7 @@ export const resolvers = {
       skuExpiryDate?: string | Date | null;
       skuUom?: string;
       isActive?: boolean;
+      pickingStrategy?: string | null;
       updatedBy?: string | null;
     }}, context: GraphQLContext) => {
       try {
@@ -325,6 +330,9 @@ export const resolvers = {
         }
         if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
         if (input.isActive !== undefined) updateData.isActive = input.isActive;
+        if (input.pickingStrategy !== undefined && input.pickingStrategy !== null) {
+          updateData.pickingStrategy = input.pickingStrategy;
+        }
 
         const sku = await skuRepository.updateSku(id, updateData);
         if (!sku) return null;
