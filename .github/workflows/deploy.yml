@@ -2,9 +2,8 @@ name: Deploy
 
 on:
   push:
-    branches:
-      - main
-      - staging
+    tags:
+      - v*
   pull_request:
     branches:
       - main
@@ -39,26 +38,29 @@ jobs:
 
           git fetch --tags --force
 
-          TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
-          if [ -z "$TAG" ]; then
-            SHORT_SHA="$(git rev-parse --short=7 HEAD)"
-            VERSION="0.0.0-$SHORT_SHA"
+          REF_TYPE="${GITHUB_REF_TYPE:-}"
+          REF_NAME="${GITHUB_REF_NAME:-}"
+
+          if [ "$REF_TYPE" = "tag" ] && [[ "$REF_NAME" == v* ]]; then
+            VERSION="${REF_NAME#v}"
           else
-            VERSION="${TAG#v}"
+            TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+            if [ -z "$TAG" ]; then
+              SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+              VERSION="0.0.0-$SHORT_SHA"
+            else
+              VERSION="${TAG#v}"
+            fi
           fi
 
           IMAGE="${DOCKERHUB_NAMESPACE}/${PROJECT_NAME}"
-          REF_NAME="${GITHUB_REF_NAME}"
 
           TAGS=""
-          if [ "$REF_NAME" = "main" ]; then
-            TAGS="${IMAGE}:${VERSION},${IMAGE}:latest"
-          elif [ "$REF_NAME" = "staging" ]; then
-            TAGS="${IMAGE}:staging-${VERSION},${IMAGE}:staging-latest"
+          if [[ "$VERSION" == *"-staging" ]]; then
+            STAGING_VERSION="${VERSION%-staging}"
+            TAGS="${IMAGE}:staging-${STAGING_VERSION},${IMAGE}:staging-latest"
           else
-            # For pull_request events, GITHUB_REF_NAME is the PR's branch name.
-            # Still compute a deterministic tag for build validation, but never push.
-            TAGS="${IMAGE}:${VERSION}"
+            TAGS="${IMAGE}:${VERSION},${IMAGE}:latest"
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -75,7 +77,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build (and push on branch pushes)
+      - name: Build (and push on tag pushes)
         uses: docker/build-push-action@v7
         with:
           context: .
