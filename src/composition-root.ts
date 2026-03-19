@@ -126,6 +126,7 @@ export const outboundServices = new OutboundServices(
   purchaseOrdersRepository,
   inventoryMovementRepository,
   documentsRepository,
+  authRepository,
 );
 
 // ============================================

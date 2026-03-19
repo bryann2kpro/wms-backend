@@ -16,6 +16,7 @@ import { DocumentsRepository } from "../documents/documents.repository";
 
 import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
+import { AuthRepositoryClass } from "../auth/auth.repository";
 
 /** Line item input: must have qtyRequired and either skuId or skuCode. */
 export type CreateDeliveryOrderItemInput = {
@@ -53,6 +54,7 @@ export class OutboundServices {
         private readonly purchaseOrdersRepository: PurchaseOrdersRepositoryClass,
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
         private readonly documentsRepository: DocumentsRepository,
+        private readonly authRepository: AuthRepositoryClass,
     ) {}
 
     /**
@@ -63,6 +65,24 @@ export class OutboundServices {
     async createPurchaseOrder(data: CreatePurchaseOrderData): Promise<PurchaseOrderType> {
         logger.info("ℹ️ [OutboundServices.createPurchaseOrder] Creating purchase order and delivery order...");
         try {
+
+            const createdBy = data.userId;
+            if (!createdBy) {
+                logger.error('❌ [InboundServices.createInbound] User ID is required');
+                throw new Error('User ID is required');
+            }
+
+            if (!process.env.DEFAULT_ORGANIZATION_ID) {
+                throw new Error('DEFAULT_ORGANIZATION_ID is not set');
+            }
+
+            const user = await this.authRepository.getUserById(createdBy);
+            if (!user) {
+                throw new Error('User not found');
+            }
+
+            const organizationId = user.primaryOrganizationId || process.env.DEFAULT_ORGANIZATION_ID;
+
             let created: PurchaseOrderType | null = null;
             await db.transaction(async (tx) => {
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 1: Check if skus are in stock...');
@@ -94,6 +114,7 @@ export class OutboundServices {
                         scheduledDeliveryDate: nextDelivery.deliveryDate,
                         createdBy: data.userId,
                         updatedBy: data.userId,
+                        organizationId: organizationId,
                     },
                     tx
                 );
@@ -131,6 +152,7 @@ export class OutboundServices {
                     poNo: data.purchaseOrderNo,
                     status: 'NEW',
                     isEmergency,
+                    organizationId: organizationId,
                     createdBy: data.userId,
                     updatedBy: data.userId,
                 }, tx);
