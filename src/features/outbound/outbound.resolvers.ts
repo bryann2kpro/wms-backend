@@ -464,6 +464,7 @@ export const resolvers = {
         const data = parseResult.data;
         const created = await outboundServices.createPurchaseOrder({
           userId,
+          organizationId: context.organizationId!,
           purchaseOrderNo: data.purchaseOrderNo,
           outletId: data.outletId,
           items: data.items.map((item) => ({

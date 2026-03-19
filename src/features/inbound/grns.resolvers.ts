@@ -233,10 +233,11 @@ export const resolvers = {
             items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             inboundQty?: number | null;
             skuId?: string | null;
-        } }) => {
+        } }, context: GraphQLContext) => {
             try {
                 const result = await inboundServices.createInbound({
                     userId: input.userId,
+                    organizationId: context.organizationId!,
                     grnNo: input.grnNo,
                     supplierId: input.supplierId,
                     supplierDeliveryId: input.supplierDeliveryId,
@@ -708,7 +709,7 @@ export const resolvers = {
                             createdBy: updatedBy,
                             updatedBy: updatedBy,
                             movementType: InventoryMovementType.INBOUND,
-                        })), updatedBy, context.tx);
+                        })), updatedBy, context.organizationId!, context.tx);
                     }
 
                     return transformGrn(grn);

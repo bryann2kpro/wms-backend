@@ -16,7 +16,6 @@ import { DocumentsRepository } from "../documents/documents.repository";
 
 import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
-import { AuthRepositoryClass } from "../auth/auth.repository";
 
 /** Line item input: must have qtyRequired and either skuId or skuCode. */
 export type CreateDeliveryOrderItemInput = {
@@ -38,6 +37,7 @@ export type CreatePurchaseOrderItemInput = {
 
 export type CreatePurchaseOrderData = {
   userId: string;
+  organizationId: string;
   purchaseOrderNo: string;
   outletId: string;
   items: CreatePurchaseOrderItemInput[];
@@ -54,7 +54,6 @@ export class OutboundServices {
         private readonly purchaseOrdersRepository: PurchaseOrdersRepositoryClass,
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
         private readonly documentsRepository: DocumentsRepository,
-        private readonly authRepository: AuthRepositoryClass,
     ) {}
 
     /**
@@ -72,16 +71,7 @@ export class OutboundServices {
                 throw new Error('User ID is required');
             }
 
-            if (!process.env.DEFAULT_ORGANIZATION_ID) {
-                throw new Error('DEFAULT_ORGANIZATION_ID is not set');
-            }
-
-            const user = await this.authRepository.getUserById(createdBy);
-            if (!user) {
-                throw new Error('User not found');
-            }
-
-            const organizationId = user.primaryOrganizationId || process.env.DEFAULT_ORGANIZATION_ID;
+            const organizationId = data.organizationId;
 
             let created: PurchaseOrderType | null = null;
             await db.transaction(async (tx) => {
@@ -139,7 +129,7 @@ export class OutboundServices {
                     updatedBy: data.userId,
                 }));
 
-                await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, data.userId, tx);
+                await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, data.userId, organizationId, tx);
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 6: Automatically Create Delivery Order...');
                 const doNo = data.purchaseOrderNo.startsWith('PO') 

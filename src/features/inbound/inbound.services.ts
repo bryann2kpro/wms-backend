@@ -9,7 +9,6 @@ import type { DbTransaction } from "@/types/db-transaction";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
 import { GrnItemRacksTable } from "./grns.model";
-import { AuthRepositoryClass } from "../auth/auth.repository";
 import { OrganizationRepositoryClass } from "../master-data/organization.repository";
 
 /**
@@ -35,6 +34,7 @@ export type CreateInboundItemInput = {
  */
 export type CreateInboundInput = {
     userId: string;
+    organizationId: string;
     grnNo: string;
     supplierId?: string | null;
     supplierDeliveryId?: string | null;
@@ -60,7 +60,6 @@ export class InboundServices {
         private readonly supplierDeliveryItemsRepository: SupplierDeliveryItemsRepositoryClass,
         private readonly grnItemsRepository: GrnItemsRepositoryClass,
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
-        private readonly authRepository: AuthRepositoryClass,
     ) {}
 
     /**
@@ -87,21 +86,12 @@ export class InboundServices {
                     throw new Error('DEFAULT_SUPPLIER_ID is not set');
                 }
 
-                if (!process.env.DEFAULT_ORGANIZATION_ID) {
-                    throw new Error('DEFAULT_ORGANIZATION_ID is not set');
-                }
-
                 const updatedBy = createdBy;
                 const receivedAt = data.receivedAt != null ? new Date(data.receivedAt) : null;
                 const deliveryDate = receivedAt ?? new Date();
                 let supplierDeliveryId: string | undefined = data.supplierDeliveryId ?? undefined;
-  
-                const user = await this.authRepository.getUserById(createdBy);
-                if (!user) {
-                    throw new Error('User not found');
-                }
-                
-                const organizationId = user.primaryOrganizationId || process.env.DEFAULT_ORGANIZATION_ID;
+
+                const organizationId = data.organizationId;
 
                 // 2. If supplierDeliveryNo: create supplier delivery + supplier delivery items
                 if (data.supplierDeliveryNo) {
