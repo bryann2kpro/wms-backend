@@ -139,7 +139,7 @@ export class OutboundServices {
                     updatedBy: data.userId,
                 }));
 
-                await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, tx);
+                await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, data.userId, tx);
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 6: Automatically Create Delivery Order...');
                 const doNo = data.purchaseOrderNo.startsWith('PO') 

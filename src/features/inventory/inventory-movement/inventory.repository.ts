@@ -12,6 +12,7 @@ import type { DbTransaction } from '@/types/db-transaction';
 import { PaginationParams, PaginatedResponse } from '../../rbac/rbac.model';
 import { pagination, PgQueryType } from '@/util/pagination';
 import { InventoryBalanceRepositoryClass } from '../inventory-balance/inventory.repository';
+import { AuthRepositoryClass } from '@/features/auth/auth.repository';
 
 export type InventoryMovementsType = typeof InventoryMovementsTable.$inferSelect;
 export type InventoryMovementsInsertType = typeof InventoryMovementsTable.$inferInsert;
@@ -30,7 +31,8 @@ export type InventoryMovementsFilter = {
 }
 export class InventoryMovementRepositoryClass {
     constructor(
-      private readonly inventoryBalanceRepository: InventoryBalanceRepositoryClass
+      private readonly inventoryBalanceRepository: InventoryBalanceRepositoryClass,
+      private readonly authRepository: AuthRepositoryClass,
     ) {}
 
       /**
@@ -125,9 +127,21 @@ export class InventoryMovementRepositoryClass {
    */
   async createInventoryMovement(
     data: InventoryMovementsInsertType | InventoryMovementsInsertType[],
-    tx?: DbTransaction
+    userId: string,
+    tx?: DbTransaction,
   ): Promise<InventoryMovementsType | InventoryMovementsType[]> {
     try {
+      if (!process.env.DEFAULT_ORGANIZATION_ID) {
+        throw new Error('DEFAULT_ORGANIZATION_ID is not set');
+      }
+
+      const user = await this.authRepository.getUserById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const organizationId = user.primaryOrganizationId || process.env.DEFAULT_ORGANIZATION_ID;
+
       const client = tx ?? db;
       logger.info("ℹ️ [InventoryMovementsRepository.createInventoryMovement] Creating inventory movement(s)...");
 
@@ -208,6 +222,7 @@ export class InventoryMovementRepositoryClass {
         await this.inventoryBalanceRepository.upsertInventoryBalance(
           {
             skuId,
+            organizationId: organizationId,
             onHandQty: onHand.toString(),
             lossQty: loss.toString(),
             reservedQty: reserved.toString(),

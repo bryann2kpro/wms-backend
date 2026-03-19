@@ -26,6 +26,7 @@ import { InventoryMovementType } from '../inventory/inventory-movement/inventory
 function transformGrn(grn: GrnType) {
     return {
         id: grn.id,
+        organizationId: grn.organizationId,
         grnNo: grn.grnNo,
         supplierId: grn.supplierId,
         supplierDeliveryId: grn.supplierDeliveryId,
@@ -277,7 +278,7 @@ export const resolvers = {
                     approvedBy?: string | null;
                     status?: string | null;
                     createdBy: string;
-                    updatedBy?: string | null;
+                    updatedBy?: string | null;  
                     items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
@@ -317,6 +318,7 @@ export const resolvers = {
                             });
                         }
                         const supplierDelivery = await supplierDeliveriesRepository.createSupplierDelivery({
+                            organizationId: context.organizationId ?? '',
                             supplierId,
                             supplierDeliveryNo: input.supplierDeliveryNo,
                             deliveryDate,
@@ -384,6 +386,7 @@ export const resolvers = {
                         updatedBy,
                         status: input.status ?? 'Draft',
                         receivedAt,
+                        organizationId: context.organizationId ?? '',
                     }, context.tx);
 
                     // 4. Create GRN items
@@ -543,6 +546,7 @@ export const resolvers = {
                         } else {
                             const supplierId = (input.supplierId ?? existingGrn.supplierId) as string;
                             const created = await supplierDeliveriesRepository.createSupplierDelivery({
+                                organizationId: context.organizationId ?? '',
                                 supplierId,
                                 supplierDeliveryNo: input.supplierDeliveryNo,
                                 deliveryDate: deliveryDate ?? new Date(),
@@ -621,7 +625,7 @@ export const resolvers = {
                         await grnItemsRepository.deleteGrnItem({ grnId: id }, context.tx);
                         if (grnItemRows.length > 0) {
                             const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
-                            if (createdItems && createdItems !== false && input.items) {
+                            if (createdItems !== false && input.items) {
                                 const rackRows: { grnItemId: string; rackId: string }[] = [];
                                 createdItems.forEach((createdItem, index) => {
                                     const source = input.items![index];
@@ -704,7 +708,7 @@ export const resolvers = {
                             createdBy: updatedBy,
                             updatedBy: updatedBy,
                             movementType: InventoryMovementType.INBOUND,
-                        })), context.tx);
+                        })), updatedBy, context.tx);
                     }
 
                     return transformGrn(grn);
