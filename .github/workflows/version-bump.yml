@@ -27,7 +27,7 @@ jobs:
         id: tag_main
         uses: anothrNick/github-tag-action@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           TAG_PREFIX: v
           DEFAULT_BUMP: patch
           RELEASE_BRANCHES: main
@@ -38,7 +38,7 @@ jobs:
         id: tag_staging
         uses: anothrNick/github-tag-action@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           TAG_PREFIX: v
           DEFAULT_BUMP: patch
           RELEASE_BRANCHES: main
