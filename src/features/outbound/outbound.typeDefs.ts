@@ -95,6 +95,7 @@ export const typeDefs = `#graphql
         purchaseOrderNo: String
         doNo: String
         doStatus: String
+        doStatuses: [String!]
         search: String
     }
 
