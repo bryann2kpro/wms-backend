@@ -105,10 +105,7 @@ export const deliveryOrdersRepository = new DeliveryOrdersRepositoryClass();
 export const exceptionsRepository = new ExceptionsRepositoryClass();
 // Inventory Repositories
 export const inventoryBalancesRepository = new InventoryBalanceRepositoryClass();
-export const inventoryMovementRepository = new InventoryMovementRepositoryClass(
-  inventoryBalancesRepository,
-  authRepository,
-);
+export const inventoryMovementRepository = new InventoryMovementRepositoryClass(inventoryBalancesRepository);
 export const stockCountServices = new StockCountServices();
 export const stockCountSessionRepository = new StockCountSessionRepositoryClass();
 export const stockCountSessionService = new StockCountSessionService(stockCountSessionRepository);

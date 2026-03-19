@@ -198,8 +198,8 @@ export class OutboundServices {
         }
     }
 
-    /** Allowed delivery order status flow: NEW -> PREPARING -> IN TRANSIT -> DELIVERED. */
-    static readonly DO_STATUS_FLOW = ['NEW', 'PREPARING', 'IN TRANSIT', 'DELIVERED'] as const;
+    /** Allowed delivery order status flow: NEW -> PICKING (warehouse) -> PACKING (all picked) -> SHIPPED -> DELIVERED. */
+    static readonly DO_STATUS_FLOW = ['NEW', 'PICKING', 'PACKING', 'SHIPPED', 'DELIVERED'] as const;
 
     /**
      * Updates a delivery order (e.g. isEmergency, status).
@@ -234,7 +234,7 @@ export class OutboundServices {
             }
 
             const shouldTryCreateInvoice =
-                payload.status === "IN TRANSIT" || payload.status === "DELIVERED";
+                payload.status === "SHIPPED" || payload.status === "DELIVERED";
             const updateTime = new Date();
 
             const updated = await db.transaction(async (tx) => {
@@ -304,11 +304,11 @@ export class OutboundServices {
                     tx,
                 );
 
-                if (nextStatus === 'IN TRANSIT') {
+                if (nextStatus === 'SHIPPED') {
                     await this.purchaseOrdersRepository.updatePurchaseOrder(
                         existing.purchaseOrderId,
                         {
-                            status: 'IN TRANSIT',
+                            status: 'SHIPPED',
                             updatedBy: data.userId,
                         },
                         undefined,
@@ -317,7 +317,7 @@ export class OutboundServices {
                     logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] PO updated to SHIPPED');
                 }
 
-                if ((nextStatus === "IN TRANSIT" || nextStatus === "DELIVERED") && isWithinMonthEndWindow(updateTime, { timeZone: "Asia/Kuala_Lumpur", daysFromEndInclusive: 2 })) {
+                if ((nextStatus === "SHIPPED" || nextStatus === "DELIVERED") && isWithinMonthEndWindow(updateTime, { timeZone: "Asia/Kuala_Lumpur", daysFromEndInclusive: 2 })) {
                     try {
                         await invoicesRepository.createInvoiceFromDeliveryOrder(data.id, tx);
                     } catch (error) {
