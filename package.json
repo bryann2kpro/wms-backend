@@ -1,5 +1,5 @@
 {
-  "name": "express-template",
+  "name": "smee-backend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,7 +7,7 @@
     "dev": "tsx watch --clear-screen=false src/main.ts src/**/*.ts",
     "start": "node dist/main.js",
     "start:bun": "bun run dist-bun/main.js",
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node18 --minify --format=esm --outfile=dist/main.js --packages=external",
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --minify --format=esm --outfile=dist/main.js --packages=external --alias:@=./src --alias:graphql/error=graphql/error/index.js",
     "build:bun": "bun build ./src/main.ts --minify --target=bun --outdir=dist-bun",
     "migrate": "drizzle-kit generate && drizzle-kit migrate",
     "initialize": "node init.js",
