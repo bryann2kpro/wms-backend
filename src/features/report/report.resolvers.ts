@@ -11,6 +11,7 @@ import {
   getInvoiceSummaryData,
   generateMovementReportPdf,
   generateInvoiceSummaryPdf,
+  generateStockCountChecklistPdf,
 } from './report.service';
 
 const REPORT_TYPE_S3_FOLDER: Record<string, string> = {
@@ -72,6 +73,14 @@ export const resolvers = {
         filename: result.filename,
         s3Url,
       };
+    },
+
+    generateStockCountChecklist: async (
+      _: unknown,
+      args: { sessionId: string },
+      context: { organizationId: string }
+    ) => {
+      return generateStockCountChecklistPdf(args.sessionId, context.organizationId);
     },
   },
 };

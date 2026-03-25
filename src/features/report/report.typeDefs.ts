@@ -41,11 +41,27 @@ export const typeDefs = `#graphql
     s3Url: String
   }
 
+  """
+  Result of stock count checklist generation: PDF as base64 and suggested filename
+  """
+  type GenerateChecklistPayload {
+    """PDF file content as base64 string"""
+    pdfBase64: String!
+    """Suggested download filename"""
+    filename: String!
+  }
+
   extend type Mutation {
     """
     Generate a report PDF. Returns base64-encoded PDF and filename for download.
     Requires authentication.
     """
     generateReport(input: GenerateReportInput!): GenerateReportPayload! @auth
+
+    """
+    Generate a stock count checklist PDF for the given session.
+    Returns a blank write-in sheet (no system quantities) for the storekeeper.
+    """
+    generateStockCountChecklist(sessionId: ID!): GenerateChecklistPayload! @auth
   }
 `;

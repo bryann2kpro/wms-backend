@@ -95,6 +95,9 @@ export const resolvers = {
                     if (args.filter.status) {
                         filter.status = args.filter.status;
                     };
+                    if (args.filter.excludeDraft === true) {
+                        filter.excludeDraft = true;
+                    }
                     if (args.filter.sortBy != null) {
                         filter.sortBy = args.filter.sortBy;
                     };

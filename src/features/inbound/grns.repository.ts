@@ -7,7 +7,7 @@
 import { db } from '@/db';
 import { GrnsTable, GrnInsertType, GrnType } from './grns.model';
 import { SupplierDeliveriesTable } from './supplier-deliveries/supplier-deliveries.model';
-import { eq, and, or, like, ilike, desc, asc, inArray } from 'drizzle-orm';
+import { eq, and, or, like, ilike, desc, asc, inArray, notInArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -27,6 +27,8 @@ export type GrnFilter = {
     sortBy?: string;
     /** ASC or DESC. Default: DESC */
     sortOrder?: string;
+    /** When true and status is unset, exclude draft rows from the list. */
+    excludeDraft?: boolean;
 };
 
 export class GrnsRepositoryClass {
@@ -64,6 +66,8 @@ export class GrnsRepositoryClass {
             }
             if (filter.status) {
                 whereCondition.push(eq(GrnsTable.status, filter.status));
+            } else if (filter.excludeDraft) {
+                whereCondition.push(notInArray(GrnsTable.status, ['Draft', 'DRAFT']));
             }
 
             const sortOrder = filter.sortOrder?.toUpperCase() === 'ASC' ? asc : desc;
