@@ -25,8 +25,7 @@ export class EsAdvanceNoticeControllerClass {
         logger.warn("⚠️ [EsAdvanceNoticeController.receiveAdvanceNotice] Validation failed:", prettifyError(error));
         return res.status(400).json({
           success: false,
-          message: Error.BAD_REQUEST,
-          detail: 'Validation Failed, please check the request body!',
+          message: 'Validation Failed, please check the request body!',
         });
       }
 
@@ -40,10 +39,7 @@ export class EsAdvanceNoticeControllerClass {
       return res.status(201).json({
         success: true,
         message: 'Advance notice received',
-        data: {
-          id: record.id,
-          receivedAt: record.receivedAt,
-        },
+        data: payload,
       });
     } catch (error) {
       logger.error('❌ [EsAdvanceNoticeController.receiveAdvanceNotice] Error:', error);
