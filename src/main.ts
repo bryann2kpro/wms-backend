@@ -22,7 +22,7 @@ import v1Router from "@/router/v1.js";
 import { requestLoggerMiddleware } from "./middlewares/request-logger";
 import { fileURLToPath } from "url";
 import { env } from "./env";
-import { exec } from "child_process";
+import { spawn } from "child_process";
 import { initAccounts } from "./scripts/init-accounts";
 import { initMasterData } from "./scripts/init-master-data";
 import { startInvoicesCron } from "./features/invoicing/invoices.cron";
@@ -94,16 +94,68 @@ app.use('/api/v1', v1Router);
 
 const PORT = env.PORT || 3000;
 
-const execAsync = promisify(exec);
-
 const MIGRATE_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+
+function cleanCliOutput(value?: string): string | undefined {
+  if (!value) return undefined;
+  // Normalize CR updates (spinners/progress) into lines.
+  let s = value.replace(/\r/g, '\n');
+  // Strip ANSI escape codes (colors, cursor movement, clear line, etc.)
+  s = s
+    // CSI sequences: ESC [ ... <final>
+    .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+    // OSC sequences: ESC ] ... BEL or ESC \
+    .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '')
+    // Other single-character ESC sequences
+    .replace(/\x1B[@-Z\\-_]/g, '');
+
+  // Trim and remove noisy trailing whitespace.
+  s = s
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim();
+
+  return s.length ? s : undefined;
+}
 
 // Helper function to run migrations
 async function runMigrations(): Promise<void> {
   try {
-    await execAsync('pnpm run migrate:deploy', {
-      env: { ...process.env, CI: 'true' },
-      maxBuffer: MIGRATE_MAX_BUFFER_BYTES,
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn('pnpm', ['run', 'migrate:deploy'], {
+        env: { ...process.env, CI: 'true' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout?.on('data', (chunk) => {
+        stdout += String(chunk);
+        if (stdout.length > MIGRATE_MAX_BUFFER_BYTES) stdout = stdout.slice(-MIGRATE_MAX_BUFFER_BYTES);
+      });
+
+      child.stderr?.on('data', (chunk) => {
+        stderr += String(chunk);
+        if (stderr.length > MIGRATE_MAX_BUFFER_BYTES) stderr = stderr.slice(-MIGRATE_MAX_BUFFER_BYTES);
+      });
+
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) return resolve();
+        const error = new Error(`Migration command failed with exit code ${code}`) as Error & {
+          code?: number | null;
+          stdout?: string;
+          stderr?: string;
+          cmd?: string;
+        };
+        error.code = code;
+        error.cmd = 'pnpm run migrate:deploy';
+        error.stdout = stdout;
+        error.stderr = stderr;
+        reject(error);
+      });
     });
     logger.info('✅ Migrations completed successfully');
   } catch (error) {
@@ -116,8 +168,8 @@ async function runMigrations(): Promise<void> {
       message: e.message,
       code: e.code,
       cmd: e.cmd,
-      stdout: e.stdout?.trim(),
-      stderr: e.stderr?.trim(),
+      stdout: cleanCliOutput(e.stdout),
+      stderr: cleanCliOutput(e.stderr),
     });
   }
 }
