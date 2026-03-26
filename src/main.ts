@@ -99,7 +99,7 @@ const execAsync = promisify(exec);
 // Helper function to run migrations
 async function runMigrations(): Promise<void> {
   try {
-    await execAsync('pnpm run migrate');
+    await execAsync('pnpm run migrate:deploy');
     logger.info('✅ Migrations completed successfully');
   } catch (error) {
     logger.warn('⚠️  Migrations warning (might already be applied):', error);
