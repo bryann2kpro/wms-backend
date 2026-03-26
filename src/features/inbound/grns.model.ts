@@ -1,5 +1,5 @@
 import { MainSchema } from "@/db/db.schema";
-import { uuid, text, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
+import { uuid, text, numeric, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 /**
@@ -38,6 +38,9 @@ export const GrnsTable = MainSchema.table('grns', {
   notes: text('notes'),
   proofUrl: text('proof_url'),
   warehouseId: uuid('warehouse_id'),
+
+  nsError: jsonb('ns_error'),
+  nsSentAt: timestamp('ns_sent_at', { withTimezone: true }),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

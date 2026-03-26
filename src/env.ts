@@ -44,6 +44,13 @@ export const env = createEnv({
     // Invoice cron toggle (when not \"true\", cron does not start)
     INVOICES_CRON_ENABLED: z.string().optional(),
     SYSTEM_USER_UUID: z.uuid(),
+    // NetSuite integration (OAuth 1.0a TBA)
+    NETSUITE_ACCOUNT_ID: z.string(),
+    NETSUITE_CONSUMER_KEY: z.string(),
+    NETSUITE_CONSUMER_SECRET: z.string(),
+    NETSUITE_TOKEN_ID: z.string(),
+    NETSUITE_TOKEN_SECRET: z.string(),
+    NETSUITE_ITEM_RECEIPT_URL: z.string().url(),
   },
  
   /**

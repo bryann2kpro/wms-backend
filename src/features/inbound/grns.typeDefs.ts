@@ -23,6 +23,8 @@ export const typeDefs = `#graphql
         notes: String
         proofUrl: String
         warehouse: Warehouse
+        nsError: String
+        nsSentAt: String
         createdAt: String!
         updatedAt: String!
         createdByUser: GrnAuditUser
