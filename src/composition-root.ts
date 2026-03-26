@@ -151,6 +151,7 @@ export const inboundServices = new InboundServices(
     supplierDeliveryItemsRepository,
     grnItemsRepository,
     inventoryMovementRepository,
+    suppliersRepository,
     esAdvanceNoticeRepository,
 );
 

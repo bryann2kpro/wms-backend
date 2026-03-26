@@ -5,6 +5,25 @@ import { EsAdvanceNoticesTable, EsAdvanceNoticeType } from './es-advance-notice.
 
 export class EsAdvanceNoticeRepositoryClass {
   /**
+   * Find an advance notice by its record id.
+   * Used when createInbound receives advanceNoticeId from the UI.
+   */
+  async findById(id: string): Promise<EsAdvanceNoticeType | null> {
+    try {
+      logger.info(`ℹ️ [EsAdvanceNoticeRepository.findById] Fetching ASN by id: ${id}`);
+      const [record] = await db
+        .select()
+        .from(EsAdvanceNoticesTable)
+        .where(eq(EsAdvanceNoticesTable.id, id))
+        .limit(1);
+      return record ?? null;
+    } catch (error) {
+      logger.error('❌ [EsAdvanceNoticeRepository.findById] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Find an existing advance notice by tranid.
    * Used for duplicate detection before saving.
    */

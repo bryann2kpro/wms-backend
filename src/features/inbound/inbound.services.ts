@@ -11,6 +11,7 @@ import { InventoryMovementRepositoryClass } from "../inventory/inventory-movemen
 import { GrnItemRacksTable } from "./grns.model";
 import { OrganizationRepositoryClass } from "../master-data/organization.repository";
 import { EsAdvanceNoticeRepositoryClass } from "../es/es-advance-notice.repository";
+import { SuppliersRepositoryClass } from "../master-data/suppliers.repository";
 
 /**
  * Item input for creating a GRN (same shape as CreateGrnItemInput).
@@ -63,6 +64,7 @@ export class InboundServices {
         private readonly supplierDeliveryItemsRepository: SupplierDeliveryItemsRepositoryClass,
         private readonly grnItemsRepository: GrnItemsRepositoryClass,
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
+        private readonly suppliersRepository: SuppliersRepositoryClass,
         private readonly esAdvanceNoticeRepository: EsAdvanceNoticeRepositoryClass,
     ) {}
 
@@ -85,10 +87,7 @@ export class InboundServices {
         const result = await db.transaction(async (tx: DbTransaction) => {
             try {
                 logger.info('ℹ️ [InboundServices.createInbound] Starting Inbound Flow...');
-
-                if (!process.env.DEFAULT_SUPPLIER_ID) {
-                    throw new Error('DEFAULT_SUPPLIER_ID is not set');
-                }
+                const resolvedSupplierId = await this.resolveSupplierId(data, tx);
 
                 const updatedBy = createdBy;
                 const receivedAt = data.receivedAt != null ? new Date(data.receivedAt) : null;
@@ -109,7 +108,7 @@ export class InboundServices {
 
                     const supplierDelivery = await this.supplierDeliveriesRepository.createSupplierDelivery({
                         organizationId: organizationId,
-                        supplierId: process.env.DEFAULT_SUPPLIER_ID,
+                        supplierId: resolvedSupplierId,
                         supplierDeliveryNo: data.supplierDeliveryNo,
                         deliveryDate,
                         status: 'RECEIVED_DRAFT',
@@ -141,7 +140,7 @@ export class InboundServices {
                 const grn = await this.grnsRepository.createGrn({
                     grnNo: grnNo,
                     organizationId: organizationId,
-                    supplierId: process.env.DEFAULT_SUPPLIER_ID,
+                    supplierId: resolvedSupplierId,
                     supplierDeliveryId,
                     poNo: data.poNo ?? undefined,
                     notes: data.notes ?? undefined,
@@ -227,6 +226,111 @@ export class InboundServices {
             logger.info('✅ [InboundServices.createInbound] Inbound created successfully');
         }
         return result;
+    }
+
+    private normalizeSupplierCode(code: string): string {
+        return code.replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim().toUpperCase();
+    }
+
+    private parseSupplierEntity(entityRaw: string): { codeCandidates: string[]; nameCandidate: string } {
+        const entity = entityRaw.trim();
+        if (!entity) {
+            return { codeCandidates: [], nameCandidate: '' };
+        }
+
+        const match = entity.match(/^([A-Za-z]{2,10})\s*-\s*([A-Za-z0-9]+)\s*(.*)$/);
+        if (!match) {
+            return { codeCandidates: [], nameCandidate: entity };
+        }
+
+        const prefix = match[1].toUpperCase();
+        const identifier = match[2].toUpperCase();
+        const rest = match[3]?.trim() ?? '';
+        const compact = `${prefix}-${identifier}`;
+        const spaced = `${prefix} -${identifier}`;
+
+        return {
+            codeCandidates: [...new Set([compact, spaced, this.normalizeSupplierCode(spaced)])],
+            nameCandidate: rest || entity,
+        };
+    }
+
+    private async resolveSupplierId(data: CreateInboundInput, tx: DbTransaction): Promise<string> {
+        const organizationId = data.organizationId;
+        const actor = data.userId;
+
+        if (data.supplierId) {
+            const existingSupplier = await this.suppliersRepository.getSupplierById(data.supplierId, organizationId);
+            if (existingSupplier) {
+                logger.info(`[InboundServices.resolveSupplierId] Matched supplier by input id: ${data.supplierId}`);
+                return existingSupplier.supplierId;
+            }
+            logger.warn(`[InboundServices.resolveSupplierId] Input supplierId not found in organization: ${data.supplierId}`);
+        }
+
+        let asnEntity: string | null = null;
+        if (data.advanceNoticeId) {
+            const asn = await this.esAdvanceNoticeRepository.findById(data.advanceNoticeId);
+            const payload = asn?.payload as { entity?: string } | undefined;
+            if (payload?.entity?.trim()) {
+                asnEntity = payload.entity.trim();
+            }
+        }
+
+        if (asnEntity) {
+            const { codeCandidates, nameCandidate } = this.parseSupplierEntity(asnEntity);
+
+            for (const supplierCode of codeCandidates) {
+                const byCode = await this.suppliersRepository.getSupplier(
+                    { supplierCode },
+                    { pageSize: 1, pageNumber: 1 },
+                    organizationId,
+                );
+                if (byCode.query?.length) {
+                    logger.info(`[InboundServices.resolveSupplierId] matched_by_code supplierCode=${supplierCode}`);
+                    return byCode.query[0].supplierId;
+                }
+            }
+
+            if (nameCandidate) {
+                const byName = await this.suppliersRepository.getSupplier(
+                    { supplierName: nameCandidate },
+                    { pageSize: 5, pageNumber: 1 },
+                    organizationId,
+                );
+                const exactName = byName.query?.find(
+                    (s) => s.supplierName.trim().toUpperCase() === nameCandidate.trim().toUpperCase(),
+                );
+                if (exactName) {
+                    logger.info(`[InboundServices.resolveSupplierId] matched_by_name supplierName=${exactName.supplierName}`);
+                    return exactName.supplierId;
+                }
+            }
+
+            const supplierCodeForCreate =
+                codeCandidates[0] ||
+                `AUTO-${Date.now()}`;
+            const supplierNameForCreate = nameCandidate || asnEntity;
+            const created = await this.suppliersRepository.createSupplier(
+                {
+                    organizationId,
+                    supplierCode: this.normalizeSupplierCode(supplierCodeForCreate),
+                    supplierName: supplierNameForCreate,
+                    createdBy: actor,
+                    updatedBy: actor,
+                },
+                tx,
+            );
+            logger.info(`[InboundServices.resolveSupplierId] created_from_asn_entity supplierId=${created.supplierId}`);
+            return created.supplierId;
+        }
+
+        if (process.env.DEFAULT_SUPPLIER_ID) {
+            logger.info(`[InboundServices.resolveSupplierId] fallback_env supplierId=${process.env.DEFAULT_SUPPLIER_ID}`);
+            return process.env.DEFAULT_SUPPLIER_ID;
+        }
+
+        throw new Error('Unable to resolve supplierId. Provide supplierId or select an ASN with a valid entity.');
     }
 
     /**
