@@ -19,6 +19,12 @@ export const EsAdvanceNoticesTable = MainSchema.table('es_advance_notices', {
   apiKeyId: uuid('api_key_id').references(() => ApiKeysTable.id),
   payload: jsonb('payload').notNull(),
   receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+  /**
+   * Set when this advance notice has been used to create a GRN.
+   * No FK constraint to avoid circular reference with grns table.
+   * NULL = pending (not yet linked to a GRN).
+   */
+  linkedGrnId: uuid('linked_grn_id'),
 });
 
 export type EsAdvanceNoticeType = typeof EsAdvanceNoticesTable.$inferSelect;

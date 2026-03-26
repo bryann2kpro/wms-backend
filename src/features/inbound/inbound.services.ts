@@ -10,6 +10,7 @@ import { InventoryMovementType } from "../inventory/inventory-movement/inventory
 import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
 import { GrnItemRacksTable } from "./grns.model";
 import { OrganizationRepositoryClass } from "../master-data/organization.repository";
+import { EsAdvanceNoticeRepositoryClass } from "../es/es-advance-notice.repository";
 
 /**
  * Item input for creating a GRN (same shape as CreateGrnItemInput).
@@ -50,6 +51,8 @@ export type CreateInboundInput = {
     inboundQty?: number | string | null;
     /** SKU to update when inboundQty is provided. */
     skuId?: string | null;
+    /** ID of the advance notice this GRN was created from. Optional — omit for manual GRNs. */
+    advanceNoticeId?: string | null;
 };
 
 export class InboundServices {
@@ -60,6 +63,7 @@ export class InboundServices {
         private readonly supplierDeliveryItemsRepository: SupplierDeliveryItemsRepositoryClass,
         private readonly grnItemsRepository: GrnItemsRepositoryClass,
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
+        private readonly esAdvanceNoticeRepository: EsAdvanceNoticeRepositoryClass,
     ) {}
 
     /**
@@ -147,6 +151,7 @@ export class InboundServices {
                     updatedBy,
                     status: data.status ?? 'Draft',
                     receivedAt: receivedAt ?? undefined,
+                    advanceNoticeId: data.advanceNoticeId ?? undefined,
                 }, tx);
 
                 // 4. Create GRN items (same as createGrn)
@@ -201,6 +206,11 @@ export class InboundServices {
                         updatedBy: createdBy,
                         updatedAt: new Date(),
                     }, organizationId, tx);
+                }
+
+                // Mark the advance notice as linked so it no longer appears in the dropdown
+                if (data.advanceNoticeId) {
+                    await this.esAdvanceNoticeRepository.markLinked(data.advanceNoticeId, grn.id);
                 }
 
                 logger.info('✅ [InboundServices.createInbound] Inbound Flow completed successfully');

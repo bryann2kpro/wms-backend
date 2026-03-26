@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService, esAdvanceNoticeRepository } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -140,6 +140,44 @@ export const resolvers = {
                 throw error;
             }
         },
+        listPendingAdvanceNotices: async () => {
+            try {
+                const records = await esAdvanceNoticeRepository.findPending();
+                return records.map((r) => {
+                    const p = r.payload as {
+                        tranid: string;
+                        entity: string;
+                        duedate: string;
+                        lines?: Array<{
+                            lineuniquekey: number;
+                            itemid: string;
+                            displayname?: string;
+                            quantity: number;
+                            units: string;
+                            custrecord_r2o_order_code?: string;
+                        }>;
+                    };
+                    return {
+                        id: r.id,
+                        tranid: p.tranid ?? r.tranid,
+                        entity: p.entity ?? '',
+                        duedate: p.duedate ?? '',
+                        receivedAt: r.receivedAt instanceof Date ? r.receivedAt.toISOString() : r.receivedAt,
+                        lines: (p.lines ?? []).map((l) => ({
+                            lineuniquekey: l.lineuniquekey,
+                            itemid: l.itemid,
+                            displayname: l.displayname ?? null,
+                            quantity: l.quantity,
+                            units: l.units,
+                            custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
+                        })),
+                    };
+                });
+            } catch (error) {
+                logger.error('[grns.resolvers] listPendingAdvanceNotices Error:', error);
+                throw error;
+            }
+        },
     },
     Grn: {
         createdByUser: async (parent: { createdBy?: string | null }) => {
@@ -238,6 +276,7 @@ export const resolvers = {
             items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             inboundQty?: number | null;
             skuId?: string | null;
+            advanceNoticeId?: string | null;
         } }, context: GraphQLContext) => {
             try {
                 const result = await inboundServices.createInbound({
@@ -256,6 +295,7 @@ export const resolvers = {
                     items: input.items ?? undefined,
                     inboundQty: input.inboundQty ?? undefined,
                     skuId: input.skuId ?? undefined,
+                    advanceNoticeId: input.advanceNoticeId ?? undefined,
                 });
                 return result;
             } catch (error) {

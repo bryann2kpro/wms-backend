@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import { db } from '@/db/index';
 import { logger } from '@/util/logger.js';
 import { EsAdvanceNoticesTable, EsAdvanceNoticeType } from './es-advance-notice.model.js';
@@ -19,6 +19,41 @@ export class EsAdvanceNoticeRepositoryClass {
       return record ?? null;
     } catch (error) {
       logger.error('❌ [EsAdvanceNoticeRepository.findByTranid] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find all advance notices not yet linked to a GRN.
+   * Used to populate the ASN dropdown when creating a new GRN.
+   */
+  async findPending(): Promise<EsAdvanceNoticeType[]> {
+    try {
+      logger.info('ℹ️ [EsAdvanceNoticeRepository.findPending] Fetching pending advance notices');
+      return await db
+        .select()
+        .from(EsAdvanceNoticesTable)
+        .where(isNull(EsAdvanceNoticesTable.linkedGrnId))
+        .orderBy(EsAdvanceNoticesTable.receivedAt);
+    } catch (error) {
+      logger.error('❌ [EsAdvanceNoticeRepository.findPending] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark an advance notice as linked to a GRN.
+   * Called within the createInbound transaction after the GRN is created.
+   */
+  async markLinked(id: string, grnId: string): Promise<void> {
+    try {
+      logger.info(`ℹ️ [EsAdvanceNoticeRepository.markLinked] Linking ASN ${id} to GRN ${grnId}`);
+      await db
+        .update(EsAdvanceNoticesTable)
+        .set({ linkedGrnId: grnId })
+        .where(eq(EsAdvanceNoticesTable.id, id));
+    } catch (error) {
+      logger.error('❌ [EsAdvanceNoticeRepository.markLinked] Error:', error);
       throw error;
     }
   }

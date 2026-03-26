@@ -140,6 +140,10 @@ export const healthController = new HealthControllerClass();
 export const uploadController = new UploadControllerClass(uploadService);
 export const auditLogRepository = new AuditLogRepositoryClass();
 export const reportController = new ReportControllerClass();
+// ES Integration
+export const esAdvanceNoticeRepository = new EsAdvanceNoticeRepositoryClass();
+export const esAdvanceNoticeController = new EsAdvanceNoticeControllerClass(esAdvanceNoticeRepository);
+
 export const inboundServices = new InboundServices(
     grnsRepository,
     skuRepository,
@@ -147,15 +151,13 @@ export const inboundServices = new InboundServices(
     supplierDeliveryItemsRepository,
     grnItemsRepository,
     inventoryMovementRepository,
+    esAdvanceNoticeRepository,
 );
 
 // API Keys
 export const apiKeysRepository = new ApiKeysRepositoryClass();
 export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
 
-// ES Integration
-export const esAdvanceNoticeRepository = new EsAdvanceNoticeRepositoryClass();
-export const esAdvanceNoticeController = new EsAdvanceNoticeControllerClass(esAdvanceNoticeRepository);
 export const netSuiteService = new NetSuiteService();
 export const esItemReceiptService = new EsItemReceiptServiceClass(
   esAdvanceNoticeRepository,
