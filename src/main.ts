@@ -96,13 +96,29 @@ const PORT = env.PORT || 3000;
 
 const execAsync = promisify(exec);
 
+const MIGRATE_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+
 // Helper function to run migrations
 async function runMigrations(): Promise<void> {
   try {
-    await execAsync('pnpm run migrate:deploy');
+    await execAsync('pnpm run migrate:deploy', {
+      env: { ...process.env, CI: 'true' },
+      maxBuffer: MIGRATE_MAX_BUFFER_BYTES,
+    });
     logger.info('✅ Migrations completed successfully');
   } catch (error) {
-    logger.warn('⚠️  Migrations warning (might already be applied):', error);
+    const e = error as NodeJS.ErrnoException & {
+      stdout?: string;
+      stderr?: string;
+      cmd?: string;
+    };
+    logger.warn('⚠️  Migrations did not complete cleanly', {
+      message: e.message,
+      code: e.code,
+      cmd: e.cmd,
+      stdout: e.stdout?.trim(),
+      stderr: e.stderr?.trim(),
+    });
   }
 }
 
