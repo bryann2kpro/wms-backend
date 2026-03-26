@@ -101,7 +101,7 @@ const MIGRATE_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 // Helper function to run migrations
 async function runMigrations(): Promise<void> {
   try {
-    await execAsync('pnpm run migrate:deploy', {
+    await execAsync('pnpm run migrate', {
       env: { ...process.env, CI: 'true' },
       maxBuffer: MIGRATE_MAX_BUFFER_BYTES,
     });
