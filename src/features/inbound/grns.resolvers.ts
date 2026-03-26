@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -38,6 +38,8 @@ function transformGrn(grn: GrnType) {
         notes: grn.notes ?? null,
         proofUrl: grn.proofUrl ?? null,
         warehouseId: grn.warehouseId ?? null,
+        nsError: grn.nsError ? JSON.stringify(grn.nsError) : null,
+        nsSentAt: grn.nsSentAt ? (grn.nsSentAt instanceof Date ? grn.nsSentAt.toISOString() : grn.nsSentAt) : null,
         createdAt: grn.createdAt,
         updatedAt: grn.updatedAt,
         createdBy: grn.createdBy,
@@ -95,6 +97,9 @@ export const resolvers = {
                     if (args.filter.status) {
                         filter.status = args.filter.status;
                     };
+                    if (args.filter.excludeDraft === true) {
+                        filter.excludeDraft = true;
+                    }
                     if (args.filter.sortBy != null) {
                         filter.sortBy = args.filter.sortBy;
                     };
@@ -710,6 +715,19 @@ export const resolvers = {
                             updatedBy: updatedBy,
                             movementType: InventoryMovementType.INBOUND,
                         })), updatedBy, context.organizationId!, context.tx);
+
+                        // Send Item Receipt to NetSuite after inventory movements
+                        logger.info(`ℹ️ [grns.resolvers] Sending Item Receipt to NetSuite — grnNo: ${grn.grnNo}`);
+                        const nsResult = await esItemReceiptService.sendItemReceipt(grn, context.organizationId!);
+                        const finalStatus = nsResult.success ? 'SentToES' : 'Failed';
+                        const updatedGrn = await grnsRepository.updateGrn(id, {
+                            status: finalStatus,
+                            nsError: nsResult.success ? null : nsResult.nsResponse,
+                            nsSentAt: new Date(),
+                        }, context.tx);
+                        logger.info(`ℹ️ [grns.resolvers] GRN status updated to ${finalStatus} — grnNo: ${grn.grnNo}`);
+
+                        return transformGrn(updatedGrn ?? grn);
                     }
 
                     return transformGrn(grn);

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Count Checklist</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:            #F3F2ED;
+            --surface:       #FFFFFF;
+            --border:        #D4D1C9;
+            --border-strong: #8C8880;
+            --text-primary:  #1C1917;
+            --text-secondary:#57534E;
+            --text-muted:    #A8A29E;
+            --th-bg:         #1C1917;
+            --th-text:       #F3F2ED;
+            --row-alt:       #ECEAE3;
+            --row-hover:     #E2DFD8;
+            --writein-bg:    #F5F5F3;
+            --writein-border:#C8C5BD;
+            --accent:        #92400E;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            font-family: 'IBM Plex Sans', system-ui, sans-serif;
+            color: var(--text-primary);
+            padding: 2.5rem 2rem;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .report-wrap {
+            max-width: 860px;
+            margin: 0 auto;
+        }
+
+        /* ── Document Header ── */
+        .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 2rem;
+            padding-bottom: 1.25rem;
+            border-bottom: 2px solid var(--text-primary);
+            gap: 2rem;
+        }
+
+        .doc-eyebrow {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.625rem;
+            font-weight: 500;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.4rem;
+        }
+
+        .doc-title {
+            font-size: 1.625rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1;
+            color: var(--text-primary);
+        }
+
+        .doc-meta {
+            text-align: right;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            line-height: 1.75;
+            flex-shrink: 0;
+        }
+
+        .doc-meta .label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            display: inline;
+        }
+
+        .doc-meta strong {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 500;
+            font-size: 0.775rem;
+            color: var(--text-primary);
+        }
+
+        .doc-meta .meta-row {
+            display: flex;
+            justify-content: flex-end;
+            align-items: baseline;
+            gap: 0.4rem;
+        }
+
+        .counted-by-row {
+            display: flex;
+            justify-content: flex-end;
+            align-items: baseline;
+            gap: 0.4rem;
+            margin-top: 0.25rem;
+        }
+
+        .counted-by-line {
+            display: inline-block;
+            width: 140px;
+            border-bottom: 1px solid var(--border-strong);
+            height: 1.1em;
+        }
+
+        /* ── Table Container ── */
+        .table-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        /* ── Table Header ── */
+        thead th {
+            background: var(--th-bg);
+            color: var(--th-text);
+            padding: 0.7rem 1rem;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            border: none;
+        }
+
+        thead th + th {
+            border-left: 1px solid rgba(255, 255, 255, 0.07);
+        }
+
+        /* ── Data Rows ── */
+        .tr-data td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            font-size: 0.825rem;
+            vertical-align: middle;
+            height: 2.4rem;
+        }
+
+        .tr-data:last-of-type td { border-bottom: none; }
+
+        .tr-data.tr-alt td { background: var(--row-alt); }
+
+        /* ── Cell types ── */
+        .col-no {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-align: center;
+            width: 48px;
+        }
+
+        .col-code {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.775rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            width: 110px;
+        }
+
+        .col-desc {
+            color: var(--text-secondary);
+        }
+
+        .col-writein {
+            background: var(--writein-bg) !important;
+            border-left: 1px solid var(--writein-border) !important;
+            width: 100px;
+            text-align: center;
+        }
+
+        .tr-alt .col-writein {
+            background: #EFEDE7 !important;
+        }
+
+        /* ── Footer ── */
+        .doc-footer {
+            margin-top: 2rem;
+        }
+
+        .footer-summary {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: 'IBM Plex Mono', monospace;
+            margin-bottom: 1.75rem;
+        }
+
+        .footer-signoff {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .signoff-field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .signoff-label {
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .signoff-line {
+            display: block;
+            border-bottom: 1px solid var(--border-strong);
+            height: 1.6rem;
+        }
+
+        .signoff-role {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+        }
+
+        /* ── Print ── */
+        @media print {
+            @page { size: A4 portrait; margin: 14mm 16mm; }
+
+            :root {
+                --bg:            #FFFFFF;
+                --surface:       #FFFFFF;
+                --border:        #CCCCCC;
+                --border-strong: #888888;
+                --text-primary:  #000000;
+                --text-secondary:#333333;
+                --text-muted:    #777777;
+                --th-bg:         #000000;
+                --th-text:       #FFFFFF;
+                --row-alt:       #F2F2F2;
+                --writein-bg:    #F7F7F5;
+                --writein-border:#BBBBBB;
+                --accent:        #7C3513;
+            }
+
+            body {
+                background: white;
+                padding: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            tr { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-wrap">
+        <header class="doc-header">
+            <div>
+                <div class="doc-eyebrow">Stock Count &middot; Checklist</div>
+                <div class="doc-title">Stock Count Checklist</div>
+            </div>
+            <div class="doc-meta">
+                <div class="meta-row">
+                    <span class="label">Session&nbsp;</span>
+                    <strong>{{sessionName}}</strong>
+                </div>
+                <div class="meta-row">
+                    <span class="label">Count Date&nbsp;</span>
+                    <strong>{{countDate}}</strong>
+                </div>
+                <div class="meta-row">
+                    <span class="label">Generated&nbsp;</span>
+                    <strong>{{generatedAt}}</strong>
+                </div>
+                <div class="counted-by-row">
+                    <span class="label">Counted by&nbsp;</span>
+                    <span class="counted-by-line"></span>
+                </div>
+            </div>
+        </header>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="text-align:center; width:48px">#</th>
+                        <th style="text-align:left; width:110px">SKU Code</th>
+                        <th style="text-align:left">Description</th>
+                        <th style="text-align:center; width:100px">{{unitName}} Count</th>
+                        <th style="text-align:center; width:100px">Loss Count</th>
+                        <th style="text-align:center; width:120px">Remarks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{tableRows}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="doc-footer">
+            <div class="footer-summary">Total items: {{totalItems}}</div>
+            <div class="footer-signoff">
+                <div class="signoff-field">
+                    <span class="signoff-label">Signature</span>
+                    <span class="signoff-line"></span>
+                    <span class="signoff-role">Counted by (Storekeeper)</span>
+                </div>
+                <div class="signoff-field">
+                    <span class="signoff-label">Verified by</span>
+                    <span class="signoff-line"></span>
+                    <span class="signoff-role">Supervisor</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

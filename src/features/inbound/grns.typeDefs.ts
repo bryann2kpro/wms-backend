@@ -23,6 +23,8 @@ export const typeDefs = `#graphql
         notes: String
         proofUrl: String
         warehouse: Warehouse
+        nsError: String
+        nsSentAt: String
         createdAt: String!
         updatedAt: String!
         createdByUser: GrnAuditUser
@@ -131,6 +133,8 @@ export const typeDefs = `#graphql
         grnNo: String
         """Search across GRN number, PO reference, and Supplier DO (case-insensitive)."""
         search: String
+        """When true and status is not set, omit draft GRNs from results (Draft / DRAFT)."""
+        excludeDraft: Boolean
         status: String
         page: Int
         pageSize: Int
