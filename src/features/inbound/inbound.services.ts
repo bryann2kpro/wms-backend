@@ -12,6 +12,7 @@ import { GrnItemRacksTable } from "./grns.model";
 import { OrganizationRepositoryClass } from "../master-data/organization.repository";
 import { EsAdvanceNoticeRepositoryClass } from "../es/es-advance-notice.repository";
 import { SuppliersRepositoryClass } from "../master-data/suppliers.repository";
+import { StockUnitRepositoryClass } from "../master-data/stock-unit.repository";
 
 /**
  * Item input for creating a GRN (same shape as CreateGrnItemInput).
@@ -65,6 +66,7 @@ export class InboundServices {
         private readonly grnItemsRepository: GrnItemsRepositoryClass,
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
         private readonly suppliersRepository: SuppliersRepositoryClass,
+        private readonly stockUnitRepository: StockUnitRepositoryClass,
         private readonly esAdvanceNoticeRepository: EsAdvanceNoticeRepositoryClass,
     ) {}
 
@@ -334,7 +336,8 @@ export class InboundServices {
     }
 
     /**
-     * Resolve SKU by skuId or create from skuCode/skuDescription/skuUom (same logic as createGrn).
+     * Resolve SKU by skuId, then by skuCode lookup, then auto-create if enough data is present.
+     * UOM text labels (e.g. "Ea", "Ctn") are resolved to stock_unit UUIDs automatically.
      */
     private async resolveOrCreateSkuForItem(
         item: CreateInboundItemInput,
@@ -342,32 +345,86 @@ export class InboundServices {
         updatedBy: string,
         tx: DbTransaction
     ): Promise<string | null> {
-        let skuIdToUse: string | null = null;
+        // 1. Try by explicit skuId
         if (item.skuId) {
             const existingSku = await this.skuRepository.getSkuById(item.skuId, tx);
-            if (existingSku) skuIdToUse = existingSku.skuId;
+            if (existingSku) return existingSku.skuId;
         }
-        if (!skuIdToUse && item.skuCode && item.skuDescription && item.skuUom) {
+
+        // 2. Try by skuCode lookup (prevents duplicates when frontend couldn't resolve skuId)
+        if (item.skuCode) {
+            const byCode = await this.skuRepository.getSku({ skuCode: item.skuCode }, undefined, tx);
+            if (byCode.query?.length) {
+                logger.info(`[InboundServices.resolveOrCreateSkuForItem] matched_by_code skuCode=${item.skuCode}`);
+                return byCode.query[0].skuId;
+            }
+        }
+
+        // 3. Auto-create: need at minimum skuCode and skuDescription
+        if (item.skuCode && item.skuDescription) {
+            const resolvedUom = await this.resolveSkuUom(item.skuUom ?? null);
+            if (!resolvedUom) {
+                logger.error('[InboundServices] Cannot create SKU — no valid UOM could be resolved', { skuCode: item.skuCode, skuUom: item.skuUom });
+                return null;
+            }
             try {
                 const newSku = await this.skuRepository.createSku({
                     skuCode: item.skuCode,
                     skuDescription: item.skuDescription,
                     cartonQuantity: '0',
                     lossQuantity: '0',
-                    skuUom: item.skuUom,
+                    skuUom: resolvedUom,
                     isActive: true,
                     createdBy,
                     updatedBy,
                 } as Parameters<typeof this.skuRepository.createSku>[0], tx);
-                skuIdToUse = newSku.skuId;
+                logger.info(`[InboundServices.resolveOrCreateSkuForItem] created_sku skuId=${newSku.skuId} skuCode=${item.skuCode}`);
+                return newSku.skuId;
             } catch (err) {
                 logger.error('[InboundServices] Failed to create new SKU for GRN item', { skuCode: item.skuCode, err });
             }
         }
-        if (!skuIdToUse) {
-            logger.error('[InboundServices] SKU not found and cannot create', { item });
+
+        logger.error('[InboundServices] SKU not found and cannot create', { item });
+        return null;
+    }
+
+    private static readonly UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    /**
+     * Resolve a skuUom value to a valid stock_unit UUID.
+     * If it's already a UUID, return as-is. If it's a text label (e.g. "Ea"), look up by unitCode.
+     * Falls back to the first active stock unit in the system.
+     */
+    private async resolveSkuUom(skuUom: string | null): Promise<string | null> {
+        if (skuUom && InboundServices.UUID_RE.test(skuUom)) {
+            return skuUom;
         }
-        return skuIdToUse;
+
+        if (skuUom) {
+            const byCode = await this.stockUnitRepository.getStockUnitByCode(skuUom.trim());
+            if (byCode) {
+                logger.info(`[InboundServices.resolveSkuUom] matched_by_code unitCode=${skuUom} -> ${byCode.stockUnitId}`);
+                return byCode.stockUnitId;
+            }
+            const byCodeUpper = await this.stockUnitRepository.getStockUnitByCode(skuUom.trim().toUpperCase());
+            if (byCodeUpper) {
+                logger.info(`[InboundServices.resolveSkuUom] matched_by_code_upper unitCode=${skuUom} -> ${byCodeUpper.stockUnitId}`);
+                return byCodeUpper.stockUnitId;
+            }
+        }
+
+        const fallback = await this.stockUnitRepository.getStockUnit(
+            { isActive: true },
+            { pageSize: 1, pageNumber: 1 },
+        );
+        if (fallback.query?.length) {
+            logger.info(`[InboundServices.resolveSkuUom] fallback_default unitId=${fallback.query[0].stockUnitId}`);
+            return fallback.query[0].stockUnitId;
+        }
+
+        logger.error('[InboundServices.resolveSkuUom] No stock units found in system');
+        return null;
     }
 
     // TJ to confirm if this is needed
