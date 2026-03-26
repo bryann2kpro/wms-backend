@@ -13,6 +13,8 @@ COPY package.json .
 COPY ./src ./src
 COPY ./postgres ./postgres
 COPY ./drizzle.config.ts ./drizzle.config.ts
+COPY ./drizzle.migrate.config.ts ./drizzle.migrate.config.ts
+COPY ./tsconfig.json ./tsconfig.json
 
 # Copy agent directory for Python gold evaluator
 # COPY agent ./agent
@@ -36,13 +38,12 @@ ENV NODE_ENV=production
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy only necessary files (src is required for drizzle.config.ts schema paths during migrate)
+# Runtime: dist + migrations + migrate-only Drizzle config (no src/ — migrate applies SQL, not TS schema)
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/postgres ./postgres
-COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
-COPY --from=builder /app/src ./src
+COPY --from=builder /app/drizzle.migrate.config.ts ./drizzle.migrate.config.ts
 
 EXPOSE 7777
 
