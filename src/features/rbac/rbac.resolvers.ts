@@ -225,7 +225,7 @@ export const resolvers = {
       createdBy: string;
       updatedBy: string;
     }}) => {
-      const defaultPermissionTypes = ['Read', 'Create', 'Update', 'Delete'];
+      const defaultPermissionTypes = ['Read', 'Create', 'Update', 'Delete', 'Approve'];
 
       const { module, createdPermissions } = await db.transaction(async (tx) => {
         const module = await rbacRepository.createModule({
