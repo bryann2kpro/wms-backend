@@ -762,17 +762,19 @@ export const resolvers = {
                             movementType: InventoryMovementType.INBOUND,
                         })), updatedBy, context.organizationId!, context.tx);
 
-                        // Send Item Receipt to NetSuite after inventory movements
-                        logger.info(`ℹ️ [grns.resolvers] Sending Item Receipt to NetSuite — grnNo: ${grn.grnNo}`);
-                        const nsResult = await esItemReceiptService.sendItemReceipt(grn, context.organizationId!);
+                        return transformGrn(grn);
+                    }
+
+                    if (updateData.status === 'SentToES') {
+                        logger.info(`ℹ️ [grns.resolvers] Sending Item Receipt to NetSuite — grnNo: ${existingGrn.grnNo}`);
+                        const nsResult = await esItemReceiptService.sendItemReceipt(existingGrn, context.organizationId!);
                         const finalStatus = nsResult.success ? 'SentToES' : 'Failed';
                         const updatedGrn = await grnsRepository.updateGrn(id, {
                             status: finalStatus,
                             nsError: nsResult.success ? null : nsResult.nsResponse,
                             nsSentAt: new Date(),
                         }, context.tx);
-                        logger.info(`ℹ️ [grns.resolvers] GRN status updated to ${finalStatus} — grnNo: ${grn.grnNo}`);
-
+                        logger.info(`ℹ️ [grns.resolvers] GRN status updated to ${finalStatus} — grnNo: ${existingGrn.grnNo}`);
                         return transformGrn(updatedGrn ?? grn);
                     }
 
