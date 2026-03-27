@@ -515,8 +515,14 @@ export const resolvers = {
                 entity: 'GRN',
                 action: 'UPDATE',
                 getEntityId: (_, args) => args.id,
-                getOldData: async (args) => {
-                    return await grnsRepository.getGrns({ id: args.id });
+                getOldData: async (args, context) => {
+                    const result = await grnsRepository.getGrns(
+                        { id: args.id },
+                        undefined,
+                        context.organizationId ?? undefined,
+                    );
+                    const previous = result && 'query' in result ? result.query?.[0] : null;
+                    return previous ? transformGrn(previous) : null;
                 },
             },
             async (_: unknown, { id, input }: {
