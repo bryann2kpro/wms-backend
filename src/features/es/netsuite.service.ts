@@ -25,14 +25,20 @@ export class NetSuiteService {
       oauth_version: '1.0',
     };
 
-    // Build base string: METHOD&encodedURL&encodedParams (sorted)
-    const sortedParams = Object.entries(oauthParams)
+    // Per OAuth 1.0a (RFC 5849 §3.4.1.3), query-string params must be
+    // merged with OAuth params before sorting for the signature base string.
+    const parsedUrl = new URL(url);
+    const baseUrl = `${parsedUrl.origin}${parsedUrl.pathname}`;
+
+    const allParams: Record<string, string> = { ...oauthParams };
+    parsedUrl.searchParams.forEach((value, key) => {
+      allParams[key] = value;
+    });
+
+    const sortedParams = Object.entries(allParams)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join('&');
-
-    // Strip query string from URL for base string (use only base URL)
-    const baseUrl = url.split('?')[0];
     const baseString = `${method.toUpperCase()}&${encodeURIComponent(baseUrl)}&${encodeURIComponent(sortedParams)}`;
 
     // Signing key
