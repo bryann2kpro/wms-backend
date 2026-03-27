@@ -1,85 +1,87 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code, and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
-
 name: Deploy
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - v*
+  pull_request:
+    branches:
+      - main
+      - staging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   docker:
     runs-on: ubuntu-latest
     env:
-        PROJECT_NAME: express-template
-    
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      PROJECT_NAME: smee-backend
+      DOCKERHUB_NAMESPACE: gremoryyx
+
     steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-            - name: Log in to Docker Hub
-              run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Determine image tags
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
 
-            - name: Build Docker image
-              run: |
-                  docker build \
-                    -t gremoryyx/${{ env.PROJECT_NAME }}:${{ github.ref_name }} \
-                    -t gremoryyx/${{ env.PROJECT_NAME }}:latest .
+          git fetch --tags --force
 
-            - name: Push Docker image
-              run: |
-                  docker push gremoryyx/${{ env.PROJECT_NAME }}:latest
-                  docker push gremoryyx/${{ env.PROJECT_NAME }}:${{ github.ref_name }}
+          REF_TYPE="${GITHUB_REF_TYPE:-}"
+          REF_NAME="${GITHUB_REF_NAME:-}"
 
-  deploy:
-      needs: docker
-      runs-on: ubuntu-latest
+          if [ "$REF_TYPE" = "tag" ] && [[ "$REF_NAME" == v* ]]; then
+            VERSION="${REF_NAME#v}"
+          else
+            TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+            if [ -z "$TAG" ]; then
+              SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+              VERSION="0.0.0-$SHORT_SHA"
+            else
+              VERSION="${TAG#v}"
+            fi
+          fi
 
-      env:
-          PROJECT_NAME: semutz-backend
-          EXPOSED_PORT: 3002
+          IMAGE="${DOCKERHUB_NAMESPACE}/${PROJECT_NAME}"
 
-      steps:
-          - name: Checkout code
-            uses: actions/checkout@v4
+          TAGS=""
+          if [[ "$VERSION" == *"-staging" ]]; then
+            STAGING_VERSION="${VERSION%-staging}"
+            TAGS="${IMAGE}:staging-${STAGING_VERSION},${IMAGE}:staging-latest"
+          else
+            TAGS="${IMAGE}:${VERSION},${IMAGE}:latest"
+          fi
 
-          - name: Set up SSH Key
-            run: |
-                echo "${{ secrets.DEPLOY_KEY }}" > deploy_key.pem
-                chmod 600 deploy_key.pem
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
-          - name: Upload Nginx configuration to temporary location
-            run: |
-                scp -o StrictHostKeyChecking=no -i deploy_key.pem ./server.nginx.conf ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:/home/${{ secrets.SSH_USER }}/nginx.conf
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
-          - name: Deploy Docker container to the server
-            run: |
-                ssh -o StrictHostKeyChecking=no -i deploy_key.pem ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
-                  # Check if the container exists and remove it if it does
-                  if docker ps -a --format '{{.Names}}' | grep -q "^${{ env.PROJECT_NAME }}$"; then
-                    echo "Container exists. Stopping and removing..."
-                    docker stop ${{ env.PROJECT_NAME }}
-                    docker rm ${{ env.PROJECT_NAME }}
-                  else
-                    echo "Container doesn't exist. Logging into Docker Hub..."
-                    echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-                  fi
-                  # Pull the latest image and run the container
-                  echo "Pulling latest image..."
-                  docker pull gremoryyx/${{ env.PROJECT_NAME }}:latest
-                  echo "Running container..."
-                  docker run -d --name ${{ env.PROJECT_NAME }} -p ${{ secrets.EXPOSED_PORT }}:3000 gremoryyx/${{ env.PROJECT_NAME }}:latest
-                EOF
+      - name: Log in to Docker Hub
+        if: ${{ github.event_name == 'push' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-          - name: Update Nginx configuration
-            run: |
-                ssh -o StrictHostKeyChecking=no -i deploy_key.pem ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
-                  sudo mv /home/${{ secrets.SSH_USER }}/nginx.conf /etc/nginx/sites-available/${{ env.PROJECT_NAME }}
-                  sudo ln -sf /etc/nginx/sites-available/${{ env.PROJECT_NAME }} /etc/nginx/sites-enabled/${{ env.PROJECT_NAME }}
-                  sudo nginx -t
-                  sudo systemctl reload nginx
-                EOF
-
-          - name: Clean up SSH key
-          32
-            run: rm -f deploy_key.pem
+      - name: Build (and push on tag pushes)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

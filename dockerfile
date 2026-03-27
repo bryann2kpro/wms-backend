@@ -34,15 +34,6 @@ FROM node:22-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Install pnpm, netcat (nc), wget, and Python for health checks and gold evaluator agent
-# RUN apt-get update && apt-get install -y \
-#     netcat-openbsd \
-#     wget \
-#     python3 \
-#     python3-venv \
-#     python3-pip \
-#     && rm -rf /var/lib/apt/lists/*
-# RUN npm install -g pnpm
 RUN corepack enable
 
 # Copy only necessary files
@@ -51,25 +42,6 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/postgres ./postgres
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
-
-# Copy agent directory for Python gold evaluator
-# COPY --from=builder /app/agent ./agent
-
-# Create public and uploads directories for file uploads
-# RUN mkdir -p /app/public/uploads
-
-# Create and use a dedicated virtual environment for Python packages (PEP 668 compliant)
-# ENV PYTHON_VENV_PATH=/opt/pyenv
-# RUN python3 -m venv "$PYTHON_VENV_PATH" && \
-#     "$PYTHON_VENV_PATH/bin/pip" install --upgrade pip
-
-# Install Python dependencies for gold evaluator agent into the venv
-# RUN if [ -f "./agent/requirements.txt" ]; then \
-#         "$PYTHON_VENV_PATH/bin/pip" install --no-cache-dir -r ./agent/requirements.txt; \
-#     fi
-
-# Make the app use the venv's python
-# ENV PYTHON_EXECUTABLE="$PYTHON_VENV_PATH/bin/python"
 
 EXPOSE 7777
 

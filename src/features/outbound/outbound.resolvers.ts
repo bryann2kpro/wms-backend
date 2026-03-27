@@ -379,6 +379,7 @@ export const resolvers = {
           purchaseOrderNo?: string;
           doNo?: string;
           doStatus?: string;
+          doStatuses?: string[];
           search?: string;
         };
         pageSize?: number;
@@ -390,7 +391,7 @@ export const resolvers = {
         const filter: DeliveryOrderItemFilter & {
           purchaseOrderNo?: string;
           doNo?: string;
-          doStatus?: string;
+          doStatus?: string | string[];
           search?: string;
         } = {};
 
@@ -398,7 +399,11 @@ export const resolvers = {
           if (args.filter.id) filter.id = args.filter.id;
           if (args.filter.purchaseOrderNo) filter.purchaseOrderNo = args.filter.purchaseOrderNo;
           if (args.filter.doNo) filter.doNo = args.filter.doNo;
-          if (args.filter.doStatus) filter.doStatus = args.filter.doStatus;
+          if (args.filter.doStatuses?.length) {
+            filter.doStatus = args.filter.doStatuses;
+          } else if (args.filter.doStatus) {
+            filter.doStatus = args.filter.doStatus;
+          }
           if (args.filter.search) filter.search = args.filter.search;
         }
 
@@ -464,6 +469,7 @@ export const resolvers = {
         const data = parseResult.data;
         const created = await outboundServices.createPurchaseOrder({
           userId,
+          organizationId: context.organizationId!,
           purchaseOrderNo: data.purchaseOrderNo,
           outletId: data.outletId,
           items: data.items.map((item) => ({

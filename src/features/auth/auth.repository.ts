@@ -79,7 +79,8 @@ export class AuthRepositoryClass {
       return users.length > 0 ? users[0] : null;
     } catch (error) {
       logger.error('❌ [AuthRepository.getUserByEmail] Error:', error);
-      return null;
+      // Do not return null on DB failures — callers would treat it as "user not found" (e.g. 401 on login).
+      throw error;
     }
   }
 

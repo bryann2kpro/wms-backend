@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService, esAdvanceNoticeRepository } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -26,6 +26,7 @@ import { InventoryMovementType } from '../inventory/inventory-movement/inventory
 function transformGrn(grn: GrnType) {
     return {
         id: grn.id,
+        organizationId: grn.organizationId,
         grnNo: grn.grnNo,
         supplierId: grn.supplierId,
         supplierDeliveryId: grn.supplierDeliveryId,
@@ -37,6 +38,8 @@ function transformGrn(grn: GrnType) {
         notes: grn.notes ?? null,
         proofUrl: grn.proofUrl ?? null,
         warehouseId: grn.warehouseId ?? null,
+        nsError: grn.nsError ? JSON.stringify(grn.nsError) : null,
+        nsSentAt: grn.nsSentAt ? (grn.nsSentAt instanceof Date ? grn.nsSentAt.toISOString() : grn.nsSentAt) : null,
         createdAt: grn.createdAt,
         updatedAt: grn.updatedAt,
         createdBy: grn.createdBy,
@@ -94,6 +97,9 @@ export const resolvers = {
                     if (args.filter.status) {
                         filter.status = args.filter.status;
                     };
+                    if (args.filter.excludeDraft === true) {
+                        filter.excludeDraft = true;
+                    }
                     if (args.filter.sortBy != null) {
                         filter.sortBy = args.filter.sortBy;
                     };
@@ -131,6 +137,44 @@ export const resolvers = {
                 return await grnsRepository.getNextGrnNoForDate(baseDate, context.organizationId ?? undefined);
             } catch (error) {
                 logger.error('[grns.resolvers] nextGrnNumber Error:', error);
+                throw error;
+            }
+        },
+        listPendingAdvanceNotices: async () => {
+            try {
+                const records = await esAdvanceNoticeRepository.findPending();
+                return records.map((r) => {
+                    const p = r.payload as {
+                        tranid: string;
+                        entity: string;
+                        duedate: string;
+                        lines?: Array<{
+                            lineuniquekey: number;
+                            itemid: string;
+                            displayname?: string;
+                            quantity: number;
+                            units: string;
+                            custrecord_r2o_order_code?: string;
+                        }>;
+                    };
+                    return {
+                        id: r.id,
+                        tranid: p.tranid ?? r.tranid,
+                        entity: p.entity ?? '',
+                        duedate: p.duedate ?? '',
+                        receivedAt: r.receivedAt instanceof Date ? r.receivedAt.toISOString() : r.receivedAt,
+                        lines: (p.lines ?? []).map((l) => ({
+                            lineuniquekey: l.lineuniquekey,
+                            itemid: l.itemid,
+                            displayname: l.displayname ?? null,
+                            quantity: l.quantity,
+                            units: l.units,
+                            custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
+                        })),
+                    };
+                });
+            } catch (error) {
+                logger.error('[grns.resolvers] listPendingAdvanceNotices Error:', error);
                 throw error;
             }
         },
@@ -232,10 +276,12 @@ export const resolvers = {
             items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             inboundQty?: number | null;
             skuId?: string | null;
-        } }) => {
+            advanceNoticeId?: string | null;
+        } }, context: GraphQLContext) => {
             try {
                 const result = await inboundServices.createInbound({
                     userId: input.userId,
+                    organizationId: context.organizationId!,
                     grnNo: input.grnNo,
                     supplierId: input.supplierId,
                     supplierDeliveryId: input.supplierDeliveryId,
@@ -249,6 +295,7 @@ export const resolvers = {
                     items: input.items ?? undefined,
                     inboundQty: input.inboundQty ?? undefined,
                     skuId: input.skuId ?? undefined,
+                    advanceNoticeId: input.advanceNoticeId ?? undefined,
                 });
                 return result;
             } catch (error) {
@@ -277,7 +324,7 @@ export const resolvers = {
                     approvedBy?: string | null;
                     status?: string | null;
                     createdBy: string;
-                    updatedBy?: string | null;
+                    updatedBy?: string | null;  
                     items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
@@ -317,6 +364,7 @@ export const resolvers = {
                             });
                         }
                         const supplierDelivery = await supplierDeliveriesRepository.createSupplierDelivery({
+                            organizationId: context.organizationId ?? '',
                             supplierId,
                             supplierDeliveryNo: input.supplierDeliveryNo,
                             deliveryDate,
@@ -384,6 +432,7 @@ export const resolvers = {
                         updatedBy,
                         status: input.status ?? 'Draft',
                         receivedAt,
+                        organizationId: context.organizationId ?? '',
                     }, context.tx);
 
                     // 4. Create GRN items
@@ -466,8 +515,14 @@ export const resolvers = {
                 entity: 'GRN',
                 action: 'UPDATE',
                 getEntityId: (_, args) => args.id,
-                getOldData: async (args) => {
-                    return await grnsRepository.getGrns({ id: args.id });
+                getOldData: async (args, context) => {
+                    const result = await grnsRepository.getGrns(
+                        { id: args.id },
+                        undefined,
+                        context.organizationId ?? undefined,
+                    );
+                    const previous = result && 'query' in result ? result.query?.[0] : null;
+                    return previous ? transformGrn(previous) : null;
                 },
             },
             async (_: unknown, { id, input }: {
@@ -543,6 +598,7 @@ export const resolvers = {
                         } else {
                             const supplierId = (input.supplierId ?? existingGrn.supplierId) as string;
                             const created = await supplierDeliveriesRepository.createSupplierDelivery({
+                                organizationId: context.organizationId ?? '',
                                 supplierId,
                                 supplierDeliveryNo: input.supplierDeliveryNo,
                                 deliveryDate: deliveryDate ?? new Date(),
@@ -621,7 +677,7 @@ export const resolvers = {
                         await grnItemsRepository.deleteGrnItem({ grnId: id }, context.tx);
                         if (grnItemRows.length > 0) {
                             const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
-                            if (createdItems && createdItems !== false && input.items) {
+                            if (createdItems !== false && input.items) {
                                 const rackRows: { grnItemId: string; rackId: string }[] = [];
                                 createdItems.forEach((createdItem, index) => {
                                     const source = input.items![index];
@@ -704,7 +760,20 @@ export const resolvers = {
                             createdBy: updatedBy,
                             updatedBy: updatedBy,
                             movementType: InventoryMovementType.INBOUND,
-                        })), context.tx);
+                        })), updatedBy, context.organizationId!, context.tx);
+
+                        // Send Item Receipt to NetSuite after inventory movements
+                        logger.info(`ℹ️ [grns.resolvers] Sending Item Receipt to NetSuite — grnNo: ${grn.grnNo}`);
+                        const nsResult = await esItemReceiptService.sendItemReceipt(grn, context.organizationId!);
+                        const finalStatus = nsResult.success ? 'SentToES' : 'Failed';
+                        const updatedGrn = await grnsRepository.updateGrn(id, {
+                            status: finalStatus,
+                            nsError: nsResult.success ? null : nsResult.nsResponse,
+                            nsSentAt: new Date(),
+                        }, context.tx);
+                        logger.info(`ℹ️ [grns.resolvers] GRN status updated to ${finalStatus} — grnNo: ${grn.grnNo}`);
+
+                        return transformGrn(updatedGrn ?? grn);
                     }
 
                     return transformGrn(grn);

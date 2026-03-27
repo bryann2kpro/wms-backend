@@ -1,6 +1,7 @@
 import { MainSchema } from "@/db/db.schema";
-import { uuid, text, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
+import { uuid, text, numeric, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { OrganizationsTable } from "@/features/master-data/organization.model";
+import { EsAdvanceNoticesTable } from "@/features/es/es-advance-notice.model";
 
 /**
  * Goods Received Notes (GRN) Table
@@ -38,6 +39,15 @@ export const GrnsTable = MainSchema.table('grns', {
   notes: text('notes'),
   proofUrl: text('proof_url'),
   warehouseId: uuid('warehouse_id'),
+
+  /**
+   * Links this GRN to the ES advance notice it was created from.
+   * NULL if created manually (no prior ASN from NetSuite).
+   */
+  advanceNoticeId: uuid('advance_notice_id').references(() => EsAdvanceNoticesTable.id),
+
+  nsError: jsonb('ns_error'),
+  nsSentAt: timestamp('ns_sent_at', { withTimezone: true }),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

@@ -62,6 +62,8 @@ import { ApiKeysControllerClass } from '@/features/api-keys/api-keys.controller.
 // ES Integration
 import { EsAdvanceNoticeRepositoryClass } from '@/features/es/es-advance-notice.repository.js';
 import { EsAdvanceNoticeControllerClass } from '@/features/es/es-advance-notice.controller.js';
+import { NetSuiteService } from '@/features/es/netsuite.service.js';
+import { EsItemReceiptServiceClass } from '@/features/es/es-item-receipt.service.js';
 
 
 // ============================================
@@ -138,6 +140,10 @@ export const healthController = new HealthControllerClass();
 export const uploadController = new UploadControllerClass(uploadService);
 export const auditLogRepository = new AuditLogRepositoryClass();
 export const reportController = new ReportControllerClass();
+// ES Integration
+export const esAdvanceNoticeRepository = new EsAdvanceNoticeRepositoryClass();
+export const esAdvanceNoticeController = new EsAdvanceNoticeControllerClass(esAdvanceNoticeRepository);
+
 export const inboundServices = new InboundServices(
     grnsRepository,
     skuRepository,
@@ -145,13 +151,21 @@ export const inboundServices = new InboundServices(
     supplierDeliveryItemsRepository,
     grnItemsRepository,
     inventoryMovementRepository,
-    authRepository,
+    suppliersRepository,
+    stockUnitRepository,
+    esAdvanceNoticeRepository,
 );
 
 // API Keys
 export const apiKeysRepository = new ApiKeysRepositoryClass();
 export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
 
-// ES Integration
-export const esAdvanceNoticeRepository = new EsAdvanceNoticeRepositoryClass();
-export const esAdvanceNoticeController = new EsAdvanceNoticeControllerClass(esAdvanceNoticeRepository);
+export const netSuiteService = new NetSuiteService();
+export const esItemReceiptService = new EsItemReceiptServiceClass(
+  esAdvanceNoticeRepository,
+  grnItemsRepository,
+  skuRepository,
+  suppliersRepository,
+  supplierDeliveriesRepository,
+  netSuiteService,
+);

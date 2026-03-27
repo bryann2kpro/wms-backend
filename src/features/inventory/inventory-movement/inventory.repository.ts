@@ -30,7 +30,7 @@ export type InventoryMovementsFilter = {
 }
 export class InventoryMovementRepositoryClass {
     constructor(
-      private readonly inventoryBalanceRepository: InventoryBalanceRepositoryClass
+      private readonly inventoryBalanceRepository: InventoryBalanceRepositoryClass,
     ) {}
 
       /**
@@ -125,9 +125,12 @@ export class InventoryMovementRepositoryClass {
    */
   async createInventoryMovement(
     data: InventoryMovementsInsertType | InventoryMovementsInsertType[],
-    tx?: DbTransaction
+    userId: string,
+    organizationId: string,
+    tx?: DbTransaction,
   ): Promise<InventoryMovementsType | InventoryMovementsType[]> {
     try {
+
       const client = tx ?? db;
       logger.info("ℹ️ [InventoryMovementsRepository.createInventoryMovement] Creating inventory movement(s)...");
 
@@ -208,6 +211,7 @@ export class InventoryMovementRepositoryClass {
         await this.inventoryBalanceRepository.upsertInventoryBalance(
           {
             skuId,
+            organizationId: organizationId,
             onHandQty: onHand.toString(),
             lossQty: loss.toString(),
             reservedQty: reserved.toString(),

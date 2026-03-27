@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { apiKeysRepository } from '@/composition-root.js';
 import { ApiKeyType } from '@/features/api-keys/api-keys.model.js';
 import { Error } from '@/error/index.js';
+import { logger } from '@/util/logger';
 
 // Extend Express Request to carry the resolved API key
 declare global {
@@ -26,12 +27,13 @@ declare global {
  */
 const authenticateApiKey = async (req: Request, res: Response, next: NextFunction) => {
   const rawKey = req.headers['x-api-key'];
+  logger.info('ℹ️ [authenticateApiKey] Raw key:' + rawKey);
 
   if (!rawKey || typeof rawKey !== 'string') {
+    logger.warn("⚠️ [authenticateApiKey] Raw key is required");
     return res.status(401).json({
       success: false,
-      message: Error.UNAUTHORIZED,
-      detail: 'x-api-key header is required',
+      message: 'x-api-key header is required'
     });
   }
 
@@ -39,18 +41,18 @@ const authenticateApiKey = async (req: Request, res: Response, next: NextFunctio
   const apiKey = await apiKeysRepository.getApiKeyByHash(hash);
 
   if (!apiKey || !apiKey.isActive) {
+    logger.warn("⚠️ [authenticateApiKey] Invalid or revoked API key");
     return res.status(401).json({
       success: false,
-      message: Error.UNAUTHORIZED,
-      detail: 'Invalid or revoked API key',
+      message: 'Invalid or revoked API key',
     });
   }
 
   if (apiKey.expiresAt && new Date() > apiKey.expiresAt) {
+    logger.warn("⚠️ [authenticateApiKey] API key has expired");
     return res.status(401).json({
       success: false,
-      message: Error.UNAUTHORIZED,
-      detail: 'API key has expired',
+      message: 'API key has expired',
     });
   }
 

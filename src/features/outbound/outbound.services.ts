@@ -37,6 +37,7 @@ export type CreatePurchaseOrderItemInput = {
 
 export type CreatePurchaseOrderData = {
   userId: string;
+  organizationId: string;
   purchaseOrderNo: string;
   outletId: string;
   items: CreatePurchaseOrderItemInput[];
@@ -63,6 +64,15 @@ export class OutboundServices {
     async createPurchaseOrder(data: CreatePurchaseOrderData): Promise<PurchaseOrderType> {
         logger.info("ℹ️ [OutboundServices.createPurchaseOrder] Creating purchase order and delivery order...");
         try {
+
+            const createdBy = data.userId;
+            if (!createdBy) {
+                logger.error('❌ [InboundServices.createInbound] User ID is required');
+                throw new Error('User ID is required');
+            }
+
+            const organizationId = data.organizationId;
+
             let created: PurchaseOrderType | null = null;
             await db.transaction(async (tx) => {
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 1: Check if skus are in stock...');
@@ -94,6 +104,7 @@ export class OutboundServices {
                         scheduledDeliveryDate: nextDelivery.deliveryDate,
                         createdBy: data.userId,
                         updatedBy: data.userId,
+                        organizationId: organizationId,
                     },
                     tx
                 );
@@ -118,7 +129,7 @@ export class OutboundServices {
                     updatedBy: data.userId,
                 }));
 
-                await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, tx);
+                await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, data.userId, organizationId, tx);
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 6: Automatically Create Delivery Order...');
                 const doNo = data.purchaseOrderNo.startsWith('PO') 
@@ -131,6 +142,7 @@ export class OutboundServices {
                     poNo: data.purchaseOrderNo,
                     status: 'NEW',
                     isEmergency,
+                    organizationId: organizationId,
                     createdBy: data.userId,
                     updatedBy: data.userId,
                 }, tx);

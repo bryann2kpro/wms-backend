@@ -510,7 +510,9 @@ class RbacControllerClass {
         moduleName: z.string().max(50).optional(),
         status: z.string().max(20).optional(),
         pageSize: z.coerce.number().min(1).default(10),
-        pageNumber: z.coerce.number().min(1).default(1),
+        pageNumber: z.coerce.number().min(1).optional(),
+        // Backward-compatible alias used by frontend query params.
+        page: z.coerce.number().min(1).optional(),
       });
 
       const { success, data: filter, error } = filterSchema.safeParse(req.query);
@@ -525,7 +527,8 @@ class RbacControllerClass {
         return;
       }
 
-      const { pageSize, pageNumber, ...filterParams } = filter;
+      const { pageSize, pageNumber, page, ...filterParams } = filter;
+      const requestedPage = pageNumber ?? page ?? 1;
       
       // Fetch all modules first to group them properly, then paginate the grouped result
       const modules = await this.rbacRepository.getModule(filterParams);
@@ -563,7 +566,9 @@ class RbacControllerClass {
       // Apply pagination to grouped modules
       const totalCount = groupedModule.length;
       const totalPages = Math.ceil(totalCount / pageSize);
-      const offset = (pageNumber - 1) * pageSize;
+      const currentPage =
+        totalPages > 0 ? Math.min(requestedPage, totalPages) : requestedPage;
+      const offset = (currentPage - 1) * pageSize;
       const paginatedModules = groupedModule.slice(offset, offset + pageSize);
 
       logger.info('✅ [RbacController.getModule] Modules fetched successfully, count:', paginatedModules.length);
@@ -574,10 +579,10 @@ class RbacControllerClass {
         pagination: {
           count: paginatedModules.length,
           totalCount,
-          currentPage: pageNumber,
+          currentPage,
           totalPages,
-          hasNextPage: pageNumber < totalPages,
-          hasPrevPage: pageNumber > 1
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
         },
         data: paginatedModules
       });

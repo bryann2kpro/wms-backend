@@ -85,7 +85,7 @@ export class PurchaseOrdersRepositoryClass {
       const data = await paginatedQuery.query;
 
       logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrders] Purchase orders fetched successfully");
-      return { query: data, pagination: paginatedQuery.pagination };
+      return { query: data as PurchaseOrderType[], pagination: paginatedQuery.pagination };
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.getPurchaseOrders] Error:", error);
       throw error;

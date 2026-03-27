@@ -23,6 +23,11 @@ const poolConfig: PoolConfig = {
   database: process.env.POSTGRES_DB,
 };
 
+const dbHost = poolConfig.host ?? "(unset)";
+const dbPort = poolConfig.port ?? 5432;
+const dbName = poolConfig.database ?? "(unset)";
+console.info(`[db] PostgreSQL target: ${dbHost}:${dbPort}/${dbName}`);
+
 const pool = new Pool(poolConfig);
 
 // Create a drizzle instance
