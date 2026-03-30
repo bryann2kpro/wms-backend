@@ -23,6 +23,8 @@ export const typeDefs = `#graphql
         notes: String
         proofUrl: String
         warehouse: Warehouse
+        nsError: String
+        nsSentAt: String
         createdAt: String!
         updatedAt: String!
         createdByUser: GrnAuditUser
@@ -122,8 +124,41 @@ export const typeDefs = `#graphql
         items: [CreateGrnItemInput!]
     }
 
+    """
+    Advance Shipping Notice received from NetSuite before goods arrive.
+    Pending notices (not yet linked to a GRN) are shown in the Create GRN dropdown.
+    """
+    type AdvanceNotice {
+        id: ID!
+        tranid: String!
+        entity: String!
+        duedate: String!
+        receivedAt: String!
+        lines: [AdvanceNoticeLine!]!
+    }
+
+    """
+    A single line item within an Advance Shipping Notice.
+    """
+    type AdvanceNoticeLine {
+        lineuniquekey: Int!
+        itemid: String!
+        displayname: String
+        quantity: Float!
+        units: String!
+        custrecord_r2o_order_code: String
+    }
+
     extend type Query {
         grns(filter: GrnFilterInput, pageSize: Int, pageNumber: Int): GrnPaginatedResponse
+    }
+
+    extend type Query {
+        """
+        List advance notices from NetSuite that have not yet been linked to a GRN.
+        Used to populate the ASN dropdown when creating a new GRN.
+        """
+        listPendingAdvanceNotices: [AdvanceNotice!]! @auth
     }
 
     input GrnFilterInput {
@@ -131,6 +166,8 @@ export const typeDefs = `#graphql
         grnNo: String
         """Search across GRN number, PO reference, and Supplier DO (case-insensitive)."""
         search: String
+        """When true and status is not set, omit draft GRNs from results (Draft / DRAFT)."""
+        excludeDraft: Boolean
         status: String
         page: Int
         pageSize: Int
@@ -172,6 +209,8 @@ export const typeDefs = `#graphql
         items: [CreateGrnItemInput!]
         inboundQty: Float
         skuId: ID
+        """ID of the advance notice this GRN was created from. Optional — omit for manual GRNs."""
+        advanceNoticeId: ID
     }
 
     extend type Mutation {  

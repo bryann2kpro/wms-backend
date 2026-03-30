@@ -5,7 +5,7 @@ export const env = createEnv({
   server: {
     // Node stuffs
     PORT: z.string().transform(val => Number(val)).pipe(z.number().min(1).max(65535)).default(3000),
-    NODE_ENV: z.enum(["development", "production"]),
+    NODE_ENV: z.enum(["development", "production", "test"]),
     // JWT Auth stuffs
     JWT_ALGORITHM: z.enum(["HS256", "RS256", "ES256", "PS256", "ES384", "PS384", "ES512", "PS512"]).default("RS256"),
     JWT_PRIVATE_KEY: z.string(),
@@ -44,6 +44,13 @@ export const env = createEnv({
     // Invoice cron toggle (when not \"true\", cron does not start)
     INVOICES_CRON_ENABLED: z.string().optional(),
     SYSTEM_USER_UUID: z.uuid(),
+    // NetSuite integration (OAuth 1.0a TBA)
+    NETSUITE_ACCOUNT_ID: z.string(),
+    NETSUITE_CONSUMER_KEY: z.string(),
+    NETSUITE_CONSUMER_SECRET: z.string(),
+    NETSUITE_TOKEN_ID: z.string(),
+    NETSUITE_TOKEN_SECRET: z.string(),
+    NETSUITE_ITEM_RECEIPT_URL: z.string().url(),
   },
  
   /**

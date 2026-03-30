@@ -23,6 +23,7 @@ import { DeliveryOrdersTable } from '../outbound/delivery-orders.model';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MOVEMENT_REPORT_HTML_PATH = path.join(__dirname, 'html', 'movement-report.html');
 const PROFORMA_INVOICES_HTML_PATH = path.join(__dirname, 'html', 'proforma-invoices.html');
+const STOCK_COUNT_CHECKLIST_HTML_PATH = path.join(__dirname, 'html', 'stock-count-checklist.html');
 
 // Movement Report row shape
 export interface MovementReportRow {
@@ -343,7 +344,7 @@ function formatAmount(value: number): string {
  * Render HTML to PDF using Puppeteer (same layout as preview).
  * Waits for Tailwind CDN script so styles are applied before printing.
  */
-async function htmlToPdf(html: string, options?: { landscape?: boolean }): Promise<Buffer> {
+export async function htmlToPdf(html: string, options?: { landscape?: boolean }): Promise<Buffer> {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -392,5 +393,86 @@ export async function generateInvoiceSummaryPdf(
   const html = await renderProformaInvoicesHtml(rows, dateFrom, dateTo, regionId);
   const pdfBuffer = await htmlToPdf(html, { landscape: true });
   const filename = `Proforma_Invoices_${new Date().toISOString().split('T')[0]}.pdf`;
+  return { pdfBase64: pdfBuffer.toString('base64'), filename };
+}
+
+// ─── Stock Count Checklist ──────────────────────────────────────────────────
+
+export interface StockCountChecklistRow {
+  index: number;
+  skuCode: string;
+  description: string;
+}
+
+/**
+ * Load the stock count checklist HTML template and inject session + item data.
+ * Quantity columns are intentionally left blank for the storekeeper to fill in.
+ */
+export async function renderStockCountChecklistHtml(
+  session: { name: string; countDate: string },
+  rows: StockCountChecklistRow[],
+  unitName: string,
+): Promise<string> {
+  const template = await readFile(STOCK_COUNT_CHECKLIST_HTML_PATH, 'utf-8');
+
+  const countDateStr = new Date(session.countDate).toLocaleDateString('en-MY');
+  const generatedAt = new Date().toLocaleDateString('en-MY');
+
+  const tableRows = rows
+    .map((r) => {
+      const rowAlt = r.index % 2 === 0 ? ' tr-alt' : '';
+      return `<tr class="tr-data${rowAlt}">
+        <td class="col-no">${r.index}</td>
+        <td class="col-code">${escapeHtml(r.skuCode)}</td>
+        <td class="col-desc">${escapeHtml(r.description)}</td>
+        <td class="col-writein"></td>
+        <td class="col-writein"></td>
+        <td class="col-writein"></td>
+      </tr>`;
+    })
+    .join('\n');
+
+  return template
+    .replace(/\{\{sessionName\}\}/g, escapeHtml(session.name))
+    .replace(/\{\{countDate\}\}/g, countDateStr)
+    .replace(/\{\{generatedAt\}\}/g, generatedAt)
+    .replace(/\{\{unitName\}\}/g, escapeHtml(unitName))
+    .replace(/\{\{tableRows\}\}/, tableRows)
+    .replace(/\{\{totalItems\}\}/g, String(rows.length));
+}
+
+/**
+ * Generate a Stock Count Checklist PDF for the given session.
+ * Fetches all items (up to 9999) and renders them as a blank write-in sheet.
+ */
+export async function generateStockCountChecklistPdf(
+  sessionId: string,
+  orgId: string,
+): Promise<{ pdfBase64: string; filename: string }> {
+  const { stockCountSessionService } = await import('@/composition-root');
+
+  const session = await stockCountSessionService.getSession(orgId, sessionId);
+  if (!session) throw new Error(`Stock count session not found: ${sessionId}`);
+
+  const itemsResult = await stockCountSessionService.getSessionItems(
+    orgId,
+    sessionId,
+    undefined,
+    { pageSize: 9999, pageNumber: 1 },
+  );
+
+  const rows: StockCountChecklistRow[] = itemsResult.query.map((item, idx) => ({
+    index: idx + 1,
+    skuCode: item.skuCode,
+    description: item.skuDescription,
+  }));
+
+  const html = await renderStockCountChecklistHtml(session, rows, 'Doz');
+  const pdfBuffer = await htmlToPdf(html);
+
+  const safeName = session.name.replace(/[^a-zA-Z0-9-_ ]/g, '').replace(/\s+/g, '_');
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = `Stock_Count_Checklist_${safeName}_${dateStr}.pdf`;
+
   return { pdfBase64: pdfBuffer.toString('base64'), filename };
 }

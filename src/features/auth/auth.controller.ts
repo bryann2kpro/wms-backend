@@ -309,7 +309,7 @@ class AuthControllerClass {
       const createPermission = userRoleWithPermission.filter(r => r.permissionType === "Create").map(r => r.moduleName);
       const updatePermission = userRoleWithPermission.filter(r => r.permissionType === "Update").map(r => r.moduleName);
       // const deletePermission = userRoleWithPermission.filter(r => r.permissionType === "Delete").map(r => r.moduleName);
-      // const approvePermission = userRoleWithPermission.filter(r => r.permissionType === "Approve").map(r => r.moduleName);
+      const approvePermission = userRoleWithPermission.filter(r => r.permissionType === "Approve").map(r => r.moduleName);
       // const exportPermission = userRoleWithPermission.filter(r => r.permissionType === "Export").map(r => r.moduleName);
       // const confirmPermission = userRoleWithPermission.filter(r => r.permissionType === "Confirm").map(r => r.moduleName);
       // const pickPermission = userRoleWithPermission.filter(r => r.permissionType === "Pick").map(r => r.moduleName);
@@ -330,6 +330,7 @@ class AuthControllerClass {
           readPermission: readPermission,
           createPermission: createPermission,
           updatePermission: updatePermission,
+          approvePermission: approvePermission,
         },
       });
     } catch (error) {

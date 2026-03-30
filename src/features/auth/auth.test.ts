@@ -1,195 +1,189 @@
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { AuthRepositoryClass } from "./auth.repository";
+import type { UserType } from "./auth.model";
 
-import { describe, test, expect, beforeAll } from 'vitest';
-import { authRepository } from './auth.repository';
-import { UserType, UserRoleType, RolePermissionType, CompanyAdminType } from './auth.model';
+vi.mock("@/db/index", () => ({
+  db: {
+    select: vi.fn(),
+    insert: vi.fn(),
+    transaction: vi.fn(),
+  },
+}));
 
-describe('auth', () => {
-    // Store IDs for use across tests
-    let createdPermissionId: string;
-    let createdRoleId: string;
+vi.mock("@/util/logger.js", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
 
-    // Step 1: Create Permission first
-    describe('Role Permission', () => {
-        test('permission should be created', async () => {
-            const permissionData: RolePermissionType = {
-                permissionName: 'admin_full_access',
-                policy: 'full_access',
-                status: 'ACTIVE',
-                createdBy: 'system',
-                updatedBy: 'system',
-            };
+import { db } from "@/db/index";
 
-            await expect(authRepository.createRolePermission(permissionData)).resolves.not.toThrow();
+const dbMock = db as unknown as {
+  select: ReturnType<typeof vi.fn>;
+  insert: ReturnType<typeof vi.fn>;
+  transaction: ReturnType<typeof vi.fn>;
+};
 
-            // Verify permission was created
-            const permission = await authRepository.getRolePermision('admin_full_access');
-            expect(permission).not.toBeNull();
-            expect(permission?.permissionName).toBe('admin_full_access');
-            
-            if (permission?.permissionId) {
-                createdPermissionId = permission.permissionId;
-            }
-        });
+describe("AuthRepositoryClass", () => {
+  let repository: AuthRepositoryClass;
+  let jwtController: { verifyToken: ReturnType<typeof vi.fn> };
 
-        test('should get permission by name', async () => {
-            const permission = await authRepository.getRolePermision('admin_full_access');
-            expect(permission).not.toBeNull();
-            expect(permission?.policy).toBe('full_access');
-        });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    jwtController = {
+      verifyToken: vi.fn(),
+    };
+    repository = new AuthRepositoryClass(jwtController as never);
+  });
+
+  test("getUserByEmail returns first user when found", async () => {
+    const fakeUser = {
+      id: "user-1",
+      email: "admin@smee.com.my",
+      displayName: "Admin",
+      passwordHash: "hashed",
+      contactNo: null,
+      isActive: true,
+      primaryOrganizationId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "system",
+      updatedBy: "system",
+    } satisfies UserType;
+
+    const limit = vi.fn().mockResolvedValue([fakeUser]);
+    const where = vi.fn().mockReturnValue({ limit });
+    const from = vi.fn().mockReturnValue({ where });
+    dbMock.select.mockReturnValue({ from });
+
+    const result = await repository.getUserByEmail("admin@smee.com.my");
+
+    expect(result).toEqual(fakeUser);
+    expect(dbMock.select).toHaveBeenCalledOnce();
+    expect(from).toHaveBeenCalledOnce();
+    expect(where).toHaveBeenCalledOnce();
+    expect(limit).toHaveBeenCalledWith(1);
+  });
+
+  test("getUserByEmail returns null when not found", async () => {
+    const limit = vi.fn().mockResolvedValue([]);
+    const where = vi.fn().mockReturnValue({ limit });
+    const from = vi.fn().mockReturnValue({ where });
+    dbMock.select.mockReturnValue({ from });
+
+    const result = await repository.getUserByEmail("missing@smee.com.my");
+
+    expect(result).toBeNull();
+  });
+
+  test("createUser inserts and returns created user", async () => {
+    const fakeUser = {
+      id: "user-2",
+      email: "new@smee.com.my",
+      displayName: "New User",
+      passwordHash: "hashed",
+      contactNo: null,
+      isActive: true,
+      primaryOrganizationId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "system",
+      updatedBy: "system",
+    } satisfies UserType;
+
+    const returning = vi.fn().mockResolvedValue([fakeUser]);
+    const values = vi.fn().mockReturnValue({ returning });
+    dbMock.insert.mockReturnValue({ values });
+
+    const result = await repository.createUser({
+      email: "new@smee.com.my",
+      displayName: "New User",
+      passwordHash: "hashed",
+      contactNo: null,
+      isActive: true,
+      createdBy: "system",
+      updatedBy: "system",
+      primaryOrganizationId: null,
     });
 
-    // Step 2: Create Role with Permission
-    describe('User Role', () => {
-        test('role should be created with permission', async () => {
-            const roleData: UserRoleType = {
-                roleName: 'Admin',
-                permissionId: createdPermissionId || 'test-permission-id',
-                status: 'ACTIVE',
-                createdBy: 'system',
-                updatedBy: 'system',
-            };
+    expect(result).toEqual(fakeUser);
+    expect(dbMock.insert).toHaveBeenCalledOnce();
+    expect(values).toHaveBeenCalledOnce();
+    expect(returning).toHaveBeenCalledOnce();
+  });
 
-            await expect(authRepository.createUserRole(roleData)).resolves.not.toThrow();
+  test("createUserWithRole creates user and assigns role in one transaction", async () => {
+    const fakeUser = {
+      id: "user-3",
+      email: "tx@smee.com.my",
+      displayName: "Tx User",
+      passwordHash: "hashed",
+      contactNo: null,
+      isActive: true,
+      primaryOrganizationId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "system",
+      updatedBy: "system",
+    } satisfies UserType;
 
-            // Verify role was created
-            const role = await authRepository.getUserRole('Admin');
-            expect(role).not.toBeNull();
-            expect(role?.roleName).toBe('Admin');
-            
-            if (role?.roleId) {
-                createdRoleId = role.roleId;
-            }
-        });
+    dbMock.transaction.mockImplementation(async (callback: (tx: object) => Promise<unknown>) => callback({}));
 
-        test('should get role by name', async () => {
-            const role = await authRepository.getUserRole('Admin');
-            expect(role).not.toBeNull();
-            expect(role?.status).toBe('ACTIVE');
-        });
-
-        test('should get role by roleId', async () => {
-            if (!createdRoleId) return;
-            
-            const role = await authRepository.getUserRoleByRoleId(createdRoleId);
-            expect(role).not.toBeNull();
-            expect(role?.roleName).toBe('Admin');
-        });
-
-        test('should get permissionId by roleId', async () => {
-            if (!createdRoleId) return;
-            
-            const permissionId = await authRepository.getRolePermissionByRoleId(createdRoleId);
-            expect(permissionId).not.toBeNull();
-        });
-
-        test('should update role', async () => {
-            if (!createdRoleId) return;
-
-            const updatedRoleData: Partial<UserRoleType> = {
-                roleId: createdRoleId,
-                roleName: 'Admin',
-                status: 'INACTIVE',
-                updatedBy: 'test',
-            };
-
-            await expect(authRepository.updateUserRole(updatedRoleData)).resolves.not.toThrow();
-        });
+    const createUserSpy = vi.spyOn(repository, "createUser").mockResolvedValue(fakeUser);
+    const assignRoleSpy = vi.spyOn(repository, "assignRoleToUser").mockResolvedValue({
+      id: "user-role-1",
+      userId: fakeUser.id,
+      roleId: "role-1",
+      status: "active",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "system",
+      updatedBy: "system",
     });
 
-    // Step 3: Create User with Role
-    describe('User', () => {
-        test('user should be created with role', async () => {
-            const userData: UserType = {
-                userCode: 'USR001',
-                userEmail: 'admin@smee.com.my',
-                userContactNo: '0123456789',
-                userPassword: 'hashedPassword123',
-                icNo: '123456789012',
-                icFrontPicture: 'https://example.com/ic-front.jpg',
-                icBackPicture: 'https://example.com/ic-back.jpg',
-                userFirstName: 'Admin',
-                userLastName: 'Smee',
-                gender: 'Male',
-                addressId: 'addr-001',
-                companyId: 'comp-001',
-                vehicleId: null,
-                walletId: 'wallet-001',
-                userSkillId: null,
-                jobReviewId: null,
-                roleId: createdRoleId || 'test-role-id',
-                sessionId: null,
-                status: 'ACTIVE',
-                createdBy: 'system',
-                updatedBy: 'system',
-            };
+    const result = await repository.createUserWithRole(
+      {
+        email: "tx@smee.com.my",
+        displayName: "Tx User",
+        passwordHash: "hashed",
+        contactNo: null,
+        isActive: true,
+        createdBy: "system",
+        updatedBy: "system",
+        primaryOrganizationId: null,
+      },
+      "role-1",
+    );
 
-            await expect(authRepository.createUser(userData)).resolves.not.toThrow();
-        });
+    expect(result).toEqual(fakeUser);
+    expect(dbMock.transaction).toHaveBeenCalledOnce();
+    expect(createUserSpy).toHaveBeenCalledOnce();
+    expect(assignRoleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-3",
+        roleId: "role-1",
+        status: "active",
+      }),
+      expect.any(Object),
+    );
+  });
 
-        test('should get user by email', async () => {
-            const user = await authRepository.getUserByEmail('admin@smee.com.my');
-            expect(user).not.toBeNull();
-            expect(user?.userFirstName).toBe('Admin');
-            expect(user?.roleId).toBeDefined();
-        });
+  test("getUserDataByToken returns null when token has no username", async () => {
+    jwtController.verifyToken.mockResolvedValue({});
 
-        test('should get user by contact number', async () => {
-            const user = await authRepository.getUserByContactNo('0123456789');
-            expect(user).not.toBeNull();
-            expect(user?.userEmail).toBe('admin@smee.com.my');
-        });
+    const result = await repository.getUserDataByToken("fake-token");
 
-        test('user should have role assigned', async () => {
-            const user = await authRepository.getUserByEmail('admin@smee.com.my');
-            expect(user?.roleId).not.toBeNull();
-            
-            if (user?.roleId) {
-                const role = await authRepository.getUserRoleByRoleId(user.roleId);
-                expect(role).not.toBeNull();
-            }
-        });
-    });
+    expect(result).toBeNull();
+    expect(jwtController.verifyToken).toHaveBeenCalledWith("fake-token");
+  });
 
-    // Step 4: Create Company Admin with Role
-    describe('Company Admin', () => {
-        test('company admin should be created with role', async () => {
-            const companyAdminData: CompanyAdminType = {
-                companyAdminFirstName: 'Company',
-                companyAdminLastName: 'Admin',
-                companyAdminEmail: 'companyadmin@smee.com.my',
-                companyAdminContactNo: '0198765432',
-                companyAdminPassword: 'hashedPassword456',
-                companyId: 'comp-001',
-                boolModule: true,
-                moduleAccessId: ['module-1', 'module-2'],
-                boolPermission: true,
-                roleId: createdRoleId || 'test-role-id',
-                sessionId: null,
-                status: 'ACTIVE',
-                createdBy: 'system',
-                updatedBy: 'system',
-            };
+  test("getUsersByIds returns empty array for empty input", async () => {
+    const result = await repository.getUsersByIds([]);
 
-            await expect(authRepository.createCompanyAdmin(companyAdminData)).resolves.not.toThrow();
-        });
-
-        test('should get company admin by email', async () => {
-            const admin = await authRepository.getCompanyAdminByEmail('companyadmin@smee.com.my');
-            expect(admin).not.toBeNull();
-            expect(admin?.companyAdminFirstName).toBe('Company');
-        });
-
-        test('should get company admin by contact number', async () => {
-            const admin = await authRepository.getCompanyAdminByContactNo('0198765432');
-            expect(admin).not.toBeNull();
-            expect(admin?.companyAdminEmail).toBe('companyadmin@smee.com.my');
-        });
-
-        test('company admin should have role and module access', async () => {
-            const admin = await authRepository.getCompanyAdminByEmail('companyadmin@smee.com.my');
-            expect(admin?.roleId).not.toBeNull();
-            expect(admin?.boolModule).toBe(true);
-            expect(admin?.moduleAccessId).toContain('module-1');
-        });
-    });
+    expect(result).toEqual([]);
+    expect(dbMock.select).not.toHaveBeenCalled();
+  });
 });
