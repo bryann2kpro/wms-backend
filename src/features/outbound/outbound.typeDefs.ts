@@ -38,6 +38,8 @@ export const typeDefs = `#graphql
         rackName: String
         "Batch expiry date (ISO string), null if not tracked"
         expiryDate: String
+        "Lot number from the GRN item, null if not recorded"
+        lotNo: String
         "Quantity to pick from this batch"
         qtyAllocated: String!
         "Whether this batch was flagged as priority by admin"

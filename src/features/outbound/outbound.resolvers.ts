@@ -203,6 +203,7 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
       rackId: a.rackId ?? null,
       rackName: a.rackName ?? null,
       expiryDate: a.expiryDate ? a.expiryDate.toISOString() : null,
+      lotNo: a.lotNo ?? null,
       qtyAllocated: a.qtyAllocated,
       priorityFlag: a.priorityFlag,
     })),

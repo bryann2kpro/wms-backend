@@ -58,6 +58,8 @@ export const typeDefs = `#graphql
         rackIds: [ID!]
         """Optional expiry date for this GRN item."""
         expiryDate: String
+        """Lot number assigned by supplier/manufacturer to identify this production batch."""
+        lotNo: String
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -79,6 +81,8 @@ export const typeDefs = `#graphql
         rackIds: [ID!]
         """Optional expiry date for this GRN item."""
         expiryDate: String
+        """Lot number assigned by supplier/manufacturer to identify this production batch."""
+        lotNo: String
         skuCode: String
         skuDescription: String
         skuUom: ID

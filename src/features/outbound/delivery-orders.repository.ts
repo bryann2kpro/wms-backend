@@ -38,6 +38,7 @@ export type DoItemAllocationWithDetails = {
   /** Display string for rack location (e.g. "A-3" from rackRow-rackColumn) */
   rackName: string | null;
   expiryDate: Date | null;
+  lotNo: string | null;
   qtyAllocated: string;
   priorityFlag: boolean;
 };
@@ -447,6 +448,7 @@ export class DeliveryOrdersRepositoryClass {
     grnNo: string | null;
     rackId: string | null;
     expiryDate: Date | null;
+    lotNo: string | null;
     priorityFlag: boolean;
     qty: string;
     createdAt: Date;
@@ -463,6 +465,7 @@ export class DeliveryOrdersRepositoryClass {
           grnNo: GrnsTable.grnNo,
           rackId: GrnItemsTable.rackId,
           expiryDate: GrnItemsTable.expiryDate,
+          lotNo: GrnItemsTable.lotNo,
           priorityFlag: GrnItemsTable.priorityFlag,
           qty: GrnItemsTable.qty,
           createdAt: GrnItemsTable.createdAt,
@@ -562,6 +565,7 @@ export class DeliveryOrdersRepositoryClass {
         rackColumn: RacksTable.rackColumn,
         rackLevel: RacksTable.rackLevel,
         expiryDate: GrnItemsTable.expiryDate,
+        lotNo: GrnItemsTable.lotNo,
         qtyAllocated: DoItemAllocationsTable.qtyAllocated,
         priorityFlag: GrnItemsTable.priorityFlag,
       })
@@ -584,6 +588,7 @@ export class DeliveryOrdersRepositoryClass {
         rackId: r.rackId ?? null,
         rackName,
         expiryDate: r.expiryDate ?? null,
+        lotNo: r.lotNo ?? null,
         qtyAllocated: r.qtyAllocated,
         priorityFlag: r.priorityFlag,
       };
