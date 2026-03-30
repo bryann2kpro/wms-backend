@@ -19,6 +19,7 @@ function transformOutlet(outlet: {
   outletId: string;
   outletName: string;
   outletCode: string;
+  address?: string | null;
   regionId: string | null;
   regionName: string | null;
   regionCode: string | null;
@@ -31,6 +32,7 @@ function transformOutlet(outlet: {
     outletId: outlet.outletId,
     outletName: outlet.outletName,
     outletCode: outlet.outletCode,
+    address: outlet.address ?? null,
     regionId: outlet.regionId,
     regionName: outlet.regionName,
     regionCode: outlet.regionCode,
@@ -150,13 +152,16 @@ export const resolvers = {
       async (_: unknown, { input }: { input: {
         outletName: string;
         outletCode: string;
+        address?: string;
         regionId?: string;
         createdBy: string;
         updatedBy: string;
-      }}) => {
+      }}, context: GraphQLContext) => {
         const outlet = await outletsRepository.createOutlet({
+          organizationId: context.organizationId!,
           outletName: input.outletName,
           outletCode: input.outletCode,
+          address: input.address || null,
           regionId: input.regionId || null,
           createdBy: input.createdBy,
           updatedBy: input.updatedBy,
@@ -183,15 +188,17 @@ export const resolvers = {
       async (_: unknown, { id, input }: { id: string; input: {
         outletName?: string;
         outletCode?: string;
+        address?: string;
         regionId?: string;
         updatedBy: string;
       }}) => {
         const updateData: Record<string, unknown> = {
           updatedBy: input.updatedBy,
         };
-  
+
         if (input.outletName !== undefined) updateData.outletName = input.outletName;
         if (input.outletCode !== undefined) updateData.outletCode = input.outletCode;
+        if (input.address !== undefined) updateData.address = input.address || null;
         if (input.regionId !== undefined) updateData.regionId = input.regionId || null;
   
         await outletsRepository.updateOutlet(updateData, id);

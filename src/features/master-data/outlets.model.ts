@@ -15,12 +15,12 @@ import { OrganizationsTable } from "./organization.model";
  * @field outletAddress - Address of the outlet
  * @field regionId - Optional FK to regions table (for delivery scheduling)
  */
-export const OutletsTable = MainSchema.table('outlets', {
+export const OutletsTable = MainSchema.table('m_outlet', {
   outletId: uuid('outlet_id').defaultRandom().notNull().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   outletName: text('outlet_name').notNull(),
   outletCode: text('outlet_code').notNull(),
-  outletAddress: text('outlet_address'),
+  address: text('address'),
   regionId: uuid('region_id').references(() => RegionTable.regionId),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

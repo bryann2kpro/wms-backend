@@ -13,6 +13,7 @@ export const typeDefs = `#graphql
     outletId: ID!
     outletName: String!
     outletCode: String!
+    address: String
     regionId: ID
     """
     Flattened region name (from JOIN). For full region object, use 'region' field.
@@ -60,7 +61,7 @@ export const typeDefs = `#graphql
   input CreateOutletInput {
     outletName: String!
     outletCode: String!
-    outletAddress: String
+    address: String
     regionId: ID
     createdBy: String!
     updatedBy: String!
@@ -72,6 +73,7 @@ export const typeDefs = `#graphql
   input UpdateOutletInput {
     outletName: String
     outletCode: String
+    address: String
     regionId: ID
     updatedBy: String!
   }
