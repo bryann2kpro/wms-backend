@@ -1,0 +1,1 @@
+ALTER TABLE "main"."purchase_orders" DROP COLUMN "amount";
