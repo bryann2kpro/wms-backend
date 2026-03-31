@@ -158,7 +158,40 @@ export class InvoicesRepositoryClass {
   async getInvoiceById(id: string, tx?: DbClient): Promise<InvoiceType | null> {
     try {
       const dbClient = tx ?? db;
-      const [row] = await dbClient.select().from(InvoicesTable).where(eq(InvoicesTable.id, id)).limit(1);
+      const [row] = await dbClient
+        .select({
+          id: InvoicesTable.id,
+          organizationId: InvoicesTable.organizationId,
+          invoiceNo: InvoicesTable.invoiceNo,
+          doId: InvoicesTable.doId,
+          doNo: DeliveryOrdersTable.doNo,
+          poId: InvoicesTable.poId,
+          poNo: InvoicesTable.poNo,
+          poAmount: PurchaseOrdersTable.amount,
+          poAmountCalcSnapshot: PurchaseOrdersTable.amountCalcSnapshot,
+          billingAddressId: InvoicesTable.billingAddressId,
+          deliveryAddressId: InvoicesTable.deliveryAddressId,
+          customerAccount: InvoicesTable.customerAccount,
+          salesExecutive: InvoicesTable.salesExecutive,
+          pageNo: InvoicesTable.pageNo,
+          dateIssued: InvoicesTable.dateIssued,
+          totalExclTax: InvoicesTable.totalExclTax,
+          taxAmount: InvoicesTable.taxAmount,
+          totalInclTax: InvoicesTable.totalInclTax,
+          taxRate: InvoicesTable.taxRate,
+          status: InvoicesTable.status,
+          issuedBy: InvoicesTable.issuedBy,
+          issuedAt: InvoicesTable.issuedAt,
+          createdAt: InvoicesTable.createdAt,
+          updatedAt: InvoicesTable.updatedAt,
+          createdBy: InvoicesTable.createdBy,
+          updatedBy: InvoicesTable.updatedBy,
+        })
+        .from(InvoicesTable)
+        .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
+        .leftJoin(PurchaseOrdersTable, eq(InvoicesTable.poId, PurchaseOrdersTable.id))
+        .where(eq(InvoicesTable.id, id))
+        .limit(1);
       return row ?? null;
     } catch (error) {
       logger.error("❌ [InvoicesRepository.getInvoiceById] Error:", error);
