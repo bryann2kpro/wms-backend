@@ -31,6 +31,7 @@ import { resolvers as stockUnitResolvers } from '@/features/master-data/stock-un
 import { resolvers as racksResolvers } from '@/features/master-data/racks.resolvers';
 import { resolvers as warehousesResolvers } from '@/features/master-data/warehouses.resolvers';
 import { resolvers as reportResolvers } from '@/features/report/report.resolvers';
+import { resolvers as documentsResolvers } from '@/features/documents/documents.resolvers';
 import { resolvers as dashboardResolvers } from '@/features/dashboard/dashboard.resolver';
 
 // ============================================
@@ -119,5 +120,6 @@ export const resolvers = mergeResolvers([
   racksResolvers,
   warehousesResolvers,
   reportResolvers,
+  documentsResolvers,
   dashboardResolvers,
 ]);
