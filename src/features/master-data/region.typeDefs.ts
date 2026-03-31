@@ -7,6 +7,21 @@
 
 export const typeDefs = `#graphql
   """
+  Flat delivery rate configured per region.
+  Rate is per carton (CTN). effectiveQty = MAX(totalQty, minQty).
+  SST = totalExclTax × sstRate.
+  """
+  type RegionPricing {
+    id: ID!
+    regionId: ID!
+    rate: String!
+    minQty: String!
+    sstRate: String!
+    isActive: Boolean!
+    updatedAt: String!
+  }
+
+  """
   Region - represents a delivery region
   """
   type Region {
@@ -17,6 +32,8 @@ export const typeDefs = `#graphql
     updatedAt: String!
     createdBy: String!
     updatedBy: String!
+    "Active pricing configuration for this region (null if not yet configured)"
+    pricing: RegionPricing
   }
 
   """
@@ -57,6 +74,19 @@ export const typeDefs = `#graphql
     updatedBy: String!
   }
 
+  """
+  Input for creating or updating pricing for a region.
+  """
+  input UpsertRegionPricingInput {
+    "Delivery rate per CTN (MYR)"
+    rate: Float!
+    "Minimum qty threshold — charge as if this many units when totalQty < minQty (default 5)"
+    minQty: Float
+    "SST rate as a decimal, e.g. 0.06 = 6% (default 0.06)"
+    sstRate: Float
+    isActive: Boolean
+  }
+
   extend type Query {
     """
     Get regions with optional filtering and pagination.
@@ -89,5 +119,11 @@ export const typeDefs = `#graphql
     Requires authentication.
     """
     deleteRegion(id: ID!): Boolean! @auth
+
+    """
+    Create or update the pricing configuration for a region.
+    Requires authentication.
+    """
+    upsertRegionPricing(regionId: ID!, input: UpsertRegionPricingInput!): RegionPricing! @auth
   }
 `;

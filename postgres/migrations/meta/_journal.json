@@ -421,6 +421,27 @@
       "when": 1774920587503,
       "tag": "0059_rare_human_fly",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1774926072384,
+      "tag": "0060_wild_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1774926639250,
+      "tag": "0061_many_yellow_claw",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1774926688525,
+      "tag": "0062_cultured_red_shift",
+      "breakpoints": true
     }
   ]
 }
