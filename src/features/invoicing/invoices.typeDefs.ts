@@ -16,6 +16,8 @@ export const typeDefs = `#graphql
     doNo: String
     poId: ID
     poNo: String
+    poAmount: String
+    poAmountCalcSnapshot: JSON
 
     billingAddressId: ID
     deliveryAddressId: ID

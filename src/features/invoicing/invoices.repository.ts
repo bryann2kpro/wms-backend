@@ -243,6 +243,8 @@ export class InvoicesRepositoryClass {
           doId: InvoicesTable.doId,
           poId: InvoicesTable.poId,
           poNo: InvoicesTable.poNo,
+          poAmount: PurchaseOrdersTable.amount,
+          poAmountCalcSnapshot: PurchaseOrdersTable.amountCalcSnapshot,
           billingAddressId: InvoicesTable.billingAddressId,
           deliveryAddressId: InvoicesTable.deliveryAddressId,
           customerAccount: InvoicesTable.customerAccount,
@@ -264,6 +266,7 @@ export class InvoicesRepositoryClass {
         })
         .from(InvoicesTable)
         .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
+        .leftJoin(PurchaseOrdersTable, eq(InvoicesTable.poId, PurchaseOrdersTable.id))
         .where(whereClause)
         .orderBy(sql`${InvoicesTable.createdAt} DESC`)
         .limit(pageSize)

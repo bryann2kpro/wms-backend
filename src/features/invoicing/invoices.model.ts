@@ -132,7 +132,11 @@ export type InvoiceSummaryData = {
   totalAmount: string;
 };
 
-export type InvoiceWithDoNo = InvoiceType & { doNo?: string | null };
+export type InvoiceWithDoNo = InvoiceType & {
+  doNo?: string | null;
+  poAmount?: string | null;
+  poAmountCalcSnapshot?: Record<string, unknown> | null;
+};
 
 export type InvoiceItemType = typeof InvoiceItemsTable.$inferSelect;
 export type InvoiceItemInsertType = typeof InvoiceItemsTable.$inferInsert;
