@@ -8,6 +8,7 @@
 import { regionRepository } from '@/composition-root';
 import { RegionFilter } from './region.repository';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
+import type { GraphQLContext } from '@/graphql/context';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -37,7 +38,35 @@ function transformRegion(region: {
 // RESOLVERS
 // ============================================
 
+function transformPricing(p: {
+  id: string;
+  regionId: string;
+  rate: string;
+  minQty: string;
+  sstRate: string;
+  isActive: boolean;
+  updatedAt: Date;
+}) {
+  return {
+    id: p.id,
+    regionId: p.regionId,
+    rate: p.rate,
+    minQty: p.minQty,
+    sstRate: p.sstRate,
+    isActive: p.isActive,
+    updatedAt: p.updatedAt.toISOString(),
+  };
+}
+
 export const resolvers = {
+  Region: {
+    pricing: async (parent: { regionId: string }) => {
+      const pricing = await regionRepository.getRegionPricingByRegionId(parent.regionId);
+      if (!pricing) return null;
+      return transformPricing(pricing);
+    },
+  },
+
   Query: {
     /**
      * Get regions with optional filtering and pagination
@@ -177,5 +206,32 @@ export const resolvers = {
         return await regionRepository.deleteRegion(id, context.tx);
       }
     ),
+
+    /**
+     * Upsert pricing for a region
+     */
+    upsertRegionPricing: async (
+      _: unknown,
+      { regionId, input }: {
+        regionId: string;
+        input: {
+          rate: number;
+          minQty?: number;
+          sstRate?: number;
+          isActive?: boolean;
+        };
+      },
+      context: GraphQLContext,
+    ) => {
+      const updatedBy = context.user?.id ?? 'system';
+      const pricing = await regionRepository.upsertRegionPricing(regionId, {
+        rate: String(input.rate),
+        ...(input.minQty !== undefined ? { minQty: String(input.minQty) } : {}),
+        ...(input.sstRate !== undefined ? { sstRate: String(input.sstRate) } : {}),
+        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        updatedBy,
+      });
+      return transformPricing(pricing);
+    },
   },
 };

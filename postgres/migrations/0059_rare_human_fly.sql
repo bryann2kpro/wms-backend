@@ -1,0 +1,1 @@
+ALTER TABLE "main"."stock_count_items" ADD COLUMN "image_url" text;

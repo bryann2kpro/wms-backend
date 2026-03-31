@@ -63,5 +63,11 @@ export const typeDefs = `#graphql
     Returns a blank write-in sheet (no system quantities) for the storekeeper.
     """
     generateStockCountChecklist(sessionId: ID!): GenerateChecklistPayload! @auth
+
+    """
+    Generate a DO Picking List PDF — SKU-grouped summary of all active delivery orders.
+    Returns a printable picking reference for the storekeeper.
+    """
+    generateDoPickingList: GenerateChecklistPayload! @auth
   }
 `;

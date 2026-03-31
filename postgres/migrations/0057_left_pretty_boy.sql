@@ -1,0 +1,1 @@
+ALTER TABLE "main"."m_outlet" RENAME COLUMN "address_snapshot" TO "address";

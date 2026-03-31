@@ -83,6 +83,11 @@ export const GrnItemsTable = MainSchema.table('grn_items', {
    */
   expiryDate: timestamp('expiry_date'),
   /**
+   * Lot number assigned by the supplier or manufacturer to identify this production batch.
+   * Used for traceability, recall management, and FEFO/FIFO/LIFO picking.
+   */
+  lotNo: text('lot_no'),
+  /**
    * Priority flag — when true, this batch is sorted to the top of the pick list
    * ahead of other batches for the same SKU (regardless of FIFO/LIFO/FEFO).
    * If ALL batches for a SKU are flagged, the flags cancel out and base strategy applies.

@@ -5,7 +5,10 @@
  */
 
 import { db } from '@/db';
-import { RegionTable, RegionType, RegionInsertType } from './region.model';
+import {
+  RegionTable, RegionType, RegionInsertType,
+  RegionPricingTable, RegionPricingType, RegionPricingInsertType,
+} from './region.model';
 import { eq, and, like, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
@@ -183,6 +186,90 @@ export class RegionRepositoryClass {
       return true;
     } catch (error) {
       logger.error('❌ [RegionRepository.deleteRegion] Error:', error);
+      throw error;
+    }
+  }
+
+  // ============================================
+  // Region Pricing
+  // ============================================
+
+  /**
+   * Get the active pricing row for a region.
+   * Returns null if no active pricing is configured.
+   */
+  async getRegionPricingByRegionId(regionId: string, tx?: DbTransaction): Promise<RegionPricingType | null> {
+    try {
+      const dbClient = tx || db;
+      logger.info(`ℹ️ [RegionRepository.getRegionPricingByRegionId] regionId=${regionId}`);
+      const [row] = await dbClient
+        .select()
+        .from(RegionPricingTable)
+        .where(and(
+          eq(RegionPricingTable.regionId, regionId),
+          eq(RegionPricingTable.isActive, true),
+        ))
+        .limit(1);
+      logger.info('✅ [RegionRepository.getRegionPricingByRegionId] Done');
+      return row ?? null;
+    } catch (error) {
+      logger.error('❌ [RegionRepository.getRegionPricingByRegionId] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upsert pricing for a region.
+   * If an existing row exists for this regionId it is updated; otherwise a new row is inserted.
+   */
+  async upsertRegionPricing(
+    regionId: string,
+    data: { rate: string; minQty?: string; sstRate?: string; isActive?: boolean; updatedBy: string },
+    tx?: DbTransaction,
+  ): Promise<RegionPricingType> {
+    try {
+      const dbClient = tx || db;
+      logger.info(`ℹ️ [RegionRepository.upsertRegionPricing] regionId=${regionId}`);
+
+      const [existing] = await dbClient
+        .select()
+        .from(RegionPricingTable)
+        .where(eq(RegionPricingTable.regionId, regionId))
+        .limit(1);
+
+      if (existing) {
+        const [updated] = await dbClient
+          .update(RegionPricingTable)
+          .set({
+            rate: data.rate,
+            ...(data.minQty !== undefined ? { minQty: data.minQty } : {}),
+            ...(data.sstRate !== undefined ? { sstRate: data.sstRate } : {}),
+            ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+            updatedBy: data.updatedBy,
+            updatedAt: new Date(),
+          })
+          .where(eq(RegionPricingTable.regionId, regionId))
+          .returning();
+        logger.info('✅ [RegionRepository.upsertRegionPricing] Updated');
+        return updated;
+      }
+
+      const [created] = await dbClient
+        .insert(RegionPricingTable)
+        .values({
+          regionId,
+          rate: data.rate,
+          minQty: data.minQty ?? '5',
+          sstRate: data.sstRate ?? '0.0600',
+          isActive: data.isActive ?? true,
+          createdBy: data.updatedBy,
+          updatedBy: data.updatedBy,
+        })
+        .returning();
+      logger.info('✅ [RegionRepository.upsertRegionPricing] Created');
+      return created;
+    } catch (error) {
+      logger.error('❌ [RegionRepository.upsertRegionPricing] Error:', error);
       throw error;
     }
   }

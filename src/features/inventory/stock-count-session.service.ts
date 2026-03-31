@@ -41,4 +41,8 @@ export class StockCountSessionService {
   closeSession(organizationId: string, sessionId: string, userId: string) {
     return this.repo.closeSession(organizationId, sessionId, userId);
   }
+
+  bulkApproveReadyItems(organizationId: string, sessionId: string, userId: string) {
+    return this.repo.bulkApproveReadyItems(organizationId, sessionId, userId);
+  }
 }

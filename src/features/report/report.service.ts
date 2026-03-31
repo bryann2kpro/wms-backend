@@ -24,6 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MOVEMENT_REPORT_HTML_PATH = path.join(__dirname, 'html', 'movement-report.html');
 const PROFORMA_INVOICES_HTML_PATH = path.join(__dirname, 'html', 'proforma-invoices.html');
 const STOCK_COUNT_CHECKLIST_HTML_PATH = path.join(__dirname, 'html', 'stock-count-checklist.html');
+const DO_PICKING_LIST_HTML_PATH = path.join(__dirname, 'html', 'do-picking-list.html');
 
 // Movement Report row shape
 export interface MovementReportRow {
@@ -473,6 +474,151 @@ export async function generateStockCountChecklistPdf(
   const safeName = session.name.replace(/[^a-zA-Z0-9-_ ]/g, '').replace(/\s+/g, '_');
   const dateStr = new Date().toISOString().split('T')[0];
   const filename = `Stock_Count_Checklist_${safeName}_${dateStr}.pdf`;
+
+  return { pdfBase64: pdfBuffer.toString('base64'), filename };
+}
+
+// ---------------------------------------------------------------------------
+// DO Picking List
+// ---------------------------------------------------------------------------
+
+const ACTIVE_DO_STATUSES = ['CREATED', 'NEW', 'PICKING', 'PACKING'];
+
+interface DoPickingListSkuGroup {
+  skuCode: string;
+  skuDescription: string;
+  totalQtyRequired: number;
+  doBreakdown: { doNo: string; qtyRequired: number }[];
+  allocations: { rackName: string | null; grnNo: string | null; lotNo: string | null; expiryDate: Date | null; qtyAllocated: string; priorityFlag: boolean }[];
+}
+
+/**
+ * Load the DO picking list HTML template and inject SKU-grouped picking data.
+ */
+export async function renderDoPickingListHtml(
+  skuGroups: DoPickingListSkuGroup[],
+): Promise<string> {
+  const template = await readFile(DO_PICKING_LIST_HTML_PATH, 'utf-8');
+
+  const generatedAt = new Date().toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' });
+
+  const doNos = new Set<string>();
+  for (const g of skuGroups) for (const d of g.doBreakdown) doNos.add(d.doNo);
+  const totalUnits = skuGroups.reduce((sum, g) => sum + g.totalQtyRequired, 0);
+
+  const tableRows = skuGroups
+    .map((g, i) => {
+      const rowAlt = i % 2 !== 0 ? ' tr-alt' : '';
+
+      const doBreakdownHtml = g.doBreakdown
+        .map((d) => `<span>${escapeHtml(d.doNo)}&thinsp;&times;&thinsp;${formatQtyNum(d.qtyRequired)}</span>`)
+        .join('&ensp;');
+
+      const allocHtml = g.allocations.length === 0
+        ? '<span style="color:var(--text-muted)">—</span>'
+        : g.allocations.map((a) => {
+            const parts: string[] = [];
+            if (a.rackName) parts.push(`Rack ${escapeHtml(a.rackName)}`);
+            if (a.grnNo) parts.push(escapeHtml(a.grnNo));
+            if (a.lotNo) parts.push(`Lot: ${escapeHtml(a.lotNo)}`);
+            if (a.expiryDate) parts.push(`Exp: ${new Date(a.expiryDate).toLocaleDateString('en-MY')}`);
+            parts.push(`Qty: ${formatQtyNum(parseFloat(a.qtyAllocated) || 0)}`);
+            const priorityClass = a.priorityFlag ? ' alloc-priority' : '';
+            return `<div class="alloc-line${priorityClass}"><span class="alloc-dot"></span><span>${parts.join(' · ')}</span></div>`;
+          }).join('');
+
+      return `<tr class="tr-data${rowAlt}">
+        <td class="col-no">${i + 1}</td>
+        <td class="col-sku">${escapeHtml(g.skuCode)}</td>
+        <td class="col-desc">
+          ${escapeHtml(g.skuDescription)}
+          <div class="do-breakdown">${doBreakdownHtml}</div>
+        </td>
+        <td class="col-qty col-qty-total">${formatQtyNum(g.totalQtyRequired)}</td>
+        <td class="col-alloc">${allocHtml}</td>
+      </tr>`;
+    })
+    .join('\n');
+
+  return template
+    .replace(/\{\{generatedAt\}\}/g, generatedAt)
+    .replace(/\{\{totalDOs\}\}/g, String(doNos.size))
+    .replace(/\{\{totalSKUs\}\}/g, String(skuGroups.length))
+    .replace(/\{\{totalUnits\}\}/g, formatQtyNum(totalUnits))
+    .replace(/\{\{tableRows\}\}/, tableRows);
+}
+
+function formatQtyNum(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+/**
+ * Generate a DO Picking List PDF — SKU-grouped summary of all active DOs.
+ */
+export async function generateDoPickingListPdf(
+  _orgId: string,
+): Promise<{ pdfBase64: string; filename: string }> {
+  const { deliveryOrdersRepository } = await import('@/composition-root');
+
+  const itemsResult = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(
+    { doStatus: ACTIVE_DO_STATUSES },
+    { pageSize: 9999, pageNumber: 1 },
+  );
+
+  // Fetch allocations for all items
+  const doItemIds = itemsResult.query.map((i) => i.id);
+  const allAllocations = doItemIds.length > 0
+    ? await deliveryOrdersRepository.getDoItemAllocationsWithDetails(doItemIds)
+    : [];
+  const allocByItemId = new Map<string, typeof allAllocations>();
+  for (const a of allAllocations) {
+    const arr = allocByItemId.get(a.doItemId) ?? [];
+    arr.push(a);
+    allocByItemId.set(a.doItemId, arr);
+  }
+
+  // Group by SKU
+  const grouped = new Map<string, DoPickingListSkuGroup>();
+  for (const item of itemsResult.query) {
+    const key = item.skuCode ?? 'no-sku';
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        skuCode: item.skuCode ?? '—',
+        skuDescription: item.skuDescription ?? '—',
+        totalQtyRequired: 0,
+        doBreakdown: [],
+        allocations: [],
+      });
+    }
+    const g = grouped.get(key)!;
+    const req = parseFloat(String(item.qtyRequired ?? 0)) || 0;
+    g.totalQtyRequired += req;
+    if (item.doNo) {
+      g.doBreakdown.push({ doNo: item.doNo, qtyRequired: req });
+    }
+    for (const alloc of allocByItemId.get(item.id) ?? []) {
+      if (!g.allocations.some((a) => a.grnNo === alloc.grnNo && a.rackName === alloc.rackName)) {
+        g.allocations.push({
+          rackName: alloc.rackName,
+          grnNo: alloc.grnNo,
+          lotNo: alloc.lotNo,
+          expiryDate: alloc.expiryDate,
+          qtyAllocated: alloc.qtyAllocated,
+          priorityFlag: alloc.priorityFlag,
+        });
+      }
+    }
+  }
+
+  const skuGroups = Array.from(grouped.values()).sort((a, b) =>
+    a.skuCode.localeCompare(b.skuCode),
+  );
+
+  const html = await renderDoPickingListHtml(skuGroups);
+  const pdfBuffer = await htmlToPdf(html);
+
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = `DO_Picking_List_${dateStr}.pdf`;
 
   return { pdfBase64: pdfBuffer.toString('base64'), filename };
 }
