@@ -45,6 +45,7 @@ export const typeDefs = `#graphql
     countedLossQty: Float
     action: String
     notes: String
+    imageUrl: String
     isApproved: Boolean!
     approvedBy: ID
     approvedAt: String
@@ -62,6 +63,7 @@ export const typeDefs = `#graphql
     countedQty: Float
     countedLossQty: Float
     notes: String
+    imageUrl: String
     isApproved: Boolean
   }
 
@@ -90,5 +92,8 @@ export const typeDefs = `#graphql
 
     """ Close a session (set status = closed) """
     closeStockCountSession(id: ID!): StockCountSession
+
+    """ Bulk-approve all ready items in a session (items with action set or zero diff). Returns count of newly approved items. """
+    bulkApproveStockCountItems(sessionId: ID!): Int!
   }
 `;

@@ -414,6 +414,13 @@
       "when": 1774870798323,
       "tag": "0058_simple_fixer",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1774920587503,
+      "tag": "0059_rare_human_fly",
+      "breakpoints": true
     }
   ]
 }
