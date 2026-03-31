@@ -4,7 +4,23 @@ import { vi, describe, test, expect, beforeEach } from 'vitest';
 
 vi.mock('@/db', () => ({
     db: {
-        transaction: vi.fn(async (fn: (tx: object) => Promise<unknown>) => fn({})),
+        transaction: vi.fn(async (fn: (tx: object) => Promise<unknown>) =>
+            fn({
+                select: vi.fn().mockReturnValue({
+                    from: vi.fn().mockReturnValue({
+                        where: vi.fn().mockReturnValue({
+                            limit: vi.fn().mockResolvedValue([
+                                {
+                                    rate: '0.00',
+                                    minQty: '5.00',
+                                    sstRate: '0.0600',
+                                },
+                            ]),
+                        }),
+                    }),
+                }),
+            })
+        ),
     },
 }));
 

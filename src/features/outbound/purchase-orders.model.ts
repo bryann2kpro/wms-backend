@@ -30,6 +30,8 @@ export const PurchaseOrdersTable = MainSchema.table('purchase_orders', {
   organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   purchaseOrderNo: text('purchase_order_no').unique().notNull(),
   outletId: uuid('outlet_id').notNull(),
+  amount: numeric('amount', { precision: 12, scale: 2 }).notNull().default('0.00'),
+  amountCalcSnapshot: jsonb('amount_calc_snapshot'),
 
   scheduledDeliveryDate: timestamp('scheduled_delivery_date', { withTimezone: true }),
 

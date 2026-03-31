@@ -463,6 +463,13 @@
       "when": 1774931267834,
       "tag": "0065_rainy_kree",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1774931577856,
+      "tag": "0066_panoramic_payback",
+      "breakpoints": true
     }
   ]
 }

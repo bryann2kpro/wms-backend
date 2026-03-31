@@ -137,6 +137,7 @@ function transformPurchaseOrder(po: PurchaseOrderType) {
   return {
     id: po.id,
     purchaseOrderNo: po.purchaseOrderNo,
+    amount: po.amount,
     outletId: po.outletId,
     status: po.status,
     scheduledDeliveryDate: po.scheduledDeliveryDate?.toISOString() ?? null,
