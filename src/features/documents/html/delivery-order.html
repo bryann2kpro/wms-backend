@@ -1,0 +1,233 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delivery Order {{doNoEscaped}}</title>
+    <style>
+      :root {
+        --ink: #111;
+        --muted: #555;
+        --line: #1f1f1f;
+        --soft: #e6e6e6;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        padding: 24px 24px 32px;
+        font-family: Arial, Helvetica, sans-serif;
+        color: var(--ink);
+        font-size: 12px;
+      }
+      .page { width: 100%; min-height: calc(100vh - 56px); display: flex; flex-direction: column; }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        border-bottom: 2px solid var(--line);
+        padding-bottom: 10px;
+        margin-bottom: 12px;
+      }
+      .brand-wrap { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+      .logo { width: 64px; height: auto; object-fit: contain; margin-top: 2px; flex: 0 0 auto; }
+      .brand-text { min-width: 0; }
+      .brand {
+        font-weight: 700;
+        font-size: 16px;
+        letter-spacing: .2px;
+      }
+      .reg-no { font-weight: 400; font-size: 12px; letter-spacing: 0; }
+      .brand-sub { color: var(--muted); margin-top: 3px; line-height: 1.3; }
+      .doc-title {
+        text-align: right;
+        min-width: 220px;
+      }
+      .doc-title h1 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: .4px;
+      }
+      .doc-meta {
+        margin-top: 6px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-bottom: 10px;
+      }
+      .box {
+        padding: 10px 10px 8px;
+        min-height: 92px;
+      }
+      .box-title {
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .box-body { line-height: 1.35; text-transform: uppercase; }
+      .box-body .name { font-weight: 700; }
+      .box-body .box-address-lines { display: block; }
+      .box-body .box-contact-lines {
+        margin-top: 12px;
+        text-transform: none;
+      }
+      .box-body .box-contact-lines > div + div { margin-top: 6px; }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        border: 1px solid var(--line);
+      }
+      thead th {
+        border-bottom: 1px solid var(--line);
+        padding: 8px 8px;
+        text-align: left;
+        font-weight: 700;
+        background: #fafafa;
+      }
+      tbody td {
+        padding: 7px 8px;
+        border-top: 1px solid var(--soft);
+        vertical-align: top;
+      }
+      tbody tr:first-child td { border-top: none; }
+      .col-no { width: 44px; text-align: right; }
+      .col-sku { width: 140px; font-family: "Courier New", Courier, monospace; }
+      .col-qty { width: 80px; text-align: right; font-variant-numeric: tabular-nums; }
+      .empty { padding: 16px 8px; text-align: center; color: var(--muted); }
+      .footer {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-top: auto;
+        padding-top: 16px;
+        align-items: end;
+      }
+      .note {
+        color: var(--muted);
+        line-height: 1.35;
+        font-size: 11px;
+        border-top: 1px solid var(--soft);
+        padding-top: 10px;
+      }
+      .sign {
+        grid-column: 2;
+        justify-self: end;
+        text-align: left;
+        width: 240px;
+      }
+      .sign-label { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+      .sign-space { height: 70px; }
+      .sign-line { border-bottom: 1px solid var(--line); width: 100%; }
+      .sign-keep {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .received-date {
+        margin-top: 18px;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .received-date .date-line {
+        flex: 1 1 auto;
+        border-bottom: 1px solid var(--line);
+        height: 0;
+        transform: translateY(-2px);
+      }
+      .footer-divider {
+        grid-column: 1 / -1;
+        border-top: 2px solid var(--line);
+        margin-top: 16px;
+      }
+      @media print {
+        body { padding: 0; }
+        .page { padding: 18px 18px 24px; }
+        .sign,
+        .sign-keep {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="header">
+        <div class="brand-wrap">
+          {{logoImgHtml}}
+          <div class="brand-text">
+            <div class="brand">SMEE EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
+            <div class="brand-sub">
+              NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA, SUNGAI BULOH, 47000 SELANGOR.<br/>
+              TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
+            </div>
+          </div>
+        </div>
+        <div class="doc-title">
+          <h1>Delivery Order</h1>
+          <div class="doc-meta">
+            <div><b>DO No</b>: {{doNoEscaped}}</div>
+            <div><b>PO No</b>: {{poNoEscaped}}</div>
+            <div><b>Issue Date</b>: {{docDateEscaped}}</div>
+            <div><b>Region</b>: {{regionNameEscaped}}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="box">
+          <div class="box-title">Billing Address</div>
+          <div class="box-body">
+            <div class="name">{{billingCompanyNameEscaped}}</div>
+            <div class="box-address-lines">{{billingAddressHtml}}</div>
+            {{billingContactHtml}}
+          </div>
+        </div>
+        <div class="box">
+          <div class="box-title">Delivery Address</div>
+          <div class="box-body">
+            <div class="name">{{deliveryCompanyNameEscaped}}</div>
+            <div class="box-address-lines">{{deliveryAddressHtml}}</div>
+            {{deliveryContactHtml}}
+          </div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th class="col-no">No</th>
+            <th class="col-sku">SKU</th>
+            <th>Description</th>
+            <th class="col-qty">Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{tableRowsHtml}}
+        </tbody>
+      </table>
+
+      <div class="footer">
+        <div class="sign">
+          <div class="sign-label">Receiver Signature:</div>
+          <div class="sign-space"></div>
+          <div class="sign-keep">
+            <div class="sign-line"></div>
+            <div class="received-date">
+              <div><b>Received Date:</b></div>
+              <div class="date-line"></div>
+            </div>
+          </div>
+        </div>
+        <div class="footer-divider"></div>
+      </div>
+    </div>
+  </body>
+</html>
