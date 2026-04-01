@@ -520,6 +520,7 @@ export async function renderDoPickingListHtml(
   skuGroups: DoPickingListSkuGroup[],
 ): Promise<string> {
   const template = await readFile(DO_PICKING_LIST_HTML_PATH, 'utf-8');
+  const logoImgHtml = await getSmeLogoImgHtml();
 
   const generatedAt = new Date().toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -535,18 +536,19 @@ export async function renderDoPickingListHtml(
         .map((d) => `<span>${escapeHtml(d.doNo)}&thinsp;&times;&thinsp;${formatQtyNum(d.qtyRequired)}</span>`)
         .join('&ensp;');
 
-      const allocHtml = g.allocations.length === 0
-        ? '<span style="color:var(--text-muted)">—</span>'
-        : g.allocations.map((a) => {
-            const parts: string[] = [];
-            if (a.rackName) parts.push(`Rack ${escapeHtml(a.rackName)}`);
-            if (a.grnNo) parts.push(escapeHtml(a.grnNo));
-            if (a.lotNo) parts.push(`Lot: ${escapeHtml(a.lotNo)}`);
-            if (a.expiryDate) parts.push(`Exp: ${new Date(a.expiryDate).toLocaleDateString('en-MY')}`);
-            parts.push(`Qty: ${formatQtyNum(parseFloat(a.qtyAllocated) || 0)}`);
-            const priorityClass = a.priorityFlag ? ' alloc-priority' : '';
-            return `<div class="alloc-line${priorityClass}"><span class="alloc-dot"></span><span>${parts.join(' · ')}</span></div>`;
-          }).join('');
+      const seenRacks = new Set<string>();
+      const rackOrder: string[] = [];
+      for (const a of g.allocations) {
+        const r = a.rackName?.trim();
+        if (r && !seenRacks.has(r)) {
+          seenRacks.add(r);
+          rackOrder.push(r);
+        }
+      }
+      const rackHtml =
+        rackOrder.length === 0
+          ? '<span class="rack-empty">—</span>'
+          : rackOrder.map((name) => `<div class="rack-line">${escapeHtml(name)}</div>`).join('');
 
       return `<tr class="tr-data${rowAlt}">
         <td class="col-no">${i + 1}</td>
@@ -556,12 +558,14 @@ export async function renderDoPickingListHtml(
           <div class="do-breakdown">${doBreakdownHtml}</div>
         </td>
         <td class="col-qty col-qty-total">${formatQtyNum(g.totalQtyRequired)}</td>
-        <td class="col-alloc">${allocHtml}</td>
+        <td class="col-rack">${rackHtml}</td>
+        <td class="col-mark"></td>
       </tr>`;
     })
     .join('\n');
 
   return template
+    .replace(/\{\{logoImgHtml\}\}/g, logoImgHtml)
     .replace(/\{\{generatedAt\}\}/g, generatedAt)
     .replace(/\{\{totalDOs\}\}/g, String(doNos.size))
     .replace(/\{\{totalSKUs\}\}/g, String(skuGroups.length))

@@ -41,41 +41,89 @@
         .doc-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-end;
+            align-items: flex-start;
             margin-bottom: 2rem;
             padding-bottom: 1.25rem;
             border-bottom: 2px solid var(--text-primary);
-            gap: 2rem;
+            gap: 1.5rem 2rem;
+        }
+
+        /* Brand side */
+        .brand-wrap {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .doc-header .logo {
+            width: 56px;
+            height: auto;
+            object-fit: contain;
+            margin-top: 0.1rem;
+            flex: 0 0 auto;
+        }
+
+        .brand-text { min-width: 0; }
+
+        .brand {
+            font-weight: 700;
+            font-size: 0.925rem;
+            letter-spacing: 0.02em;
+            line-height: 1.25;
+            color: var(--text-primary);
+        }
+
+        .reg-no {
+            font-weight: 500;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        .brand-sub {
+            margin-top: 0.25rem;
+            font-size: 0.65rem;
+            line-height: 1.45;
+            color: var(--text-muted);
+        }
+
+        /* Title side */
+        .doc-title-block {
+            text-align: right;
+            flex-shrink: 0;
+            min-width: 11rem;
         }
 
         .doc-eyebrow {
             font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.625rem;
+            font-size: 0.575rem;
             font-weight: 500;
             letter-spacing: 0.14em;
             text-transform: uppercase;
             color: var(--accent);
-            margin-bottom: 0.4rem;
+            margin-bottom: 0.3rem;
         }
 
-        .doc-title {
-            font-size: 1.625rem;
+        .doc-heading {
+            margin: 0;
+            font-size: 1.5rem;
             font-weight: 700;
             letter-spacing: -0.025em;
-            line-height: 1;
+            line-height: 1.1;
             color: var(--text-primary);
         }
 
         .doc-meta {
+            margin-top: 0.55rem;
             text-align: right;
-            font-size: 0.78rem;
+            font-size: 0.72rem;
             color: var(--text-secondary);
             line-height: 1.75;
-            flex-shrink: 0;
         }
 
         .doc-meta .label {
-            font-size: 0.65rem;
+            font-size: 0.6rem;
             text-transform: uppercase;
             letter-spacing: 0.08em;
             color: var(--text-muted);
@@ -84,7 +132,7 @@
         .doc-meta strong {
             font-family: 'IBM Plex Mono', monospace;
             font-weight: 500;
-            font-size: 0.775rem;
+            font-size: 0.72rem;
             color: var(--text-primary);
         }
 
@@ -316,22 +364,33 @@
 <body>
     <div class="report-wrap">
         <header class="doc-header">
-            <div>
-                <div class="doc-eyebrow">Empire Sushi &middot; Outbound</div>
-                <div class="doc-title">DO Picking List</div>
+            <div class="brand-wrap">
+                {{logoImgHtml}}
+                <div class="brand-text">
+                    <div class="brand">SMEE EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
+                    <div class="brand-sub">
+                        NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
+                        SUNGAI BULOH, 47000 SELANGOR.<br/>
+                        TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
+                    </div>
+                </div>
             </div>
-            <div class="doc-meta">
-                <div class="meta-row">
-                    <span class="label">Generated&nbsp;</span>
-                    <strong>{{generatedAt}}</strong>
-                </div>
-                <div class="meta-row">
-                    <span class="label">Active DOs&nbsp;</span>
-                    <strong>{{totalDOs}}</strong>
-                </div>
-                <div class="meta-row">
-                    <span class="label">Total SKUs&nbsp;</span>
-                    <strong>{{totalSKUs}}</strong>
+            <div class="doc-title-block">
+                <div class="doc-eyebrow">Outbound &middot; Warehouse</div>
+                <h1 class="doc-heading">DO Picking List</h1>
+                <div class="doc-meta">
+                    <div class="meta-row">
+                        <span class="label">Generated&nbsp;</span>
+                        <strong>{{generatedAt}}</strong>
+                    </div>
+                    <div class="meta-row">
+                        <span class="label">Active DOs&nbsp;</span>
+                        <strong>{{totalDOs}}</strong>
+                    </div>
+                    <div class="meta-row">
+                        <span class="label">Total SKUs&nbsp;</span>
+                        <strong>{{totalSKUs}}</strong>
+                    </div>
                 </div>
             </div>
         </header>

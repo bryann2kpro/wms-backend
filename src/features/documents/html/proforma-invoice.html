@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Proforma Invoice {{invoiceNoEscaped}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
       /* A4 portrait: 210mm × 297mm (ISO 216) */
       @page {
@@ -31,9 +33,10 @@
         justify-content: center;
         align-items: flex-start;
         min-height: 100vh;
-        font-family: Arial, Helvetica, sans-serif;
+        font-family: 'IBM Plex Sans', Arial, sans-serif;
         color: var(--ink);
         font-size: 12px;
+        -webkit-font-smoothing: antialiased;
       }
       .page {
         width: var(--a4-w);
@@ -46,41 +49,89 @@
         display: flex;
         flex-direction: column;
       }
+
+      /* ── Header — matches do-picking-list.html ── */
       .header {
         display: flex;
-        flex-wrap: wrap;
         justify-content: space-between;
         align-items: flex-start;
-        gap: 12px;
+        gap: 1.5rem 2rem;
         border-bottom: 2px solid var(--line);
         padding-bottom: 10px;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
       }
-      .brand-wrap { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
-      .logo { width: 64px; height: auto; object-fit: contain; margin-top: 2px; flex: 0 0 auto; }
+      .brand-wrap {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+      .logo { width: 56px; height: auto; object-fit: contain; margin-top: 1px; flex: 0 0 auto; }
       .brand-text { min-width: 0; }
       .brand {
         font-weight: 700;
-        font-size: 14px;
-        letter-spacing: .2px;
+        font-size: 0.925rem;
+        letter-spacing: 0.02em;
+        line-height: 1.25;
       }
-      .reg-no { font-weight: 400; font-size: 11px; letter-spacing: 0; }
-      .brand-sub { color: var(--muted); margin-top: 3px; line-height: 1.25; font-size: 10px; }
-      .doc-title {
+      .reg-no {
+        font-weight: 500;
+        font-size: 0.7rem;
+        color: var(--muted);
+      }
+      .brand-sub {
+        margin-top: 0.25rem;
+        font-size: 0.65rem;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+      .doc-title-block {
         text-align: right;
-        min-width: 0;
-        flex: 1 1 140px;
+        flex-shrink: 0;
+        min-width: 11rem;
       }
-      .doc-title h1 {
+      .doc-eyebrow {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.575rem;
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #92400E;
+        margin-bottom: 0.3rem;
+      }
+      .doc-title-block h1 {
         margin: 0;
-        font-size: 18px;
-        letter-spacing: .4px;
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        line-height: 1.1;
+        color: var(--ink);
       }
       .doc-meta {
-        margin-top: 6px;
+        margin-top: 0.55rem;
+        text-align: right;
+        font-size: 0.72rem;
         color: var(--muted);
-        line-height: 1.35;
-        font-size: 9px;
+        line-height: 1.75;
+      }
+      .doc-meta .meta-row {
+        display: flex;
+        justify-content: flex-end;
+        align-items: baseline;
+        gap: 0.4rem;
+      }
+      .doc-meta .label {
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #A8A29E;
+      }
+      .doc-meta strong {
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 500;
+        font-size: 0.72rem;
+        color: var(--ink);
       }
       .two-col {
         display: grid;
@@ -110,63 +161,105 @@
         border-collapse: collapse;
         margin-top: 8px;
         border: 1px solid var(--line);
-        font-size: 7.5px;
+        font-size: 12px;
       }
       table.items thead th {
         border-bottom: 1px solid var(--line);
-        padding: 4px 2px;
+        padding: 5px 4px;
         text-align: left;
         font-weight: 700;
+        font-size: 11px;
         background: #fafafa;
         vertical-align: bottom;
-        line-height: 1.15;
+        line-height: 1.2;
         word-wrap: break-word;
         hyphens: auto;
       }
       table.items tbody td {
-        padding: 3px 2px;
+        padding: 5px 4px;
         border-top: 1px solid var(--soft);
         vertical-align: top;
         word-wrap: break-word;
         overflow-wrap: break-word;
+        font-size: 12px;
       }
-      table.items tbody tr:first-child td { border-top: none; }
-      .col-no { width: 4%; text-align: left; }
-      .col-sku { width: 11%; font-family: "Courier New", Courier, monospace; font-size: 7px; }
-      .col-desc { width: 18%; }
-      .col-qty { width: 5%; text-align: left; font-variant-numeric: tabular-nums; }
-      .col-num { width: 9%; text-align: left; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 7px; }
-      .col-rate { width: 6%; text-align: left; white-space: nowrap; }
+      table.items tbody tr:first-child td {
+        border-top: none;
+      }
+      .col-no  { width: 4%;  text-align: left; }
+      .col-sku { width: 12%; }
+      .col-desc { width: 20%; font-size: 11px; }
+      .col-qty { width: 5%;  text-align: right; font-variant-numeric: tabular-nums; }
+      .col-num { width: 9%;  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .col-rate { width: 6%; text-align: right; white-space: nowrap; }
       .empty { padding: 16px 8px; text-align: center; color: var(--muted); }
-      .totals-wrap {
-        margin-top: 14px;
+
+      /* ── Totals + notes: two-column layout below the table ── */
+      .totals-section {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0 24px;
+        align-items: start;
+      }
+      .totals-notes {
+        padding: 10px 12px;
+        border: 1px solid var(--soft);
+        background: #fafafa;
+        min-height: 80px;
         display: flex;
-        justify-content: flex-end;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .totals-notes-label {
+        font-weight: 700;
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 2px;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+      }
+      .totals-notes-line {
+        border-bottom: 1px solid var(--soft);
+        height: 1px;
+        margin-top: 4px;
       }
       table.totals-table {
-        width: 100%;
-        max-width: 280px;
         border-collapse: collapse;
-        font-size: 10px;
+        font-size: 12px;
+        min-width: 260px;
       }
       table.totals-table td {
-        padding: 4px 0 4px 12px;
+        padding: 4px 6px;
         text-align: right;
       }
       table.totals-table td:first-child {
         text-align: left;
         padding-left: 0;
         color: var(--muted);
+        white-space: nowrap;
+        padding-right: 20px;
       }
       table.totals-table td.amt {
         font-variant-numeric: tabular-nums;
-        min-width: 100px;
+        min-width: 90px;
+        font-weight: 500;
+      }
+      table.totals-table tr.tot-divider td {
+        padding-top: 0;
+        padding-bottom: 0;
+      }
+      table.totals-table tr.tot-divider td span {
+        display: block;
+        border-top: 1px solid var(--soft);
+        height: 0;
       }
       table.totals-table tr.tot-strong td {
         font-weight: 700;
+        font-size: 13px;
         color: var(--ink);
-        padding-top: 8px;
-        border-top: 1px solid var(--line);
+        padding-top: 6px;
+        border-top: 2px solid var(--line);
       }
       .footer {
         display: grid;
@@ -241,19 +334,35 @@
           <div class="brand-text">
             <div class="brand">SMEE EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
             <div class="brand-sub">
-              NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA, SUNGAI BULOH, 47000 SELANGOR.<br/>
+              NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
+              SUNGAI BULOH, 47000 SELANGOR.<br/>
               TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
             </div>
           </div>
         </div>
-        <div class="doc-title">
+        <div class="doc-title-block">
           <h1>Proforma Invoice</h1>
           <div class="doc-meta">
-            <div><b>Invoice No</b>: {{invoiceNoEscaped}}</div>
-            <div><b>PO No</b>: {{poNoEscaped}}</div>
-            <div><b>DO No</b>: {{doNoEscaped}}</div>
-            <div><b>Issue Date</b>: {{docDateEscaped}}</div>
-            <div><b>Region</b>: {{regionNameEscaped}}</div>
+            <div class="meta-row">
+              <span class="label">Invoice No&nbsp;</span>
+              <strong>{{invoiceNoEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">PO No&nbsp;</span>
+              <strong>{{poNoEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">DO No&nbsp;</span>
+              <strong>{{doNoEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">Issue Date&nbsp;</span>
+              <strong>{{docDateEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">Region&nbsp;</span>
+              <strong>{{regionNameEscaped}}</strong>
+            </div>
           </div>
         </div>
       </div>
@@ -289,7 +398,7 @@
             <th class="col-num">Total Excl. Tax<br/>(RM)</th>
             <th class="col-num">Tax Amount<br/>(RM)</th>
             <th class="col-num">Total Incl. Tax<br/>(RM)</th>
-            <th class="col-rate">Tax Rate</th>
+            <th class="col-rate">Tax<br>Rate</th>
           </tr>
         </thead>
         <tbody>
@@ -297,15 +406,24 @@
         </tbody>
       </table>
 
-      <div class="totals-wrap">
+      <div class="totals-section">
+        <!-- Left: notes / remarks area -->
+        <div class="totals-notes">
+          <div class="totals-notes-label">Remarks / Notes</div>
+          <div class="totals-notes-line"></div>
+          <div class="totals-notes-line" style="margin-top:12px"></div>
+          <div class="totals-notes-line" style="margin-top:12px"></div>
+        </div>
+
+        <!-- Right: summary totals -->
         <table class="totals-table">
           <tr>
             <td>Subtotal (line items)</td>
-            <td class="amt">{{lineSubtotalFmt}}</td>
+            <td class="amt">RM {{lineSubtotalFmt}}</td>
           </tr>
           <tr>
             <td>Total (excl. tax)</td>
-            <td class="amt">{{totalExclTaxFmt}}</td>
+            <td class="amt">RM {{totalExclTaxFmt}}</td>
           </tr>
           <tr>
             <td>Tax rate</td>
@@ -313,11 +431,11 @@
           </tr>
           <tr>
             <td>Tax amount</td>
-            <td class="amt">{{taxAmountFmt}}</td>
+            <td class="amt">RM {{taxAmountFmt}}</td>
           </tr>
           <tr class="tot-strong">
             <td>Total (incl. SST)</td>
-            <td class="amt">{{totalInclTaxFmt}}</td>
+            <td class="amt">RM {{totalInclTaxFmt}}</td>
           </tr>
         </table>
       </div>
