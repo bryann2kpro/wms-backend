@@ -6,6 +6,9 @@
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { eq } from 'drizzle-orm';
 import {
   deliveryOrdersRepository,
@@ -148,14 +151,7 @@ let cachedProformaInvoiceTemplatePromise: Promise<string> | null = null;
 async function getProformaInvoiceTemplate(): Promise<string> {
   if (!cachedProformaInvoiceTemplatePromise) {
     cachedProformaInvoiceTemplatePromise = (async () => {
-      const templatePath = path.resolve(
-        process.cwd(),
-        'src',
-        'features',
-        'documents',
-        'html',
-        'proforma-invoice.html',
-      );
+      const templatePath = path.join(__dirname, 'html', 'proforma-invoice.html');
       return readFile(templatePath, 'utf8');
     })();
   }
@@ -534,7 +530,7 @@ let cachedDeliveryOrderTemplatePromise: Promise<string> | null = null;
 async function getDeliveryOrderTemplate(): Promise<string> {
   if (!cachedDeliveryOrderTemplatePromise) {
     cachedDeliveryOrderTemplatePromise = (async () => {
-      const templatePath = path.resolve(process.cwd(), 'src', 'features', 'documents', 'html', 'delivery-order.html');
+      const templatePath = path.join(__dirname, 'html', 'delivery-order.html');
       return readFile(templatePath, 'utf8');
     })();
   }
