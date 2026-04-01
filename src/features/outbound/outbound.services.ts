@@ -16,6 +16,8 @@ import { DocumentsRepository } from "../documents/documents.repository";
 
 import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
+import { RegionPricingTable } from "../master-data/region.model";
+import { and, eq } from "drizzle-orm";
 
 /** Line item input: must have qtyRequired and either skuId or skuCode. */
 export type CreateDeliveryOrderItemInput = {
@@ -95,11 +97,34 @@ export class OutboundServices {
                 }
                 logger.info(`✅ [OutboundServices.createPurchaseOrder] Next delivery date: ${nextDelivery.deliveryDate.toISOString()} (${nextDelivery.schedule.dayName})${isEmergency ? ' [EMERGENCY]' : ''}`);
 
+                const [regionPricing] = await tx
+                    .select({
+                        rate: RegionPricingTable.rate,
+                        minQty: RegionPricingTable.minQty,
+                        sstRate: RegionPricingTable.sstRate,
+                    })
+                    .from(RegionPricingTable)
+                    .where(
+                        and(
+                            eq(RegionPricingTable.regionId, outlet.regionId),
+                            eq(RegionPricingTable.isActive, true),
+                        )
+                    )
+                    .limit(1);
+
+                const rate = regionPricing ? parseFloat(regionPricing.rate) : 0;
+                const minQty = regionPricing ? parseFloat(regionPricing.minQty) : 5;
+                const sstRate = regionPricing ? parseFloat(regionPricing.sstRate) : 0.06;
+                const totalQty = resolvedLines.reduce((sum, line) => sum + (parseFloat(line.qtyRequired) || 0), 0);
+                const effectiveQty = Math.max(totalQty, minQty);
+                const amount = effectiveQty * rate * (1 + sstRate);
+
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 3: Create Purchase Order...');
                 created = await this.purchaseOrdersRepository.createPurchaseOrder(
                     {
                         purchaseOrderNo: data.purchaseOrderNo,
                         outletId: data.outletId,
+                        amount: amount.toFixed(2),
                         status: "NEW",
                         scheduledDeliveryDate: nextDelivery.deliveryDate,
                         createdBy: data.userId,

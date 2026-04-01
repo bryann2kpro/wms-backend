@@ -1,0 +1,510 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Proforma Invoice {{invoiceNoEscaped}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      /* A4 portrait: 210mm × 297mm (ISO 216) */
+      @page {
+        size: A4 portrait;
+        margin: 8mm;
+      }
+      :root {
+        --ink: #111;
+        --muted: #555;
+        --line: #1f1f1f;
+        --soft: #e6e6e6;
+        --accent: #92400E;
+        --a4-w: 210mm;
+        --a4-h: 297mm;
+      }
+      * { box-sizing: border-box; }
+      html { background: #d6d3d1; }
+      html, body { margin: 0; }
+      body {
+        padding: 16px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+        font-family: 'IBM Plex Sans', Arial, sans-serif;
+        color: var(--ink);
+        font-size: 12px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .page {
+        width: var(--a4-w);
+        max-width: 100%;
+        min-height: var(--a4-h);
+        margin: 0 auto;
+        padding: 8mm;
+        background: #fff;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── Header ── */
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1.5rem 2rem;
+        border-bottom: 2px solid var(--line);
+        padding-bottom: 10px;
+        margin-bottom: 12px;
+      }
+      .brand-wrap {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+      .logo { width: 56px; height: auto; object-fit: contain; margin-top: 1px; flex: 0 0 auto; }
+      .brand-text { min-width: 0; }
+      .brand {
+        font-weight: 700;
+        font-size: 0.925rem;
+        letter-spacing: 0.02em;
+        line-height: 1.25;
+      }
+      .reg-no {
+        font-weight: 500;
+        font-size: 0.7rem;
+        color: var(--muted);
+      }
+      .brand-sub {
+        margin-top: 0.25rem;
+        font-size: 0.65rem;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+      .doc-title-block {
+        text-align: right;
+        flex-shrink: 0;
+        min-width: 11rem;
+      }
+      .doc-eyebrow {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.575rem;
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 0.3rem;
+      }
+      .doc-title-block h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        line-height: 1.1;
+        color: var(--ink);
+      }
+      .doc-meta {
+        margin-top: 0.55rem;
+        text-align: right;
+        font-size: 0.72rem;
+        color: var(--muted);
+        line-height: 1.75;
+      }
+      .doc-meta .meta-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.4rem;
+      }
+      .doc-meta .label {
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      .doc-meta strong {
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 500;
+        font-size: 0.72rem;
+        color: var(--ink);
+      }
+
+      /* ── Billing / Delivery ── */
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-bottom: 8px;
+      }
+      .box {
+        padding: 10px 10px 8px;
+        min-height: 88px;
+      }
+      .box-title {
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .box-body { line-height: 1.35; text-transform: uppercase; }
+      .box-body .name { font-weight: 700; }
+      .box-body .box-address-lines { display: block; }
+      .box-body .box-contact-lines {
+        margin-top: 10px;
+        text-transform: none;
+      }
+      .box-body .box-contact-lines > div + div { margin-top: 4px; }
+
+      /* ── Info Bar ── */
+      .info-bar {
+        display: grid;
+        grid-template-columns: 1.5fr 1.5fr 1fr 0.7fr 1.5fr 1fr;
+        border: 1px solid var(--line);
+        margin-bottom: 8px;
+      }
+      .info-bar-cell {
+        padding: 4px 6px;
+        border-right: 1px solid var(--soft);
+      }
+      .info-bar-cell:last-child { border-right: none; }
+      .info-bar-label {
+        font-size: 8.5px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 2px;
+      }
+      .info-bar-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 500;
+        font-size: 10px;
+        color: var(--ink);
+      }
+
+      /* ── Items Table ── */
+      table.items {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        border: 1px solid var(--line);
+        font-size: 11px;
+      }
+      table.items thead th {
+        border-bottom: 1px solid var(--line);
+        padding: 5px 4px;
+        text-align: left;
+        font-weight: 700;
+        font-size: 10px;
+        background: #fafafa;
+        vertical-align: bottom;
+        line-height: 1.2;
+        word-wrap: break-word;
+        hyphens: auto;
+      }
+      table.items tbody td {
+        padding: 5px 4px;
+        border-top: 1px solid var(--soft);
+        vertical-align: top;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        font-size: 11px;
+      }
+      table.items tbody tr:first-child td { border-top: none; }
+      table.items tfoot td {
+        padding: 6px 4px;
+        border-top: 2px solid var(--line);
+        font-weight: 700;
+        font-size: 11px;
+        background: #fafafa;
+      }
+      .col-no   { width: 3%;  text-align: left; }
+      .col-sku  { width: 10%; }
+      .col-desc { width: 17%; font-size: 10px; }
+      .col-qty  { width: 5%;  font-variant-numeric: tabular-nums; }
+      .col-num  { width: 8%;  font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .col-disc { width: 7%;  font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .col-rate { width: 5%;  white-space: nowrap; }
+      .empty { padding: 16px 8px; text-align: center; color: var(--muted); }
+
+      /* ── Description + Amount in Words ── */
+      .desc-block {
+        margin-top: 8px;
+        padding: 6px 8px;
+        border: 1px solid var(--soft);
+        font-size: 10.5px;
+        line-height: 1.65;
+      }
+      .desc-block .desc-line { color: var(--muted); }
+      .desc-block .amount-words {
+        font-weight: 600;
+        text-transform: uppercase;
+        color: var(--ink);
+        font-size: 10px;
+        margin-top: 2px;
+      }
+
+      /* ── Payment Terms + Summary ── */
+      .payment-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        border: 1px solid var(--line);
+        border-top: none;
+      }
+      .payment-terms-cell {
+        padding: 6px 8px;
+        border-right: 1px solid var(--soft);
+      }
+      .payment-terms-label {
+        font-size: 8.5px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 2px;
+      }
+      .payment-terms-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 600;
+        font-size: 11px;
+        color: var(--ink);
+      }
+      .payment-summary-cell {
+        padding: 6px 10px;
+        border-right: 1px solid var(--soft);
+        text-align: right;
+      }
+      .payment-summary-cell:last-child { border-right: none; }
+      .payment-summary-label {
+        font-size: 8.5px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 2px;
+      }
+      .payment-summary-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 700;
+        font-size: 13px;
+        color: var(--ink);
+      }
+
+      /* ── Authorised Signature ── */
+      .auth-row {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        padding: 4px 8px;
+        font-size: 9px;
+        color: var(--muted);
+        border: 1px solid var(--soft);
+        border-top: none;
+        gap: 4px;
+      }
+      .auth-row strong {
+        font-weight: 600;
+        color: var(--ink);
+      }
+
+      /* ── Payment Instructions ── */
+      .instructions-section {
+        display: flex;
+        gap: 14px;
+        margin-top: 10px;
+        align-items: flex-start;
+      }
+      .instructions-text {
+        flex: 1 1 auto;
+        font-size: 9px;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+      .instructions-text .bank-line {
+        font-weight: 700;
+        color: var(--ink);
+        font-size: 9.5px;
+        margin-bottom: 5px;
+      }
+      .instructions-text ul {
+        margin: 0;
+        padding-left: 0;
+        list-style: none;
+      }
+      .instructions-text ul li::before { content: '- '; }
+      .qr-placeholder {
+        flex: 0 0 76px;
+        width: 76px;
+        height: 76px;
+        border: 1px solid var(--soft);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 8px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      @media print {
+        html { background: #fff; }
+        body {
+          padding: 0;
+          display: block;
+          min-height: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .page {
+          width: 100%;
+          max-width: none;
+          min-height: 0;
+          margin: 0;
+          padding: 0;
+          box-shadow: none;
+        }
+        tr { page-break-inside: avoid; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+
+      <!-- HEADER -->
+      <div class="header">
+        <div class="brand-wrap">
+          {{logoImgHtml}}
+          <div class="brand-text">
+            <div class="brand">SME EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
+            <div class="brand-sub">
+              NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
+              SUNGAI BULOH, 47000 SELANGOR.<br/>
+              TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803<br/>
+              Service Tax: B16-2402-32000121
+            </div>
+          </div>
+        </div>
+        <div class="doc-title-block">
+          <h1>Proforma Invoice</h1>
+          <div class="doc-meta">
+            <div class="meta-row">
+              <span class="label">Invoice No&nbsp;</span>
+              <strong>{{invoiceNoEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">PO No&nbsp;</span>
+              <strong>{{poNoEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">DO No&nbsp;</span>
+              <strong>{{doNoEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">Issue Date&nbsp;</span>
+              <strong>{{docDateEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">Region&nbsp;</span>
+              <strong>{{regionNameEscaped}}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BILLING / DELIVERY -->
+      <div class="two-col">
+        <div class="box">
+          <div class="box-title">Billing Address</div>
+          <div class="box-body">
+            <div class="name">{{billingCompanyNameEscaped}}</div>
+            <div class="box-address-lines">{{billingAddressHtml}}</div>
+            {{billingContactHtml}}
+          </div>
+        </div>
+        <div class="box">
+          <div class="box-title">Delivery Address</div>
+          <div class="box-body">
+            <div class="name">{{deliveryCompanyNameEscaped}}</div>
+            <div class="box-address-lines">{{deliveryAddressHtml}}</div>
+            {{deliveryContactHtml}}
+          </div>
+        </div>
+      </div>
+
+      <!-- ITEMS TABLE -->
+      <table class="items">
+        <thead>
+          <tr>
+            <th class="col-no">No.</th>
+            <th class="col-sku">SKU</th>
+            <th class="col-desc">Description</th>
+            <th class="col-qty">Qty</th>
+            <th class="col-num">Price/Unit<br/>(RM)</th>
+            <th class="col-disc">Discount<br/>(RM)</th>
+            <th class="col-num">Sub Total<br/>(RM)</th>
+            <th class="col-num">Total Excl.<br/>Tax (RM)</th>
+            <th class="col-num">Tax Amt<br/>(RM)</th>
+            <th class="col-num">Total Incl.<br/>Tax (RM)</th>
+            <th class="col-rate">Tax<br/>Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{tableRowsHtml}}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" style="text-align:left">Total Qty</td>
+            <td colspan="1" style="font-variant-numeric:tabular-nums">{{totalQty}}</td>
+            <td colspan="2" style="font-variant-numeric:tabular-nums">Total Amount Due</td>
+            <td style="font-variant-numeric:tabular-nums">{{lineSubtotalFmt}}</td>
+            <td style="font-variant-numeric:tabular-nums">{{totalExclTaxFmt}}</td>
+            <td style="font-variant-numeric:tabular-nums">{{taxAmountFmt}}</td>
+            <td style="font-variant-numeric:tabular-nums">{{totalInclTaxFmt}}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- DESCRIPTION + AMOUNT IN WORDS -->
+      <div class="desc-block">
+        <div class="desc-line">Description: {{descriptionEscaped}}</div>
+        <div class="amount-words">Ringgit Malaysia: {{amountInWordsEscaped}}</div>
+      </div>
+
+      <!-- PAYMENT TERMS + TOTALS -->
+      <div class="payment-row">
+        <div class="payment-terms-cell">
+          <div class="payment-terms-label">Payment Terms</div>
+          <div class="payment-terms-value">{{paymentTermsEscaped}}</div>
+        </div>
+        <div class="payment-summary-cell">
+          <div class="payment-summary-label">Tax Amount (RM)</div>
+          <div class="payment-summary-value">{{taxAmountFmt}}</div>
+        </div>
+        <div class="payment-summary-cell">
+          <div class="payment-summary-label">Total Payable (RM)</div>
+          <div class="payment-summary-value">{{totalInclTaxFmt}}</div>
+        </div>
+      </div>
+      <div class="auth-row">
+        Authorised Signature &nbsp;
+        <strong>SME EDARAN SDN BHD (200701036678 (794707-P))</strong>
+      </div>
+
+      <!-- PAYMENT INSTRUCTIONS -->
+      <div class="instructions-section">
+        <div class="instructions-text">
+          <div class="bank-line">
+            All cheque should be crossed and made payable to<br/>
+            SME Edaran Sdn Bhd (CIMB BANK A/C NO. 80-0145248-8)
+          </div>
+          <ul>
+            <li>Interest at the rate of 1.5% a month or part thereof be charged for outstanding invoices, from the date of this invoice otherwise all charges are deemed to be correct.</li>
+            <li>If there is any discrepancy, kindly contact our accounts department within 7 days in writing.</li>
+            <li>Otherwise we will not entertain.</li>
+            <li>All business transacted subject to our standard of trading conditions.</li>
+            <li>Copy available upon request.</li>
+          </ul>
+        </div>
+        <!-- <div class="qr-placeholder">{{qrCodeHtml}}</div> -->
+      </div>
+
+    </div>
+  </body>
+</html>

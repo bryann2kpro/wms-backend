@@ -17,6 +17,7 @@ export type StockCountItemUpdateInput = {
   countedQty?: number | null;
   countedLossQty?: number | null;
   notes?: string | null;
+  imageUrl?: string | null;
   isApproved?: boolean;
   approvedBy?: string | null;
   approvedAt?: Date | null;
@@ -235,6 +236,7 @@ export class StockCountSessionRepositoryClass {
       if ("countedQty" in patch) updateData.countedQty = patch.countedQty != null ? String(patch.countedQty) : null;
       if ("countedLossQty" in patch) updateData.countedLossQty = patch.countedLossQty != null ? String(patch.countedLossQty) : null;
       if ("notes" in patch) updateData.notes = patch.notes;
+      if ("imageUrl" in patch) updateData.imageUrl = patch.imageUrl;
       if ("isApproved" in patch) updateData.isApproved = patch.isApproved;
       if ("approvedBy" in patch) updateData.approvedBy = patch.approvedBy;
       if ("approvedAt" in patch) updateData.approvedAt = patch.approvedAt;
@@ -253,6 +255,52 @@ export class StockCountSessionRepositoryClass {
       return updated ?? null;
     } catch (error) {
       logger.error("[StockCountSessionRepository.updateItem]", error);
+      throw error;
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // CLOSE SESSION
+  // ─────────────────────────────────────────────
+
+  // ─────────────────────────────────────────────
+  // BULK APPROVE READY ITEMS
+  // ─────────────────────────────────────────────
+
+  async bulkApproveReadyItems(
+    organizationId: string,
+    sessionId: string,
+    userId: string
+  ): Promise<number> {
+    try {
+      const now = new Date();
+      const result = await db
+        .update(StockCountItemsTable)
+        .set({
+          isApproved: true,
+          approvedBy: userId,
+          approvedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(StockCountItemsTable.sessionId, sessionId),
+            eq(StockCountItemsTable.organizationId, organizationId),
+            eq(StockCountItemsTable.isApproved, false),
+            sql`(
+              ${StockCountItemsTable.action} IS NOT NULL
+              OR (
+                CAST(${StockCountItemsTable.qtyDifference} AS numeric) = 0
+                AND CAST(${StockCountItemsTable.lossQtyDifference} AS numeric) = 0
+              )
+            )`
+          )
+        )
+        .returning({ id: StockCountItemsTable.id });
+
+      return result.length;
+    } catch (error) {
+      logger.error("[StockCountSessionRepository.bulkApproveReadyItems]", error);
       throw error;
     }
   }

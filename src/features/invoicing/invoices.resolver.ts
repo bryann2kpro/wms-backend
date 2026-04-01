@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { logger } from "@/util/logger";
 import { invoicesRepository } from "@/composition-root";
+import { generateProformaInvoicePdf as generateProformaInvoicePdfService } from "@/features/documents/documents.service";
 import type { GraphQLContext } from "@/graphql/context";
 import type { InvoiceFilter } from "./invoices.model";
 
@@ -138,6 +139,18 @@ export const resolvers = {
         logger.error("❌ [invoices.resolvers.updateInvoiceStatus] Error:", error);
         return null;
       }
+    },
+
+    generateProformaInvoicePdf: async (
+      _: unknown,
+      args: { invoiceId: string },
+      context: GraphQLContext,
+    ) => {
+      const organizationId = context.organizationId;
+      if (!organizationId) {
+        throw new Error("Unauthorized");
+      }
+      return generateProformaInvoicePdfService(args.invoiceId, organizationId);
     },
   },
 };

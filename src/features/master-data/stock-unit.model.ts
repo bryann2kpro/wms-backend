@@ -12,7 +12,7 @@ import { uuid, text, timestamp, boolean } from "drizzle-orm/pg-core";
  * @field unitCode - Unique short code for the unit (e.g., "CTN", "PCS", "BOX")
  * @field isActive - Whether this unit is currently active/available for selection
  */
-export const StockUnitTable = MainSchema.table('stock_units', {
+export const StockUnitTable = MainSchema.table('m_stock_units', {
   stockUnitId: uuid('stock_unit_id').defaultRandom().notNull().primaryKey(),
   unitName: text('unit_name').notNull(),
   unitCode: text('unit_code').unique().notNull(),

@@ -12,6 +12,7 @@ import {
   generateMovementReportPdf,
   generateInvoiceSummaryPdf,
   generateStockCountChecklistPdf,
+  generateDoPickingListPdf,
 } from './report.service';
 
 const REPORT_TYPE_S3_FOLDER: Record<string, string> = {
@@ -81,6 +82,15 @@ export const resolvers = {
       context: { organizationId: string }
     ) => {
       return generateStockCountChecklistPdf(args.sessionId, context.organizationId);
+    },
+
+    generateDoPickingList: async (
+      _: unknown,
+      __: unknown,
+      context: { organizationId: string }
+    ) => {
+      logger.info('ℹ️ [report.resolvers.generateDoPickingList] Generating DO picking list PDF...');
+      return generateDoPickingListPdf(context.organizationId);
     },
   },
 };

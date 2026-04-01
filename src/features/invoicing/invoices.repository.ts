@@ -23,6 +23,9 @@ import {
   DeliveryOrderItemsTable,
   type DeliveryOrderType,
 } from "@/features/outbound/delivery-orders.model";
+import { PurchaseOrdersTable } from "@/features/outbound/purchase-orders.model";
+import { OutletsTable } from "@/features/master-data/outlets.model";
+import { RegionPricingTable } from "@/features/master-data/region.model";
 import { SkuTable } from "@/features/master-data/sku.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
@@ -155,7 +158,40 @@ export class InvoicesRepositoryClass {
   async getInvoiceById(id: string, tx?: DbClient): Promise<InvoiceType | null> {
     try {
       const dbClient = tx ?? db;
-      const [row] = await dbClient.select().from(InvoicesTable).where(eq(InvoicesTable.id, id)).limit(1);
+      const [row] = await dbClient
+        .select({
+          id: InvoicesTable.id,
+          organizationId: InvoicesTable.organizationId,
+          invoiceNo: InvoicesTable.invoiceNo,
+          doId: InvoicesTable.doId,
+          doNo: DeliveryOrdersTable.doNo,
+          poId: InvoicesTable.poId,
+          poNo: InvoicesTable.poNo,
+          poAmount: PurchaseOrdersTable.amount,
+          poAmountCalcSnapshot: PurchaseOrdersTable.amountCalcSnapshot,
+          billingAddressId: InvoicesTable.billingAddressId,
+          deliveryAddressId: InvoicesTable.deliveryAddressId,
+          customerAccount: InvoicesTable.customerAccount,
+          salesExecutive: InvoicesTable.salesExecutive,
+          pageNo: InvoicesTable.pageNo,
+          dateIssued: InvoicesTable.dateIssued,
+          totalExclTax: InvoicesTable.totalExclTax,
+          taxAmount: InvoicesTable.taxAmount,
+          totalInclTax: InvoicesTable.totalInclTax,
+          taxRate: InvoicesTable.taxRate,
+          status: InvoicesTable.status,
+          issuedBy: InvoicesTable.issuedBy,
+          issuedAt: InvoicesTable.issuedAt,
+          createdAt: InvoicesTable.createdAt,
+          updatedAt: InvoicesTable.updatedAt,
+          createdBy: InvoicesTable.createdBy,
+          updatedBy: InvoicesTable.updatedBy,
+        })
+        .from(InvoicesTable)
+        .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
+        .leftJoin(PurchaseOrdersTable, eq(InvoicesTable.poId, PurchaseOrdersTable.id))
+        .where(eq(InvoicesTable.id, id))
+        .limit(1);
       return row ?? null;
     } catch (error) {
       logger.error("❌ [InvoicesRepository.getInvoiceById] Error:", error);
@@ -240,6 +276,8 @@ export class InvoicesRepositoryClass {
           doId: InvoicesTable.doId,
           poId: InvoicesTable.poId,
           poNo: InvoicesTable.poNo,
+          poAmount: PurchaseOrdersTable.amount,
+          poAmountCalcSnapshot: PurchaseOrdersTable.amountCalcSnapshot,
           billingAddressId: InvoicesTable.billingAddressId,
           deliveryAddressId: InvoicesTable.deliveryAddressId,
           customerAccount: InvoicesTable.customerAccount,
@@ -261,6 +299,7 @@ export class InvoicesRepositoryClass {
         })
         .from(InvoicesTable)
         .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
+        .leftJoin(PurchaseOrdersTable, eq(InvoicesTable.poId, PurchaseOrdersTable.id))
         .where(whereClause)
         .orderBy(sql`${InvoicesTable.createdAt} DESC`)
         .limit(pageSize)
@@ -426,7 +465,40 @@ export class InvoicesRepositoryClass {
         .leftJoin(SkuTable, eq(DeliveryOrderItemsTable.skuId, SkuTable.skuId))
         .where(eq(DeliveryOrderItemsTable.purchaseOrderId, doRow.purchaseOrderId));
 
+      // Resolve region pricing via PO → Outlet → Region → RegionPricing
+      const [regionPricingRow] = await dbClient
+        .select({
+          rate: RegionPricingTable.rate,
+          minQty: RegionPricingTable.minQty,
+          sstRate: RegionPricingTable.sstRate,
+        })
+        .from(PurchaseOrdersTable)
+        .innerJoin(OutletsTable, eq(PurchaseOrdersTable.outletId, OutletsTable.outletId))
+        .innerJoin(RegionPricingTable, and(
+          eq(OutletsTable.regionId, RegionPricingTable.regionId),
+          eq(RegionPricingTable.isActive, true),
+        ))
+        .where(eq(PurchaseOrdersTable.id, doRow.purchaseOrderId))
+        .limit(1);
+
+      const regionRate = regionPricingRow ? parseFloat(regionPricingRow.rate) : 0;
+      const minQty = regionPricingRow ? parseFloat(regionPricingRow.minQty) : 5;
+      const sstRate = regionPricingRow ? parseFloat(regionPricingRow.sstRate) : 0.06;
+
       const invoiceNo = await this.generateInvoiceNo(dbClient);
+
+      // Compute per-item pricing with min-qty enforcement
+      const pricedItems = doItems.map((item) => {
+        const qty = parseFloat(item.qtyRequired);
+        const effectiveQty = Math.max(qty, minQty);
+        const unitPrice = regionRate;
+        const subTotal = effectiveQty * unitPrice;
+        return { ...item, effectiveQty, unitPrice, subTotal };
+      });
+
+      const totalExclTax = pricedItems.reduce((sum, i) => sum + i.subTotal, 0);
+      const taxAmount = totalExclTax * sstRate;
+      const totalInclTax = totalExclTax + taxAmount;
 
       const invoice = await this.createInvoice(
         {
@@ -440,19 +512,23 @@ export class InvoicesRepositoryClass {
           deliveryAddressId: InvoicesRepositoryClass.INVOICE_ADDRESS_SNAPSHOT_ID,
           status: "GENERATED",
           dateIssued: new Date(),
+          totalExclTax: totalExclTax.toFixed(2),
+          taxAmount: taxAmount.toFixed(2),
+          totalInclTax: totalInclTax.toFixed(2),
+          taxRate: sstRate.toFixed(4),
           createdBy: systemUserId,
           updatedBy: systemUserId,
         },
         dbClient
       );
 
-      const invoiceItemInserts: InvoiceItemInsertType[] = doItems.map((item, index) => ({
+      const invoiceItemInserts: InvoiceItemInsertType[] = pricedItems.map((item, index) => ({
         invoiceId: invoice.id,
         skuId: item.skuId,
         description: item.skuDescription ?? null,
         qty: item.qtyRequired,
-        unitPrice: "0",
-        subTotal: "0",
+        unitPrice: item.unitPrice.toFixed(2),
+        subTotal: item.subTotal.toFixed(2),
         itemNo: String(index + 1),
         createdBy: systemUserId,
         updatedBy: systemUserId,

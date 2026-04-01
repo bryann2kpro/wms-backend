@@ -26,6 +26,7 @@ import { spawn } from "child_process";
 import { initAccounts } from "./scripts/init-accounts";
 import { initMasterData } from "./scripts/init-master-data";
 import { startInvoicesCron } from "./features/invoicing/invoices.cron";
+import { startEmailNotificationWorker } from "./features/notifications/email-notification.job";
 
 const app = express();
 
@@ -285,6 +286,7 @@ ViteExpress.listen(app, Number(PORT), async () => {
     logger.info('✅ Master data initialized successfully');
 
     startInvoicesCron();
+    startEmailNotificationWorker();
   } catch (error) {
     console.error('❌ Error during initialization:', error);
   }

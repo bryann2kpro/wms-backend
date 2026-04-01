@@ -16,7 +16,7 @@ import { OrganizationsTable } from "@/features/master-data/organization.model";
  * @field rackType - Type of the rack
  * @field rackCapacity - Capacity of the rack
  */
-export const RacksTable = MainSchema.table('racks', {
+export const RacksTable = MainSchema.table('m_racks', {
   rackId: uuid('rack_id').defaultRandom().notNull().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   rackRow: varchar('rack_row').notNull(),

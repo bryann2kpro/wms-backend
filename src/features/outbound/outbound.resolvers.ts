@@ -137,6 +137,7 @@ function transformPurchaseOrder(po: PurchaseOrderType) {
   return {
     id: po.id,
     purchaseOrderNo: po.purchaseOrderNo,
+    amount: po.amount,
     outletId: po.outletId,
     status: po.status,
     scheduledDeliveryDate: po.scheduledDeliveryDate?.toISOString() ?? null,
@@ -203,6 +204,7 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
       rackId: a.rackId ?? null,
       rackName: a.rackName ?? null,
       expiryDate: a.expiryDate ? a.expiryDate.toISOString() : null,
+      lotNo: a.lotNo ?? null,
       qtyAllocated: a.qtyAllocated,
       priorityFlag: a.priorityFlag,
     })),
