@@ -226,6 +226,7 @@ async function buildProformaInvoiceHtml(invoiceRow: InvoiceRowForPdf): Promise<s
     <td class="col-desc">${escapeHtml(r.description ?? '—')}</td>
     <td class="col-qty">${escapeHtml(String(r.qty))}</td>
     <td class="col-num">${formatRmAmount(r.unitPrice)}</td>
+    <td class="col-disc">—</td>
     <td class="col-num">${formatRmAmount(lineExcl)}</td>
     <td class="col-num">${formatRmAmount(lineExcl)}</td>
     <td class="col-num">${formatRmAmount(lineTax)}</td>
@@ -275,6 +276,8 @@ async function buildProformaInvoiceHtml(invoiceRow: InvoiceRowForPdf): Promise<s
 
   const template = await getProformaInvoiceTemplate();
 
+  const pageNo = invoiceRow.pageNo ?? '1 of 1';
+
   return renderHtmlTemplate(template, {
     invoiceNoEscaped: escapeHtml(invoiceRow.invoiceNo),
     poNoEscaped: escapeHtml(poNoDisplay),
@@ -290,6 +293,11 @@ async function buildProformaInvoiceHtml(invoiceRow: InvoiceRowForPdf): Promise<s
     deliveryAddressHtml: normalizeMultilineAddress(outlet?.address ?? null),
     deliveryContactHtml: deliveryContact,
 
+    customerAccountEscaped: escapeHtml(invoiceRow.customerAccount ?? '—'),
+    salesExecutiveEscaped: escapeHtml(invoiceRow.salesExecutive ?? '—'),
+    preparedByEscaped: '—',
+    pageLabel: escapeHtml(pageNo),
+
     logoImgHtml,
     tableRowsHtml: tableRows,
 
@@ -298,6 +306,10 @@ async function buildProformaInvoiceHtml(invoiceRow: InvoiceRowForPdf): Promise<s
     taxAmountFmt: formatRmAmount(taxAmt),
     totalInclTaxFmt: formatRmAmount(totalIncl),
     taxRateLabel: escapeHtml(taxRateLabel),
+
+    descriptionEscaped: escapeHtml(outlet?.outletName ? `${outlet.outletName} DELIVERY ${docDate}` : '—'),
+    amountInWordsEscaped: escapeHtml(ringgitToWords(totalIncl)),
+    paymentTermsEscaped: '14 DAYS',
   });
 }
 
@@ -334,6 +346,40 @@ export async function generateProformaInvoicePdf(
   const dateStr = new Date().toISOString().split('T')[0];
   const filename = `Proforma_${safeNo}_${dateStr}.pdf`;
   return { pdfBase64: pdfBuffer.toString('base64'), filename };
+}
+
+/**
+ * Convert a RM amount (e.g. 691.65) to the Malaysian cheque wording:
+ * "SIX HUNDRED NINETY ONE AND CENTS SIXTY FIVE ONLY"
+ */
+function ringgitToWords(amount: number): string {
+  const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
+    'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
+  const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+
+  function below1000(n: number): string {
+    if (n === 0) return '';
+    if (n < 20) return ones[n]!;
+    if (n < 100) return (tens[Math.floor(n / 10)]! + (n % 10 !== 0 ? ' ' + ones[n % 10]! : '')).trim();
+    return (ones[Math.floor(n / 100)]! + ' HUNDRED' + (n % 100 !== 0 ? ' ' + below1000(n % 100) : '')).trim();
+  }
+
+  function toWords(n: number): string {
+    if (n === 0) return 'ZERO';
+    let result = '';
+    if (n >= 1_000_000) { result += below1000(Math.floor(n / 1_000_000)) + ' MILLION '; n %= 1_000_000; }
+    if (n >= 1_000)     { result += below1000(Math.floor(n / 1_000)) + ' THOUSAND '; n %= 1_000; }
+    if (n > 0)          { result += below1000(n); }
+    return result.trim();
+  }
+
+  const rounded = Math.round(amount * 100);
+  const ringgit = Math.floor(rounded / 100);
+  const cents = rounded % 100;
+
+  const ringgitPart = ringgit > 0 ? toWords(ringgit) : 'ZERO';
+  const centsPart = cents > 0 ? ` AND CENTS ${toWords(cents)}` : '';
+  return `${ringgitPart}${centsPart} ONLY`;
 }
 
 function escapeHtml(s: string): string {

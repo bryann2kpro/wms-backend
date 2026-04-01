@@ -4,55 +4,109 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Delivery Order {{doNoEscaped}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+      /* A4 portrait: 210mm × 297mm (ISO 216) */
+      @page {
+        size: A4 portrait;
+        margin: 8mm;
+      }
       :root {
         --ink: #111;
         --muted: #555;
         --line: #1f1f1f;
         --soft: #e6e6e6;
+        --accent: #92400E;
+        --a4-w: 210mm;
+        --a4-h: 297mm;
       }
       * { box-sizing: border-box; }
       html, body { height: 100%; }
       body {
-        margin: 0;
-        padding: 24px 24px 32px;
-        font-family: Arial, Helvetica, sans-serif;
+        padding: 16px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+        font-family: 'IBM Plex Sans', Arial, sans-serif;
         color: var(--ink);
         font-size: 12px;
+        -webkit-font-smoothing: antialiased;
       }
-      .page { width: 100%; min-height: calc(100vh - 56px); display: flex; flex-direction: column; }
+      .page { 
+        width: var(--a4-w);
+        max-width: 100%;
+        min-height: var(--a4-h);
+        margin: 0 auto;
+        padding: 8mm;
+        background: #fff;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+        display: flex;
+        flex-direction: column;
+      }
       .header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        gap: 16px;
+        gap: 1.5rem 2rem;
         border-bottom: 2px solid var(--line);
         padding-bottom: 10px;
         margin-bottom: 12px;
       }
-      .brand-wrap { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
-      .logo { width: 64px; height: auto; object-fit: contain; margin-top: 2px; flex: 0 0 auto; }
+      .brand-wrap { display: flex; align-items: flex-start; gap: 0.75rem; min-width: 0; flex: 1 1 auto; }
+      .logo { width: 56px; height: auto; object-fit: contain; margin-top: 1px; flex: 0 0 auto; }
       .brand-text { min-width: 0; }
       .brand {
         font-weight: 700;
-        font-size: 16px;
-        letter-spacing: .2px;
+        font-size: 0.925rem;
+        letter-spacing: 0.02em;
+        line-height: 1.25;
       }
-      .reg-no { font-weight: 400; font-size: 12px; letter-spacing: 0; }
-      .brand-sub { color: var(--muted); margin-top: 3px; line-height: 1.3; }
-      .doc-title {
+      .reg-no { font-weight: 500; font-size: 0.7rem; color: var(--muted); }
+      .brand-sub {
+        margin-top: 0.25rem;
+        font-size: 0.65rem;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+      .doc-title-block {
         text-align: right;
-        min-width: 220px;
+        flex-shrink: 0;
+        min-width: 11rem;
       }
-      .doc-title h1 {
+      .doc-title-block h1 {
         margin: 0;
-        font-size: 18px;
-        letter-spacing: .4px;
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        line-height: 1.1;
+        color: var(--ink);
       }
       .doc-meta {
-        margin-top: 6px;
+        margin-top: 0.55rem;
+        text-align: right;
+        font-size: 0.72rem;
         color: var(--muted);
-        line-height: 1.4;
+        line-height: 1.75;
+      }
+      .doc-meta .meta-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.4rem;
+      }
+      .doc-meta .label {
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      .doc-meta strong {
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 500;
+        font-size: 0.72rem;
+        color: var(--ink);
       }
       .two-col {
         display: grid;
@@ -147,8 +201,23 @@
         margin-top: 16px;
       }
       @media print {
-        body { padding: 0; }
-        .page { padding: 18px 18px 24px; }
+        html { background: #fff; }
+        body {
+          padding: 0;
+          display: block;
+          min-height: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .page {
+          width: 100%;
+          max-width: none;
+          min-height: 0;
+          margin: 0;
+          padding: 0;
+          box-shadow: none;
+        }
+        tr { page-break-inside: avoid; }
         .sign,
         .sign-keep {
           break-inside: avoid;
@@ -165,18 +234,32 @@
           <div class="brand-text">
             <div class="brand">SMEE EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
             <div class="brand-sub">
-              NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA, SUNGAI BULOH, 47000 SELANGOR.<br/>
-              TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
+              NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
+              SUNGAI BULOH, 47000 SELANGOR.<br/>
+              TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803<br/>
+              Service Tax: B16-2402-32000121
             </div>
           </div>
         </div>
-        <div class="doc-title">
+        <div class="doc-title-block">
           <h1>Delivery Order</h1>
           <div class="doc-meta">
-            <div><b>DO No</b>: {{doNoEscaped}}</div>
-            <div><b>PO No</b>: {{poNoEscaped}}</div>
-            <div><b>Issue Date</b>: {{docDateEscaped}}</div>
-            <div><b>Region</b>: {{regionNameEscaped}}</div>
+            <div class="meta-row">
+              <span class="label">DO No&nbsp;</span>
+              <strong>{{doNoEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">PO No&nbsp;</span>
+              <strong>{{poNoEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">Issue Date&nbsp;</span>
+              <strong>{{docDateEscaped}}</strong>
+            </div>
+            <div class="meta-row">
+              <span class="label">Region&nbsp;</span>
+              <strong>{{regionNameEscaped}}</strong>
+            </div>
           </div>
         </div>
       </div>
