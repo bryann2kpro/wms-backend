@@ -17,16 +17,13 @@
         --muted: #555;
         --line: #1f1f1f;
         --soft: #e6e6e6;
+        --accent: #92400E;
         --a4-w: 210mm;
         --a4-h: 297mm;
       }
       * { box-sizing: border-box; }
-      html {
-        background: #d6d3d1;
-      }
-      html, body {
-        margin: 0;
-      }
+      html { background: #d6d3d1; }
+      html, body { margin: 0; }
       body {
         padding: 16px;
         display: flex;
@@ -50,7 +47,7 @@
         flex-direction: column;
       }
 
-      /* ── Header — matches do-picking-list.html ── */
+      /* ── Header ── */
       .header {
         display: flex;
         justify-content: space-between;
@@ -97,7 +94,7 @@
         font-weight: 500;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        color: #92400E;
+        color: var(--accent);
         margin-bottom: 0.3rem;
       }
       .doc-title-block h1 {
@@ -117,7 +114,7 @@
       }
       .doc-meta .meta-row {
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
         align-items: baseline;
         gap: 0.4rem;
       }
@@ -125,7 +122,7 @@
         font-size: 0.6rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: #A8A29E;
+        color: var(--muted);
       }
       .doc-meta strong {
         font-family: 'IBM Plex Mono', monospace;
@@ -133,15 +130,17 @@
         font-size: 0.72rem;
         color: var(--ink);
       }
+
+      /* ── Billing / Delivery ── */
       .two-col {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 14px;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
       }
       .box {
         padding: 10px 10px 8px;
-        min-height: 92px;
+        min-height: 88px;
       }
       .box-title {
         font-weight: 700;
@@ -151,24 +150,51 @@
       .box-body .name { font-weight: 700; }
       .box-body .box-address-lines { display: block; }
       .box-body .box-contact-lines {
-        margin-top: 12px;
+        margin-top: 10px;
         text-transform: none;
       }
-      .box-body .box-contact-lines > div + div { margin-top: 6px; }
+      .box-body .box-contact-lines > div + div { margin-top: 4px; }
+
+      /* ── Info Bar ── */
+      .info-bar {
+        display: grid;
+        grid-template-columns: 1.5fr 1.5fr 1fr 0.7fr 1.5fr 1fr;
+        border: 1px solid var(--line);
+        margin-bottom: 8px;
+      }
+      .info-bar-cell {
+        padding: 4px 6px;
+        border-right: 1px solid var(--soft);
+      }
+      .info-bar-cell:last-child { border-right: none; }
+      .info-bar-label {
+        font-size: 8.5px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 2px;
+      }
+      .info-bar-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 500;
+        font-size: 10px;
+        color: var(--ink);
+      }
+
+      /* ── Items Table ── */
       table.items {
         width: 100%;
         table-layout: fixed;
         border-collapse: collapse;
-        margin-top: 8px;
         border: 1px solid var(--line);
-        font-size: 12px;
+        font-size: 11px;
       }
       table.items thead th {
         border-bottom: 1px solid var(--line);
         padding: 5px 4px;
         text-align: left;
         font-weight: 700;
-        font-size: 11px;
+        font-size: 10px;
         background: #fafafa;
         vertical-align: bottom;
         line-height: 1.2;
@@ -181,126 +207,141 @@
         vertical-align: top;
         word-wrap: break-word;
         overflow-wrap: break-word;
-        font-size: 12px;
+        font-size: 11px;
       }
-      table.items tbody tr:first-child td {
-        border-top: none;
-      }
-      .col-no  { width: 4%;  text-align: left; }
-      .col-sku { width: 12%; }
-      .col-desc { width: 20%; font-size: 11px; }
-      .col-qty { width: 5%;  text-align: right; font-variant-numeric: tabular-nums; }
-      .col-num { width: 9%;  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-      .col-rate { width: 6%; text-align: right; white-space: nowrap; }
-      .empty { padding: 16px 8px; text-align: center; color: var(--muted); }
-
-      /* ── Totals + notes: two-column layout below the table ── */
-      .totals-section {
-        margin-top: 16px;
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 0 24px;
-        align-items: start;
-      }
-      .totals-notes {
-        padding: 10px 12px;
-        border: 1px solid var(--soft);
-        background: #fafafa;
-        min-height: 80px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      .totals-notes-label {
+      table.items tbody tr:first-child td { border-top: none; }
+      table.items tfoot td {
+        padding: 6px 4px;
+        border-top: 2px solid var(--line);
         font-weight: 700;
         font-size: 11px;
-        color: var(--muted);
-        margin-bottom: 2px;
+        background: #fafafa;
+      }
+      .col-no   { width: 3%;  text-align: left; }
+      .col-sku  { width: 10%; }
+      .col-desc { width: 17%; font-size: 10px; }
+      .col-qty  { width: 5%;  text-align: right; font-variant-numeric: tabular-nums; }
+      .col-num  { width: 8%;  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .col-disc { width: 7%;  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .col-rate { width: 5%;  text-align: right; white-space: nowrap; }
+      .empty { padding: 16px 8px; text-align: center; color: var(--muted); }
+
+      /* ── Description + Amount in Words ── */
+      .desc-block {
+        margin-top: 8px;
+        padding: 6px 8px;
+        border: 1px solid var(--soft);
+        font-size: 10.5px;
+        line-height: 1.65;
+      }
+      .desc-block .desc-line { color: var(--muted); }
+      .desc-block .amount-words {
+        font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: .4px;
+        color: var(--ink);
+        font-size: 10px;
+        margin-top: 2px;
       }
-      .totals-notes-line {
-        border-bottom: 1px solid var(--soft);
-        height: 1px;
-        margin-top: 4px;
+
+      /* ── Payment Terms + Summary ── */
+      .payment-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        border: 1px solid var(--line);
+        border-top: none;
       }
-      table.totals-table {
-        border-collapse: collapse;
-        font-size: 12px;
-        min-width: 260px;
+      .payment-terms-cell {
+        padding: 6px 8px;
+        border-right: 1px solid var(--soft);
       }
-      table.totals-table td {
-        padding: 4px 6px;
+      .payment-terms-label {
+        font-size: 8.5px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 2px;
+      }
+      .payment-terms-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-weight: 600;
+        font-size: 11px;
+        color: var(--ink);
+      }
+      .payment-summary-cell {
+        padding: 6px 10px;
+        border-right: 1px solid var(--soft);
         text-align: right;
       }
-      table.totals-table td:first-child {
-        text-align: left;
-        padding-left: 0;
+      .payment-summary-cell:last-child { border-right: none; }
+      .payment-summary-label {
+        font-size: 8.5px;
         color: var(--muted);
-        white-space: nowrap;
-        padding-right: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 2px;
       }
-      table.totals-table td.amt {
-        font-variant-numeric: tabular-nums;
-        min-width: 90px;
-        font-weight: 500;
-      }
-      table.totals-table tr.tot-divider td {
-        padding-top: 0;
-        padding-bottom: 0;
-      }
-      table.totals-table tr.tot-divider td span {
-        display: block;
-        border-top: 1px solid var(--soft);
-        height: 0;
-      }
-      table.totals-table tr.tot-strong td {
+      .payment-summary-value {
+        font-family: 'IBM Plex Mono', monospace;
         font-weight: 700;
         font-size: 13px;
         color: var(--ink);
-        padding-top: 6px;
-        border-top: 2px solid var(--line);
       }
-      .footer {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 14px;
-        margin-top: auto;
-        padding-top: 16px;
-        align-items: end;
-      }
-      .sign {
-        grid-column: 2;
-        justify-self: end;
-        text-align: left;
-        width: 240px;
-      }
-      .sign-label { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
-      .sign-space { height: 70px; }
-      .sign-line { border-bottom: 1px solid var(--line); width: 100%; }
-      .sign-keep {
-        break-inside: avoid;
-        page-break-inside: avoid;
-      }
-      .received-date {
-        margin-top: 18px;
+
+      /* ── Authorised Signature ── */
+      .auth-row {
         display: flex;
-        align-items: baseline;
-        gap: 8px;
-        font-size: 11px;
+        justify-content: flex-end;
+        align-items: center;
+        padding: 4px 8px;
+        font-size: 9px;
         color: var(--muted);
+        border: 1px solid var(--soft);
+        border-top: none;
+        gap: 4px;
       }
-      .received-date .date-line {
+      .auth-row strong {
+        font-weight: 600;
+        color: var(--ink);
+      }
+
+      /* ── Payment Instructions ── */
+      .instructions-section {
+        display: flex;
+        gap: 14px;
+        margin-top: 10px;
+        align-items: flex-start;
+      }
+      .instructions-text {
         flex: 1 1 auto;
-        border-bottom: 1px solid var(--line);
-        height: 0;
-        transform: translateY(-2px);
+        font-size: 9px;
+        color: var(--muted);
+        line-height: 1.65;
       }
-      .footer-divider {
-        grid-column: 1 / -1;
-        border-top: 2px solid var(--line);
-        margin-top: 16px;
+      .instructions-text .bank-line {
+        font-weight: 700;
+        color: var(--ink);
+        font-size: 9.5px;
+        margin-bottom: 5px;
       }
+      .instructions-text ul {
+        margin: 0;
+        padding-left: 0;
+        list-style: none;
+      }
+      .instructions-text ul li::before { content: '- '; }
+      .qr-placeholder {
+        flex: 0 0 76px;
+        width: 76px;
+        height: 76px;
+        border: 1px solid var(--soft);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 8px;
+        color: var(--muted);
+        text-align: center;
+      }
+
       @media print {
         html { background: #fff; }
         body {
@@ -318,16 +359,14 @@
           padding: 0;
           box-shadow: none;
         }
-        .sign,
-        .sign-keep {
-          break-inside: avoid;
-          page-break-inside: avoid;
-        }
+        tr { page-break-inside: avoid; }
       }
     </style>
   </head>
   <body>
     <div class="page">
+
+      <!-- HEADER -->
       <div class="header">
         <div class="brand-wrap">
           {{logoImgHtml}}
@@ -336,7 +375,8 @@
             <div class="brand-sub">
               NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
               SUNGAI BULOH, 47000 SELANGOR.<br/>
-              TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
+              TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803<br/>
+              Service Tax: B16-2402-32000121
             </div>
           </div>
         </div>
@@ -367,6 +407,7 @@
         </div>
       </div>
 
+      <!-- BILLING / DELIVERY -->
       <div class="two-col">
         <div class="box">
           <div class="box-title">Billing Address</div>
@@ -386,74 +427,82 @@
         </div>
       </div>
 
+      <!-- ITEMS TABLE -->
       <table class="items">
         <thead>
           <tr>
             <th class="col-no">No.</th>
             <th class="col-sku">SKU</th>
-            <th class="col-desc">Desc.</th>
-            <th class="col-qty">Qty</th>
+            <th class="col-desc">Description</th>
+            <th class="col-qty" style="text-align:right">Qty</th>
             <th class="col-num">Price/Unit<br/>(RM)</th>
-            <th class="col-num">Subtotal<br/>(RM)</th>
-            <th class="col-num">Total Excl. Tax<br/>(RM)</th>
-            <th class="col-num">Tax Amount<br/>(RM)</th>
-            <th class="col-num">Total Incl. Tax<br/>(RM)</th>
-            <th class="col-rate">Tax<br>Rate</th>
+            <th class="col-disc">Discount<br/>(RM)</th>
+            <th class="col-num">Sub Total<br/>(RM)</th>
+            <th class="col-num">Total Excl.<br/>Tax (RM)</th>
+            <th class="col-num">Tax Amt<br/>(RM)</th>
+            <th class="col-num">Total Incl.<br/>Tax (RM)</th>
+            <th class="col-rate">Tax<br/>Rate</th>
           </tr>
         </thead>
         <tbody>
           {{tableRowsHtml}}
         </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="6" style="text-align:left">Total Amount Due</td>
+            <td style="text-align:right; font-variant-numeric:tabular-nums">{{lineSubtotalFmt}}</td>
+            <td style="text-align:right; font-variant-numeric:tabular-nums">{{totalExclTaxFmt}}</td>
+            <td style="text-align:right; font-variant-numeric:tabular-nums">{{taxAmountFmt}}</td>
+            <td style="text-align:right; font-variant-numeric:tabular-nums">{{totalInclTaxFmt}}</td>
+            <td></td>
+          </tr>
+        </tfoot>
       </table>
 
-      <div class="totals-section">
-        <!-- Left: notes / remarks area -->
-        <div class="totals-notes">
-          <div class="totals-notes-label">Remarks / Notes</div>
-          <div class="totals-notes-line"></div>
-          <div class="totals-notes-line" style="margin-top:12px"></div>
-          <div class="totals-notes-line" style="margin-top:12px"></div>
-        </div>
-
-        <!-- Right: summary totals -->
-        <table class="totals-table">
-          <tr>
-            <td>Subtotal (line items)</td>
-            <td class="amt">RM {{lineSubtotalFmt}}</td>
-          </tr>
-          <tr>
-            <td>Total (excl. tax)</td>
-            <td class="amt">RM {{totalExclTaxFmt}}</td>
-          </tr>
-          <tr>
-            <td>Tax rate</td>
-            <td class="amt">{{taxRateLabel}}</td>
-          </tr>
-          <tr>
-            <td>Tax amount</td>
-            <td class="amt">RM {{taxAmountFmt}}</td>
-          </tr>
-          <tr class="tot-strong">
-            <td>Total (incl. SST)</td>
-            <td class="amt">RM {{totalInclTaxFmt}}</td>
-          </tr>
-        </table>
+      <!-- DESCRIPTION + AMOUNT IN WORDS -->
+      <div class="desc-block">
+        <div class="desc-line">Description: {{descriptionEscaped}}</div>
+        <div class="amount-words">Ringgit Malaysia: {{amountInWordsEscaped}}</div>
       </div>
 
-      <!-- <div class="footer">
-        <div class="sign">
-          <div class="sign-label">Receiver Signature:</div>
-          <div class="sign-space"></div>
-          <div class="sign-keep">
-            <div class="sign-line"></div>
-            <div class="received-date">
-              <div><b>Received Date:</b></div>
-              <div class="date-line"></div>
-            </div>
-          </div>
+      <!-- PAYMENT TERMS + TOTALS -->
+      <div class="payment-row">
+        <div class="payment-terms-cell">
+          <div class="payment-terms-label">Payment Terms</div>
+          <div class="payment-terms-value">{{paymentTermsEscaped}}</div>
         </div>
-        <div class="footer-divider"></div>
-      </div> -->
+        <div class="payment-summary-cell">
+          <div class="payment-summary-label">Tax Amount (RM)</div>
+          <div class="payment-summary-value">{{taxAmountFmt}}</div>
+        </div>
+        <div class="payment-summary-cell">
+          <div class="payment-summary-label">Total Payable (RM)</div>
+          <div class="payment-summary-value">{{totalInclTaxFmt}}</div>
+        </div>
+      </div>
+      <div class="auth-row">
+        Authorised Signature &nbsp;
+        <strong>SME EDARAN SDN BHD (200701036678 (794707-P))</strong>
+      </div>
+
+      <!-- PAYMENT INSTRUCTIONS -->
+      <div class="instructions-section">
+        <div class="instructions-text">
+          <div class="bank-line">
+            All cheque should be crossed and made payable to<br/>
+            SME Edaran Sdn Bhd (PUBLIC BANK A/C NO. 3202012520)
+          </div>
+          <ul>
+            <li>Interest at the rate of 1.5% a month or part thereof be charged for outstanding invoices, from the date of this invoice otherwise all charges are deemed to be correct.</li>
+            <li>If there is any discrepancy, kindly contact our accounts department within 7 days in writing.</li>
+            <li>Otherwise we will not entertain.</li>
+            <li>All business transacted subject to our standard of trading conditions.</li>
+            <li>Copy available upon request.</li>
+          </ul>
+        </div>
+        <!-- <div class="qr-placeholder">{{qrCodeHtml}}</div> -->
+      </div>
+
     </div>
   </body>
 </html>
