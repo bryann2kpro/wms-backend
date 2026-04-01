@@ -220,10 +220,10 @@
       .col-no   { width: 3%;  text-align: left; }
       .col-sku  { width: 10%; }
       .col-desc { width: 17%; font-size: 10px; }
-      .col-qty  { width: 5%;  text-align: right; font-variant-numeric: tabular-nums; }
-      .col-num  { width: 8%;  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-      .col-disc { width: 7%;  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-      .col-rate { width: 5%;  text-align: right; white-space: nowrap; }
+      .col-qty  { width: 5%;  font-variant-numeric: tabular-nums; }
+      .col-num  { width: 8%;  font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .col-disc { width: 7%;  font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .col-rate { width: 5%;  white-space: nowrap; }
       .empty { padding: 16px 8px; text-align: center; color: var(--muted); }
 
       /* ── Description + Amount in Words ── */
@@ -434,7 +434,7 @@
             <th class="col-no">No.</th>
             <th class="col-sku">SKU</th>
             <th class="col-desc">Description</th>
-            <th class="col-qty" style="text-align:right">Qty</th>
+            <th class="col-qty">Qty</th>
             <th class="col-num">Price/Unit<br/>(RM)</th>
             <th class="col-disc">Discount<br/>(RM)</th>
             <th class="col-num">Sub Total<br/>(RM)</th>
@@ -449,11 +449,13 @@
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="6" style="text-align:left">Total Amount Due</td>
-            <td style="text-align:right; font-variant-numeric:tabular-nums">{{lineSubtotalFmt}}</td>
-            <td style="text-align:right; font-variant-numeric:tabular-nums">{{totalExclTaxFmt}}</td>
-            <td style="text-align:right; font-variant-numeric:tabular-nums">{{taxAmountFmt}}</td>
-            <td style="text-align:right; font-variant-numeric:tabular-nums">{{totalInclTaxFmt}}</td>
+            <td colspan="3" style="text-align:left">Total Qty</td>
+            <td colspan="1" style="font-variant-numeric:tabular-nums">{{totalQty}}</td>
+            <td colspan="2" style="font-variant-numeric:tabular-nums">Total Amount Due</td>
+            <td style="font-variant-numeric:tabular-nums">{{lineSubtotalFmt}}</td>
+            <td style="font-variant-numeric:tabular-nums">{{totalExclTaxFmt}}</td>
+            <td style="font-variant-numeric:tabular-nums">{{taxAmountFmt}}</td>
+            <td style="font-variant-numeric:tabular-nums">{{totalInclTaxFmt}}</td>
             <td></td>
           </tr>
         </tfoot>

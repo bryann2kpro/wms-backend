@@ -239,6 +239,7 @@ async function buildProformaInvoiceHtml(invoiceRow: InvoiceRowForPdf): Promise<s
 
   const lineSubtotalSum = computedLines.reduce((s, l) => s + l.subTotal, 0);
 
+  let totalQty = computedLines.reduce((s, l) => s + l.qty, 0);
   let subtotal = parseFloat(String(invoiceRow.totalExclTax ?? '0')) || 0;
   let taxAmt = parseFloat(String(invoiceRow.taxAmount ?? '0')) || 0;
   let totalIncl = parseFloat(String(invoiceRow.totalInclTax ?? '0')) || 0;
@@ -250,6 +251,7 @@ async function buildProformaInvoiceHtml(invoiceRow: InvoiceRowForPdf): Promise<s
     subtotal = sumLines;
     taxAmt = sumLines * effectiveSstRate;
     totalIncl = subtotal + taxAmt;
+    totalQty = computedLines.reduce((s, l) => s + l.qty, 0);
   }
 
   if (totalIncl === 0 && subtotal === 0 && taxAmt === 0) {
@@ -310,6 +312,7 @@ async function buildProformaInvoiceHtml(invoiceRow: InvoiceRowForPdf): Promise<s
     descriptionEscaped: escapeHtml(outlet?.outletName ? `${outlet.outletName} DELIVERY ${docDate}` : '—'),
     amountInWordsEscaped: escapeHtml(ringgitToWords(totalIncl)),
     paymentTermsEscaped: '14 DAYS',
+    totalQty: String(totalQty),
   });
 }
 
