@@ -38,12 +38,40 @@ ENV NODE_ENV=production
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
+# Chrome shared library dependencies required by the puppeteer-bundled Chromium
+RUN apt-get update && apt-get install -y \
+    libglib2.0-0 \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 # Runtime: dist + migrations + migrate-only Drizzle config (no src/ — migrate applies SQL, not TS schema)
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/postgres ./postgres
 COPY --from=builder /app/drizzle.migrate.config.ts ./drizzle.migrate.config.ts
+
+# Chrome binary downloaded by puppeteer during `pnpm i` in the builder stage
+COPY --from=builder /root/.cache/puppeteer /root/.cache/puppeteer
+
+# HTML templates — not bundled by esbuild, must be copied alongside dist/
+COPY --from=builder /app/src/features/report/html ./dist/html
+COPY --from=builder /app/src/features/documents/html ./dist/html
 
 EXPOSE 7777
 
