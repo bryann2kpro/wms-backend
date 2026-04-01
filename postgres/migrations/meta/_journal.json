@@ -470,6 +470,13 @@
       "when": 1774931577856,
       "tag": "0066_panoramic_payback",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1775015403842,
+      "tag": "0067_cheerful_hex",
+      "breakpoints": true
     }
   ]
 }
