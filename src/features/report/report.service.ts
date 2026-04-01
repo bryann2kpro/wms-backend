@@ -512,6 +512,7 @@ interface DoPickingListSkuGroup {
   skuCode: string;
   skuDescription: string;
   totalQtyRequired: number;
+  totalQtyPicked: number;
   doBreakdown: { doNo: string; qtyRequired: number }[];
   allocations: { rackName: string | null; grnNo: string | null; lotNo: string | null; expiryDate: Date | null; qtyAllocated: string; priorityFlag: boolean }[];
 }
@@ -531,38 +532,70 @@ export async function renderDoPickingListHtml(
   for (const g of skuGroups) for (const d of g.doBreakdown) doNos.add(d.doNo);
   const totalUnits = skuGroups.reduce((sum, g) => sum + g.totalQtyRequired, 0);
 
-  const tableRows = skuGroups
-    .map((g, i) => {
+  const flattenedRows: {
+    skuCode: string;
+    skuDescription: string;
+    doBreakdownHtml: string;
+    qtyRequired: number;
+    rackLabel: string;
+    completedPicking: boolean;
+  }[] = [];
+
+  for (const g of skuGroups) {
+    const doBreakdownHtml = g.doBreakdown
+      .map((d) => `<span>${escapeHtml(d.doNo)}&thinsp;&times;&thinsp;${formatQtyNum(d.qtyRequired)}</span>`)
+      .join('&ensp;');
+    const completedPicking = g.totalQtyPicked >= g.totalQtyRequired;
+
+    const rackQtyMap = new Map<string, number>();
+    for (const a of g.allocations) {
+      const rackLabel = a.rackName?.trim() ? `Rack ${a.rackName.trim()}` : 'Rack —';
+      const qtyAllocated = parseFloat(String(a.qtyAllocated ?? 0)) || 0;
+      rackQtyMap.set(rackLabel, (rackQtyMap.get(rackLabel) ?? 0) + qtyAllocated);
+    }
+
+    if (rackQtyMap.size === 0) {
+      flattenedRows.push({
+        skuCode: g.skuCode,
+        skuDescription: g.skuDescription,
+        doBreakdownHtml,
+        qtyRequired: g.totalQtyRequired,
+        rackLabel: 'Rack —',
+        completedPicking,
+      });
+      continue;
+    }
+
+    const rackRows = Array.from(rackQtyMap.entries()).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    for (const [rackLabel, qtyRequired] of rackRows) {
+      flattenedRows.push({
+        skuCode: g.skuCode,
+        skuDescription: g.skuDescription,
+        doBreakdownHtml,
+        qtyRequired,
+        rackLabel,
+        completedPicking,
+      });
+    }
+  }
+
+  const tableRows = flattenedRows
+    .map((row, i) => {
       const rowAlt = i % 2 !== 0 ? ' tr-alt' : '';
-
-      const doBreakdownHtml = g.doBreakdown
-        .map((d) => `<span>${escapeHtml(d.doNo)}&thinsp;&times;&thinsp;${formatQtyNum(d.qtyRequired)}</span>`)
-        .join('&ensp;');
-
-      const seenRacks = new Set<string>();
-      const rackOrder: string[] = [];
-      for (const a of g.allocations) {
-        const r = a.rackName?.trim();
-        if (r && !seenRacks.has(r)) {
-          seenRacks.add(r);
-          rackOrder.push(r);
-        }
-      }
-      const rackHtml =
-        rackOrder.length === 0
-          ? '<span class="rack-empty">—</span>'
-          : rackOrder.map((name) => `<div class="rack-line">${escapeHtml(name)}</div>`).join('');
-
+      const markHtml = row.completedPicking ? '&#10003;' : '';
+      const markClass = row.completedPicking ? ' col-mark-done' : '';
       return `<tr class="tr-data${rowAlt}">
         <td class="col-no">${i + 1}</td>
-        <td class="col-sku">${escapeHtml(g.skuCode)}</td>
+        <td class="col-sku">${escapeHtml(row.skuCode)}</td>
         <td class="col-desc">
-          ${escapeHtml(g.skuDescription)}
-          <div class="do-breakdown">${doBreakdownHtml}</div>
+          ${escapeHtml(row.skuDescription)}
+          <div class="do-breakdown">${row.doBreakdownHtml}</div>
         </td>
-        <td class="col-qty col-qty-total">${formatQtyNum(g.totalQtyRequired)}</td>
-        <td class="col-rack">${rackHtml}</td>
-        <td class="col-mark"></td>
+        <td class="col-qty col-qty-total">${formatQtyNum(row.qtyRequired)}</td>
+        <td class="col-rack">${escapeHtml(row.rackLabel)}</td>
+        <td class="col-mark${markClass}">${markHtml}</td>
       </tr>`;
     })
     .join('\n');
@@ -614,13 +647,16 @@ export async function generateDoPickingListPdf(
         skuCode: item.skuCode ?? '—',
         skuDescription: item.skuDescription ?? '—',
         totalQtyRequired: 0,
+        totalQtyPicked: 0,
         doBreakdown: [],
         allocations: [],
       });
     }
     const g = grouped.get(key)!;
     const req = parseFloat(String(item.qtyRequired ?? 0)) || 0;
+    const picked = parseFloat(String(item.qtyPicked ?? 0)) || 0;
     g.totalQtyRequired += req;
+    g.totalQtyPicked += picked;
     if (item.doNo) {
       g.doBreakdown.push({ doNo: item.doNo, qtyRequired: req });
     }
