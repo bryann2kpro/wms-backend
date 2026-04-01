@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
 import { EsAdvanceNoticeRepositoryClass } from './es-advance-notice.repository.js';
+import { EmailNotificationRepositoryClass } from '@/features/notifications/email-notification.repository.js';
+import { enqueueEmailNotification } from '@/features/notifications/email-notification.job.js';
 import { Error } from '@/error/index.js';
 import { logger } from '@/util/logger.js';
+import { env } from '@/env.js';
 import z from 'zod';
 
 const lineSchema = z.object({
@@ -24,7 +27,10 @@ const advanceNoticeSchema = z.object({
 });
 
 export class EsAdvanceNoticeControllerClass {
-  constructor(private esAdvanceNoticeRepository: EsAdvanceNoticeRepositoryClass) {}
+  constructor(
+    private esAdvanceNoticeRepository: EsAdvanceNoticeRepositoryClass,
+    private emailNotificationRepository: EmailNotificationRepositoryClass,
+  ) {}
 
   /**
    * Receive Advance Notice
@@ -74,6 +80,24 @@ export class EsAdvanceNoticeControllerClass {
       });
 
       logger.info(`✅ [EsAdvanceNoticeController.receiveAdvanceNotice] Advance notice saved — id: ${record.id}, tranid: ${payload.tranid}`);
+
+      // Step 4: Enqueue admin email notification (non-fatal — never blocks the 200)
+      if (env.ADMIN_EMAIL) {
+        try {
+          const notification = await this.emailNotificationRepository.createNotification({
+            triggerType: 'ADVANCE_NOTICE_RECEIVED',
+            referenceId: record.id,
+            referenceLabel: payload.tranid,
+            toEmail: env.ADMIN_EMAIL,
+          });
+          await enqueueEmailNotification(notification.id);
+          logger.info(`ℹ️ [EsAdvanceNoticeController.receiveAdvanceNotice] Admin notification enqueued — notificationId: ${notification.id}`);
+        } catch (notifError) {
+          logger.error('❌ [EsAdvanceNoticeController.receiveAdvanceNotice] Failed to enqueue admin notification:', notifError);
+        }
+      } else {
+        logger.warn('⚠️ [EsAdvanceNoticeController.receiveAdvanceNotice] ADMIN_EMAIL not set — skipping notification');
+      }
 
       return res.status(200).json({
         success: true,

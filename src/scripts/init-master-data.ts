@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 import { db } from '@/db';
 import { logger } from '@/util/logger';
-import { RegionTable, RegionCode } from '@/features/master-data/region.model';
+import { RegionTable, RegionCode, RegionPricingTable } from '@/features/master-data/region.model';
 import { RegionDeliveryScheduleTable, DayOfWeek } from '@/features/master-data/delivery-date.model';
 import { StockUnitTable, StockUnitCode } from '@/features/master-data/stock-unit.model';
 import { eq, inArray } from 'drizzle-orm';
@@ -25,6 +25,17 @@ const DEFAULT_REGIONS = [
   { regionName: 'South', regionCode: RegionCode.SOUTH },
   { regionName: 'East Coast', regionCode: RegionCode.EAST_COAST },
 ];
+
+/**
+ * Default region pricing (MYR per CTN).
+ * effectiveQty = max(totalQty, minQty), SST is decimal (0.06 = 6%).
+ * Region-specific rate can be overridden here later.
+ */
+const DEFAULT_REGION_PRICING = {
+  rate: '0.00',
+  minQty: '5',
+  sstRate: '0.0600',
+};
 
 /**
  * Default delivery schedules per region
@@ -80,6 +91,38 @@ async function getOrCreateRegion(regionName: string, regionCode: string): Promis
 
   logger.info(`✅ Region "${regionName}" (${regionCode}) created successfully`);
   return newRegion.regionId;
+}
+
+/**
+ * Get or create pricing for a region
+ */
+async function getOrCreateRegionPricing(regionId: string, regionCode: string): Promise<void> {
+  const existing = await db
+    .select()
+    .from(RegionPricingTable)
+    .where(eq(RegionPricingTable.regionId, regionId))
+    .limit(1);
+
+  if (existing.length > 0) {
+    logger.info(`✓ Region pricing for ${regionCode} already exists`);
+    return;
+  }
+
+  await db
+    .insert(RegionPricingTable)
+    .values({
+      regionId,
+      rate: DEFAULT_REGION_PRICING.rate,
+      minQty: DEFAULT_REGION_PRICING.minQty,
+      sstRate: DEFAULT_REGION_PRICING.sstRate,
+      isActive: true,
+      createdBy: 'system',
+      updatedBy: 'system',
+    });
+
+  logger.info(
+    `✅ Region pricing created for ${regionCode} (rate=${DEFAULT_REGION_PRICING.rate}, minQty=${DEFAULT_REGION_PRICING.minQty}, sstRate=${DEFAULT_REGION_PRICING.sstRate})`
+  );
 }
 
 /**
@@ -140,6 +183,26 @@ async function initRegions(): Promise<Map<string, string>> {
 
   logger.info('✅ Regions initialization complete!');
   return regionMap;
+}
+
+/**
+ * Initialize pricing for all regions
+ */
+async function initRegionPricing(regionMap: Map<string, string>): Promise<void> {
+  logger.info('💰 Initializing region pricing...');
+
+  for (const region of DEFAULT_REGIONS) {
+    const regionId = regionMap.get(region.regionCode);
+
+    if (!regionId) {
+      logger.warn(`⚠️ Region ${region.regionCode} not found, skipping pricing`);
+      continue;
+    }
+
+    await getOrCreateRegionPricing(regionId, region.regionCode);
+  }
+
+  logger.info('✅ Region pricing initialization complete!');
 }
 
 /**
@@ -405,6 +468,9 @@ export async function initMasterData(): Promise<void> {
     
     // Initialize regions first (delivery schedules depend on them)
     const regionMap = await initRegions();
+
+    // Initialize pricing for regions
+    await initRegionPricing(regionMap);
     
     // Initialize delivery schedules
     await initDeliverySchedules(regionMap);

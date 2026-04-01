@@ -1,0 +1,1 @@
+ALTER TABLE "main"."grn_items" ADD COLUMN "lot_no" text;

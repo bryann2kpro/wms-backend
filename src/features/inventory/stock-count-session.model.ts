@@ -61,6 +61,7 @@ export const StockCountItemsTable = MainSchema.table("stock_count_items", {
   countedLossQty: numeric("counted_loss_qty", { precision: 12, scale: 2 }),
   action: text("action"), // 'tally_to_opening' | 'tally_to_stock_count' | 'manual_key_in'
   notes: text("notes"),
+  imageUrl: text("image_url"),
 
   // Approval
   isApproved: boolean("is_approved").notNull().default(false),

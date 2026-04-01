@@ -6,7 +6,7 @@ import { OrganizationsTable } from "./organization.model";
 * Suppliers Table
 * Description: This table is used to store the Empire Sushi's suppliers data.
 */
-export const SuppliersTable = MainSchema.table('supplers', {
+export const SuppliersTable = MainSchema.table('m_suppliers', {
   supplierId: uuid('supplier_id').defaultRandom().notNull().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   supplierName: text('supplier_name').notNull(),

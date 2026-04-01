@@ -143,7 +143,7 @@ export class S3Repository {
         ContentType: 'application/pdf',
       });
       await this.s3.send(command);
-      const url = `https://${env.AWS_BUCKET_NAME}.s3.amazonaws.com/${key}`;
+      const url = `https://${env.AWS_BUCKET_NAME}.s3.${env.AWS_REGION}.amazonaws.com/${key}`;
       logger.info(`✅ [S3Repository.uploadReportPdf] Report uploaded: ${url}`);
       return url;
     } catch (error) {

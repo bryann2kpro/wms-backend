@@ -27,6 +27,7 @@ export type OutletFilter = {
 export type OutletWithRegion = OutletType & {
   regionName: string | null;
   regionCode: string | null;
+  address?: string | null;
 };
 
 export class OutletsRepositoryClass {
@@ -77,8 +78,10 @@ export class OutletsRepositoryClass {
       const baseQuery = db
         .select({
           outletId: OutletsTable.outletId,
+          organizationId: OutletsTable.organizationId,
           outletName: OutletsTable.outletName,
           outletCode: OutletsTable.outletCode,
+          address: OutletsTable.address,
           regionId: OutletsTable.regionId,
           createdAt: OutletsTable.createdAt,
           updatedAt: OutletsTable.updatedAt,
@@ -119,9 +122,10 @@ export class OutletsRepositoryClass {
       const [outlet] = await db
         .select({
           outletId: OutletsTable.outletId,
+          organizationId: OutletsTable.organizationId,
           outletName: OutletsTable.outletName,
           outletCode: OutletsTable.outletCode,
-          outletAddress: OutletsTable.outletAddress,
+          address: OutletsTable.address,
           regionId: OutletsTable.regionId,
           createdAt: OutletsTable.createdAt,
           updatedAt: OutletsTable.updatedAt,
@@ -156,9 +160,10 @@ export class OutletsRepositoryClass {
       const [outlet] = await db
         .select({
           outletId: OutletsTable.outletId,
+          organizationId: OutletsTable.organizationId,
           outletName: OutletsTable.outletName,
           outletCode: OutletsTable.outletCode,
-          outletAddress: OutletsTable.outletAddress,
+          address: OutletsTable.address,
           regionId: OutletsTable.regionId,
           createdAt: OutletsTable.createdAt,
           updatedAt: OutletsTable.updatedAt,

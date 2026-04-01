@@ -19,11 +19,13 @@ import { PurchaseOrdersTable } from '../outbound/purchase-orders.model';
 import { OutletsTable } from '../master-data/outlets.model';
 import { RegionTable } from '../master-data/region.model';
 import { DeliveryOrdersTable } from '../outbound/delivery-orders.model';
+import { getSmeLogoImgHtml } from '@/util/sme-logo';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MOVEMENT_REPORT_HTML_PATH = path.join(__dirname, 'html', 'movement-report.html');
 const PROFORMA_INVOICES_HTML_PATH = path.join(__dirname, 'html', 'proforma-invoices.html');
 const STOCK_COUNT_CHECKLIST_HTML_PATH = path.join(__dirname, 'html', 'stock-count-checklist.html');
+const DO_PICKING_LIST_HTML_PATH = path.join(__dirname, 'html', 'do-picking-list.html');
 
 // Movement Report row shape
 export interface MovementReportRow {
@@ -75,14 +77,14 @@ const INVOICE_SUMMARY_MOCK_ROWS: InvoiceSummaryRow[] = [
 export async function getMovementReportData(
   _dateFrom: string,
   _dateTo: string,
-  _regionId: string
+  _regionId?: string
 ): Promise<MovementReportRow[]> {
   const dateFrom = new Date(_dateFrom);
   const dateToExclusive = new Date(_dateTo);
   dateToExclusive.setUTCDate(dateToExclusive.getUTCDate() + 1);
 
   const whereConditions = [
-    eq(InventoryMovementsTable.regionId, _regionId),
+    ...(_regionId ? [eq(InventoryMovementsTable.regionId, _regionId)] : []),
     gte(InventoryMovementsTable.createdAt, dateFrom),
     lt(InventoryMovementsTable.createdAt, dateToExclusive),
     eq(InventoryMovementsTable.movementType, InventoryMovementType.SHIPMENT),
@@ -149,7 +151,10 @@ export async function renderMovementReportHtml(
     <td class="px-4 py-3" colspan="3">${escapeHtml(regionName)}</td>
   </tr>`;
 
+  const logoImgHtml = await getSmeLogoImgHtml('SME Ederan');
+
   return template
+    .replace(/\{\{logoImgHtml\}\}/, logoImgHtml)
     .replace(/\{\{tableRegionHeader\}\}/, tableRegionHeader)
     .replace(/\{\{dateFrom\}\}/g, dateFrom ?? '—')
     .replace(/\{\{dateTo\}\}/g, dateTo ?? '—')
@@ -192,7 +197,8 @@ export async function getInvoiceSummaryData(
       outlet: OutletsTable.outletName,
       region: sql<string>`coalesce(${RegionTable.regionName}, '—')`,
       ctn: sql<number>`coalesce(sum(${InvoiceItemsTable.qty}), 0)::float8`,
-      amount: sql<number>`coalesce(${InvoicesTable.totalInclTax}, 0)::float8`,
+      // PO amount from NetSuite pull — invoice totals are often unset when proforma is issued
+      amount: sql<number>`coalesce(${PurchaseOrdersTable.amount}::float8, 0)`,
     })
     .from(InvoicesTable)
     .innerJoin(PurchaseOrdersTable, eq(InvoicesTable.poId, PurchaseOrdersTable.id))
@@ -204,8 +210,9 @@ export async function getInvoiceSummaryData(
       InvoicesTable.id,
       InvoicesTable.invoiceNo,
       InvoicesTable.dateIssued,
-      InvoicesTable.totalInclTax,
+      InvoicesTable.doNo,
       PurchaseOrdersTable.purchaseOrderNo,
+      PurchaseOrdersTable.amount,
       OutletsTable.outletName,
       RegionTable.regionName
     )
@@ -318,12 +325,14 @@ export async function renderProformaInvoicesHtml(
   dateTo?: string,
   regionId?: string
 ): Promise<string> {
-  const [template, regionName] = await Promise.all([
+  const [template, regionName, logoImgHtml] = await Promise.all([
     readFile(PROFORMA_INVOICES_HTML_PATH, 'utf-8'),
     resolveRegionName(regionId),
+    getSmeLogoImgHtml('SME Ederan'),
   ]);
 
   return template
+    .replace(/\{\{logoImgHtml\}\}/g, logoImgHtml)
     .replace(/\{\{dateFrom\}\}/g, escapeHtml(dateFrom ?? '—'))
     .replace(/\{\{dateTo\}\}/g, escapeHtml(dateTo ?? '—'))
     .replace(/\{\{regionName\}\}/g, escapeHtml(regionName ?? '—'))
@@ -337,27 +346,43 @@ async function resolveRegionName(regionId?: string): Promise<string> {
 }
 
 function formatAmount(value: number): string {
-  return `RM ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 /**
  * Render HTML to PDF using Puppeteer (same layout as preview).
  * Waits for Tailwind CDN script so styles are applied before printing.
  */
-export async function htmlToPdf(html: string, options?: { landscape?: boolean }): Promise<Buffer> {
+export async function htmlToPdf(
+  html: string,
+  options?: { landscape?: boolean; preferCSSPageSize?: boolean },
+): Promise<Buffer> {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   try {
     const page = await browser.newPage();
+    // Default viewport is ~800px; wide layouts need a larger logical width for PDF.
+    if (options?.preferCSSPageSize) {
+      // Match A4 portrait at 96dpi (210mm × 297mm) — proforma invoice PDF
+      await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+    } else if (options?.landscape) {
+      await page.setViewport({ width: 1600, height: 900, deviceScaleFactor: 1 });
+    }
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 20000 });
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      landscape: options?.landscape ?? false,
-      printBackground: true,
-      margin: { top: '16px', right: '16px', bottom: '16px', left: '16px' },
-    });
+
+    const pdfBuffer = options?.preferCSSPageSize
+      ? await page.pdf({
+          printBackground: true,
+          preferCSSPageSize: true,
+        })
+      : await page.pdf({
+          format: 'A4',
+          landscape: options?.landscape ?? false,
+          printBackground: true,
+          margin: { top: '16px', right: '16px', bottom: '16px', left: '16px' },
+        });
     return Buffer.from(pdfBuffer);
   } finally {
     await browser.close();
@@ -473,6 +498,155 @@ export async function generateStockCountChecklistPdf(
   const safeName = session.name.replace(/[^a-zA-Z0-9-_ ]/g, '').replace(/\s+/g, '_');
   const dateStr = new Date().toISOString().split('T')[0];
   const filename = `Stock_Count_Checklist_${safeName}_${dateStr}.pdf`;
+
+  return { pdfBase64: pdfBuffer.toString('base64'), filename };
+}
+
+// ---------------------------------------------------------------------------
+// DO Picking List
+// ---------------------------------------------------------------------------
+
+const ACTIVE_DO_STATUSES = ['CREATED', 'NEW', 'PICKING', 'PACKING'];
+
+interface DoPickingListSkuGroup {
+  skuCode: string;
+  skuDescription: string;
+  totalQtyRequired: number;
+  doBreakdown: { doNo: string; qtyRequired: number }[];
+  allocations: { rackName: string | null; grnNo: string | null; lotNo: string | null; expiryDate: Date | null; qtyAllocated: string; priorityFlag: boolean }[];
+}
+
+/**
+ * Load the DO picking list HTML template and inject SKU-grouped picking data.
+ */
+export async function renderDoPickingListHtml(
+  skuGroups: DoPickingListSkuGroup[],
+): Promise<string> {
+  const template = await readFile(DO_PICKING_LIST_HTML_PATH, 'utf-8');
+  const logoImgHtml = await getSmeLogoImgHtml();
+
+  const generatedAt = new Date().toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' });
+
+  const doNos = new Set<string>();
+  for (const g of skuGroups) for (const d of g.doBreakdown) doNos.add(d.doNo);
+  const totalUnits = skuGroups.reduce((sum, g) => sum + g.totalQtyRequired, 0);
+
+  const tableRows = skuGroups
+    .map((g, i) => {
+      const rowAlt = i % 2 !== 0 ? ' tr-alt' : '';
+
+      const doBreakdownHtml = g.doBreakdown
+        .map((d) => `<span>${escapeHtml(d.doNo)}&thinsp;&times;&thinsp;${formatQtyNum(d.qtyRequired)}</span>`)
+        .join('&ensp;');
+
+      const seenRacks = new Set<string>();
+      const rackOrder: string[] = [];
+      for (const a of g.allocations) {
+        const r = a.rackName?.trim();
+        if (r && !seenRacks.has(r)) {
+          seenRacks.add(r);
+          rackOrder.push(r);
+        }
+      }
+      const rackHtml =
+        rackOrder.length === 0
+          ? '<span class="rack-empty">—</span>'
+          : rackOrder.map((name) => `<div class="rack-line">${escapeHtml(name)}</div>`).join('');
+
+      return `<tr class="tr-data${rowAlt}">
+        <td class="col-no">${i + 1}</td>
+        <td class="col-sku">${escapeHtml(g.skuCode)}</td>
+        <td class="col-desc">
+          ${escapeHtml(g.skuDescription)}
+          <div class="do-breakdown">${doBreakdownHtml}</div>
+        </td>
+        <td class="col-qty col-qty-total">${formatQtyNum(g.totalQtyRequired)}</td>
+        <td class="col-rack">${rackHtml}</td>
+        <td class="col-mark"></td>
+      </tr>`;
+    })
+    .join('\n');
+
+  return template
+    .replace(/\{\{logoImgHtml\}\}/g, logoImgHtml)
+    .replace(/\{\{generatedAt\}\}/g, generatedAt)
+    .replace(/\{\{totalDOs\}\}/g, String(doNos.size))
+    .replace(/\{\{totalSKUs\}\}/g, String(skuGroups.length))
+    .replace(/\{\{totalUnits\}\}/g, formatQtyNum(totalUnits))
+    .replace(/\{\{tableRows\}\}/, tableRows);
+}
+
+function formatQtyNum(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+/**
+ * Generate a DO Picking List PDF — SKU-grouped summary of all active DOs.
+ */
+export async function generateDoPickingListPdf(
+  _orgId: string,
+): Promise<{ pdfBase64: string; filename: string }> {
+  const { deliveryOrdersRepository } = await import('@/composition-root');
+
+  const itemsResult = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(
+    { doStatus: ACTIVE_DO_STATUSES },
+    { pageSize: 9999, pageNumber: 1 },
+  );
+
+  // Fetch allocations for all items
+  const doItemIds = itemsResult.query.map((i) => i.id);
+  const allAllocations = doItemIds.length > 0
+    ? await deliveryOrdersRepository.getDoItemAllocationsWithDetails(doItemIds)
+    : [];
+  const allocByItemId = new Map<string, typeof allAllocations>();
+  for (const a of allAllocations) {
+    const arr = allocByItemId.get(a.doItemId) ?? [];
+    arr.push(a);
+    allocByItemId.set(a.doItemId, arr);
+  }
+
+  // Group by SKU
+  const grouped = new Map<string, DoPickingListSkuGroup>();
+  for (const item of itemsResult.query) {
+    const key = item.skuCode ?? 'no-sku';
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        skuCode: item.skuCode ?? '—',
+        skuDescription: item.skuDescription ?? '—',
+        totalQtyRequired: 0,
+        doBreakdown: [],
+        allocations: [],
+      });
+    }
+    const g = grouped.get(key)!;
+    const req = parseFloat(String(item.qtyRequired ?? 0)) || 0;
+    g.totalQtyRequired += req;
+    if (item.doNo) {
+      g.doBreakdown.push({ doNo: item.doNo, qtyRequired: req });
+    }
+    for (const alloc of allocByItemId.get(item.id) ?? []) {
+      if (!g.allocations.some((a) => a.grnNo === alloc.grnNo && a.rackName === alloc.rackName)) {
+        g.allocations.push({
+          rackName: alloc.rackName,
+          grnNo: alloc.grnNo,
+          lotNo: alloc.lotNo,
+          expiryDate: alloc.expiryDate,
+          qtyAllocated: alloc.qtyAllocated,
+          priorityFlag: alloc.priorityFlag,
+        });
+      }
+    }
+  }
+
+  const skuGroups = Array.from(grouped.values()).sort((a, b) =>
+    a.skuCode.localeCompare(b.skuCode),
+  );
+
+  const html = await renderDoPickingListHtml(skuGroups);
+  const pdfBuffer = await htmlToPdf(html);
+
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = `DO_Picking_List_${dateStr}.pdf`;
 
   return { pdfBase64: pdfBuffer.toString('base64'), filename };
 }

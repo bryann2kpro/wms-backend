@@ -8,7 +8,7 @@ import { OrganizationsTable } from "./organization.model";
 * Description: This table is used to store the Empire Sushi's sku data.
 */
 
-export const SkuTable = MainSchema.table('skus', {
+export const SkuTable = MainSchema.table('m_skus', {
   skuId: uuid('sku_id').defaultRandom().notNull().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   skuCode: text('sku_code').notNull(),

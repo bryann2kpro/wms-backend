@@ -38,6 +38,8 @@ export const typeDefs = `#graphql
         rackName: String
         "Batch expiry date (ISO string), null if not tracked"
         expiryDate: String
+        "Lot number from the GRN item, null if not recorded"
+        lotNo: String
         "Quantity to pick from this batch"
         qtyAllocated: String!
         "Whether this batch was flagged as priority by admin"
@@ -124,6 +126,7 @@ export const typeDefs = `#graphql
     type PurchaseOrder {
         id: ID!
         purchaseOrderNo: String!
+        amount: String!
         """
         Resolved outlet (master data) for this purchase order. Request with: purchaseOrders { query { outlet { outletName outletCode regionName } } }
         """

@@ -41,9 +41,12 @@ export const env = createEnv({
     COMPANY_NAME: z.string().optional(),
     COMPANY_EMAIL: z.string().optional(),
     COMPANY_ADDRESS: z.string().optional(),
+    // Email notification recipient
+    ADMIN_EMAIL: z.string().email().optional(),
     // Invoice cron toggle (when not \"true\", cron does not start)
     INVOICES_CRON_ENABLED: z.string().optional(),
     SYSTEM_USER_UUID: z.uuid(),
+    INVOICE_ADDRESS_SNAPSHOT_ID: z.uuid(),
     // NetSuite integration (OAuth 1.0a TBA)
     NETSUITE_ACCOUNT_ID: z.string(),
     NETSUITE_CONSUMER_KEY: z.string(),

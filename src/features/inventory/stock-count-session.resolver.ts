@@ -176,6 +176,7 @@ export const resolvers = {
         if ("countedQty" in args.input) patch.countedQty = args.input.countedQty;
         if ("countedLossQty" in args.input) patch.countedLossQty = args.input.countedLossQty;
         if ("notes" in args.input) patch.notes = args.input.notes;
+        if ("imageUrl" in args.input) patch.imageUrl = args.input.imageUrl;
         if (args.input.isApproved === true) {
           patch.isApproved = true;
           patch.approvedBy = userId;
@@ -210,6 +211,23 @@ export const resolvers = {
         return transformSession({ ...session, itemCount: 0, pendingCount: 0 });
       } catch (error) {
         logger.error("[closeStockCountSession resolver]", error);
+        throw error;
+      }
+    },
+
+    bulkApproveStockCountItems: async (
+      _: unknown,
+      args: { sessionId: string },
+      context: GraphQLContext
+    ) => {
+      try {
+        const orgId = context.organizationId;
+        const userId = context.user?.id;
+        if (!orgId || !userId) throw new GraphQLError("Not authenticated");
+
+        return await stockCountSessionService.bulkApproveReadyItems(orgId, args.sessionId, userId);
+      } catch (error) {
+        logger.error("[bulkApproveStockCountItems resolver]", error);
         throw error;
       }
     },
