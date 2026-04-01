@@ -3,6 +3,9 @@ FROM node:22-slim AS builder
 
 WORKDIR /app
 
+# Skip puppeteer Chrome download in builder — runner uses system Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
 # Ensure pnpm is available (corepack-managed)
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
@@ -30,34 +33,23 @@ RUN pnpm i
 RUN pnpm build
 
 
-# ─── Stage 2: Runtime with Chromium for puppeteer-core ────────
+# ─── Stage 2: Runtime with Chromium for puppeteer ────────
 FROM node:22-slim AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# Chrome shared library dependencies required by the puppeteer-bundled Chromium
+# Install system Chromium — handles all shared library deps automatically
+# and tell puppeteer to use it instead of its bundled Chrome
 RUN apt-get update && apt-get install -y \
-    libglib2.0-0 \
-    libnss3 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libdbus-1-3 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
+    chromium \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Runtime: dist + migrations + migrate-only Drizzle config (no src/ — migrate applies SQL, not TS schema)
 COPY --from=builder /app/dist ./dist
@@ -65,9 +57,6 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/postgres ./postgres
 COPY --from=builder /app/drizzle.migrate.config.ts ./drizzle.migrate.config.ts
-
-# Chrome binary downloaded by puppeteer during `pnpm i` in the builder stage
-COPY --from=builder /root/.cache/puppeteer /root/.cache/puppeteer
 
 # HTML templates — not bundled by esbuild, must be copied alongside dist/
 COPY --from=builder /app/src/features/report/html ./dist/html
