@@ -77,14 +77,14 @@ const INVOICE_SUMMARY_MOCK_ROWS: InvoiceSummaryRow[] = [
 export async function getMovementReportData(
   _dateFrom: string,
   _dateTo: string,
-  _regionId: string
+  _regionId?: string
 ): Promise<MovementReportRow[]> {
   const dateFrom = new Date(_dateFrom);
   const dateToExclusive = new Date(_dateTo);
   dateToExclusive.setUTCDate(dateToExclusive.getUTCDate() + 1);
 
   const whereConditions = [
-    eq(InventoryMovementsTable.regionId, _regionId),
+    ...(_regionId ? [eq(InventoryMovementsTable.regionId, _regionId)] : []),
     gte(InventoryMovementsTable.createdAt, dateFrom),
     lt(InventoryMovementsTable.createdAt, dateToExclusive),
     eq(InventoryMovementsTable.movementType, InventoryMovementType.SHIPMENT),
@@ -151,7 +151,10 @@ export async function renderMovementReportHtml(
     <td class="px-4 py-3" colspan="3">${escapeHtml(regionName)}</td>
   </tr>`;
 
+  const logoImgHtml = await getSmeLogoImgHtml('SME Ederan');
+
   return template
+    .replace(/\{\{logoImgHtml\}\}/, logoImgHtml)
     .replace(/\{\{tableRegionHeader\}\}/, tableRegionHeader)
     .replace(/\{\{dateFrom\}\}/g, dateFrom ?? '—')
     .replace(/\{\{dateTo\}\}/g, dateTo ?? '—')
