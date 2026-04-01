@@ -267,6 +267,26 @@
             width: 180px;
         }
 
+        .col-rack {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            width: 190px;
+            white-space: nowrap;
+        }
+
+        .col-mark {
+            width: 96px;
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .col-mark-done {
+            color: #15803D;
+            font-weight: 700;
+        }
+
         .alloc-line {
             display: flex;
             align-items: baseline;
@@ -403,7 +423,8 @@
                         <th style="text-align:left; width:100px">SKU Code</th>
                         <th style="text-align:left">Description &amp; DO Breakdown</th>
                         <th style="text-align:center; width:72px">Total Req</th>
-                        <th style="text-align:left; width:190px">Rack / Allocation</th>
+                        <th style="text-align:left; width:190px">Rack(s)</th>
+                        <th style="text-align:center; width:96px">Completed Picking</th>
                     </tr>
                 </thead>
                 <tbody>
