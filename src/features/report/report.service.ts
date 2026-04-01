@@ -19,6 +19,7 @@ import { PurchaseOrdersTable } from '../outbound/purchase-orders.model';
 import { OutletsTable } from '../master-data/outlets.model';
 import { RegionTable } from '../master-data/region.model';
 import { DeliveryOrdersTable } from '../outbound/delivery-orders.model';
+import { getSmeLogoImgHtml } from '@/util/sme-logo';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MOVEMENT_REPORT_HTML_PATH = path.join(__dirname, 'html', 'movement-report.html');
@@ -193,7 +194,8 @@ export async function getInvoiceSummaryData(
       outlet: OutletsTable.outletName,
       region: sql<string>`coalesce(${RegionTable.regionName}, '—')`,
       ctn: sql<number>`coalesce(sum(${InvoiceItemsTable.qty}), 0)::float8`,
-      amount: sql<number>`coalesce(${InvoicesTable.totalInclTax}, 0)::float8`,
+      // PO amount from NetSuite pull — invoice totals are often unset when proforma is issued
+      amount: sql<number>`coalesce(${PurchaseOrdersTable.amount}::float8, 0)`,
     })
     .from(InvoicesTable)
     .innerJoin(PurchaseOrdersTable, eq(InvoicesTable.poId, PurchaseOrdersTable.id))
@@ -205,8 +207,9 @@ export async function getInvoiceSummaryData(
       InvoicesTable.id,
       InvoicesTable.invoiceNo,
       InvoicesTable.dateIssued,
-      InvoicesTable.totalInclTax,
+      InvoicesTable.doNo,
       PurchaseOrdersTable.purchaseOrderNo,
+      PurchaseOrdersTable.amount,
       OutletsTable.outletName,
       RegionTable.regionName
     )
@@ -319,12 +322,14 @@ export async function renderProformaInvoicesHtml(
   dateTo?: string,
   regionId?: string
 ): Promise<string> {
-  const [template, regionName] = await Promise.all([
+  const [template, regionName, logoImgHtml] = await Promise.all([
     readFile(PROFORMA_INVOICES_HTML_PATH, 'utf-8'),
     resolveRegionName(regionId),
+    getSmeLogoImgHtml('SME Ederan'),
   ]);
 
   return template
+    .replace(/\{\{logoImgHtml\}\}/g, logoImgHtml)
     .replace(/\{\{dateFrom\}\}/g, escapeHtml(dateFrom ?? '—'))
     .replace(/\{\{dateTo\}\}/g, escapeHtml(dateTo ?? '—'))
     .replace(/\{\{regionName\}\}/g, escapeHtml(regionName ?? '—'))
@@ -338,7 +343,7 @@ async function resolveRegionName(regionId?: string): Promise<string> {
 }
 
 function formatAmount(value: number): string {
-  return `RM ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 /**
@@ -352,6 +357,10 @@ export async function htmlToPdf(html: string, options?: { landscape?: boolean })
   });
   try {
     const page = await browser.newPage();
+    // Default viewport is ~800px; wide landscape tables get clipped in PDF without this.
+    if (options?.landscape) {
+      await page.setViewport({ width: 1600, height: 900, deviceScaleFactor: 1 });
+    }
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 20000 });
     const pdfBuffer = await page.pdf({
       format: 'A4',

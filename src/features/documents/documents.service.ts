@@ -13,6 +13,7 @@ import { AddressSnapshotsTable } from '@/features/address/address-snapshots.mode
 import { env } from '@/env';
 import { htmlToPdf } from '@/features/report/report.service';
 import { logger } from '@/util/logger';
+import { getSmeLogoDataUrl } from '@/util/sme-logo';
 
 export type DeliveryOrderPdfItemRow = {
   index: number;
@@ -22,7 +23,7 @@ export type DeliveryOrderPdfItemRow = {
 };
 
 export async function renderDeliveryOrderPreviewHtml(doId: string): Promise<string> {
-  const logoDataUrl = await getLogoDataUrl();
+  const logoDataUrl = await getSmeLogoDataUrl();
   const billingSnapshot = await getDeliveryOrderBillingAddressSnapshot();
 
   const doRow = await deliveryOrdersRepository.getDeliveryOrderById(doId);
@@ -225,23 +226,6 @@ async function buildDeliveryOrderHtml(input: {
     logoImgHtml,
     tableRowsHtml: tableRows,
   });
-}
-
-let cachedLogoDataUrlPromise: Promise<string | null> | null = null;
-async function getLogoDataUrl(): Promise<string | null> {
-  if (!cachedLogoDataUrlPromise) {
-    cachedLogoDataUrlPromise = (async () => {
-      try {
-        const logoPath = path.resolve(process.cwd(), 'public', 'sme-logo.jpg');
-        const buf = await readFile(logoPath);
-        return `data:image/jpeg;base64,${buf.toString('base64')}`;
-      } catch (error) {
-        logger.warn('⚠️ [documents.service.getLogoDataUrl] Failed to load logo, continuing without it.', error);
-        return null;
-      }
-    })();
-  }
-  return cachedLogoDataUrlPromise;
 }
 
 let cachedBillingSnapshotPromise: Promise<(typeof AddressSnapshotsTable.$inferSelect) | null> | null = null;
