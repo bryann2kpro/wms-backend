@@ -41,15 +41,64 @@
             margin: 0 auto;
         }
 
-        /* ── Document Header ── */
+        /* ── Document Header (brand + report meta, aligned with delivery-order.html) ── */
         .doc-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-end;
+            align-items: flex-start;
             margin-bottom: 2rem;
             padding-bottom: 1.25rem;
             border-bottom: 2px solid var(--text-primary);
-            gap: 2rem;
+            gap: 1.25rem 2rem;
+        }
+
+        .brand-wrap {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .doc-header .logo {
+            width: 64px;
+            height: auto;
+            object-fit: contain;
+            margin-top: 0.125rem;
+            flex: 0 0 auto;
+        }
+
+        .brand-text {
+            min-width: 0;
+        }
+
+        .brand {
+            font-weight: 700;
+            font-size: 1rem;
+            letter-spacing: 0.02em;
+            line-height: 1.25;
+            color: var(--text-primary);
+        }
+
+        .reg-no {
+            font-weight: 500;
+            font-size: 0.75rem;
+            letter-spacing: 0;
+            color: var(--text-secondary);
+        }
+
+        .brand-sub {
+            margin-top: 0.35rem;
+            font-size: 0.7rem;
+            line-height: 1.45;
+            color: var(--text-muted);
+            max-width: 36rem;
+        }
+
+        .doc-title-block {
+            text-align: right;
+            flex-shrink: 0;
+            min-width: 12rem;
         }
 
         .doc-eyebrow {
@@ -62,20 +111,28 @@
             margin-bottom: 0.4rem;
         }
 
-        .doc-title {
+        .doc-heading {
+            margin: 0;
             font-size: 1.625rem;
             font-weight: 700;
             letter-spacing: -0.025em;
-            line-height: 1;
+            line-height: 1.1;
             color: var(--text-primary);
         }
 
         .doc-meta {
+            margin-top: 0.65rem;
             text-align: right;
             font-size: 0.78rem;
             color: var(--text-secondary);
             line-height: 1.75;
-            flex-shrink: 0;
+        }
+
+        .doc-meta .meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 0.4rem;
         }
 
         .doc-meta .label {
@@ -83,7 +140,6 @@
             text-transform: uppercase;
             letter-spacing: 0.08em;
             color: var(--text-muted);
-            display: block;
         }
 
         .doc-meta strong {
@@ -91,11 +147,6 @@
             font-weight: 500;
             font-size: 0.775rem;
             color: var(--text-primary);
-        }
-
-        .doc-meta .meta-region {
-            margin-top: 0.3rem;
-            font-size: 0.78rem;
         }
 
         /* ── Table Container ── */
@@ -108,6 +159,50 @@
         table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        thead th:nth-child(2),
+        tbody tr:not(.tr-subtotal,.tr-grand-total) td:nth-child(2) {
+            width: 7rem;
+            min-width: 7rem;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+        thead th:nth-child(6),
+        tbody tr:not(.tr-subtotal,.tr-grand-total) td:nth-child(6) {
+            width: 6.5rem;
+            min-width: 6.5rem;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+
+        /* Keep Amount (and Ctn) visible in narrow viewports / Puppeteer PDF */
+        thead th:nth-child(7),
+        tbody tr:not(.tr-subtotal,.tr-grand-total) td:nth-child(7) {
+            width: 5rem;
+        }
+        /* Amount: room for "9,999,999.99" (RM in column header) + mono */
+        thead th:nth-child(8),
+        tbody tr:not(.tr-subtotal,.tr-grand-total) td:nth-child(8) {
+            width: 8rem;
+            min-width: 8rem;
+            white-space: nowrap;
+            text-align: right;
+        }
+
+        .tr-subtotal td:nth-last-child(2),
+        .tr-grand-total td:nth-last-child(2) {
+            width: 5rem;
+        }
+        .tr-subtotal td:nth-last-child(1),
+        .tr-grand-total td:nth-last-child(1) {
+            width: 8rem;
+            min-width: 8rem;
+            white-space: nowrap;
+            text-align: right;
         }
 
         /* ── Table Header ── */
@@ -149,7 +244,11 @@
             color: var(--text-primary);
         }
 
-        .col-desc { color: var(--text-secondary); }
+        .col-desc {
+            color: var(--text-secondary);
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
 
         .col-num {
             font-family: 'IBM Plex Mono', monospace;
@@ -235,14 +334,31 @@
 <body>
     <div class="report-wrap">
         <header class="doc-header">
-            <div>
-                <div class="doc-eyebrow">Outbound · Proforma Invoice</div>
-                <div class="doc-title">Proforma Invoices</div>
+            <div class="brand-wrap">
+                {{logoImgHtml}}
+                <div class="brand-text">
+                    <div class="brand">SME EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
+                    <div class="brand-sub">
+                        NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
+                        SUNGAI BULOH, 47000 SELANGOR.<br/>
+                        TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803<br/>
+                        Service Tax: B16-2402-32000121
+                    </div>
+                </div>
             </div>
-            <div class="doc-meta">
-                <span class="label">Period</span>
-                <strong>{{dateFrom}}</strong> &mdash; <strong>{{dateTo}}</strong>
-                <div class="meta-region">Region: <strong>{{regionName}}</strong></div>
+            <div class="doc-title-block">
+                <div class="doc-eyebrow">Outbound · Proforma Invoice</div>
+                <h1 class="doc-heading">Proforma Invoices</h1>
+                <div class="doc-meta">
+                    <div class="meta-row">
+                        <span class="label">Period&nbsp;</span>
+                        <strong>{{dateFrom}} &mdash; {{dateTo}}</strong>
+                    </div>
+                    <div class="meta-row">
+                        <span class="label">Region&nbsp;</span>
+                        <strong>{{regionName}}</strong>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -250,14 +366,14 @@
             <table>
                 <thead>
                     <tr>
-                        <th style="text-align:left">Proforma Invoice No</th>
+                        <th style="text-align:left">P.Invoice No</th>
                         <th style="text-align:left">Invoice Date</th>
                         <th style="text-align:left">PO No</th>
                         <th style="text-align:left">DO No</th>
                         <th style="text-align:left">Outlet</th>
                         <th style="text-align:left">Region</th>
                         <th style="text-align:right">Ctn</th>
-                        <th style="text-align:right">Amount</th>
+                        <th style="text-align:right">Total Amount <br> Incl. Tax (RM)</th>
                     </tr>
                 </thead>
                 <tbody>

@@ -101,11 +101,25 @@ export const typeDefs = `#graphql
     summary: InvoiceSummary!
   }
 
+  """
+  Result of single-invoice proforma PDF generation.
+  """
+  type ProformaInvoicePdfPayload {
+    pdfBase64: String!
+    filename: String!
+  }
+
   extend type Mutation {
     """
     Update the status of an invoice (e.g. ISSUED → SENT).
     """
     updateInvoiceStatus(id: ID!, status: String!): Invoice
+
+    """
+    Generate a Proforma Invoice PDF for a single invoice (one PO / one DO).
+    Returns base64-encoded PDF and filename for download.
+    """
+    generateProformaInvoicePdf(invoiceId: ID!): ProformaInvoicePdfPayload! @auth
   }
 
   extend type Query {

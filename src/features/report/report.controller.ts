@@ -8,11 +8,15 @@ class ReportControllerClass {
         try {
             logger.info('🔎 [report.controller.getMovementReport] Getting movement report...');
             const schema = z.object({
-                dateFrom: z.string(),
-                dateTo: z.string(),
-                regionId: z.string(),
+                dateFrom: z.string().default(new Date("1970-01-01").toISOString().split('T')[0]),
+                dateTo: z.string().default(new Date().toISOString().split('T')[0]),
+                regionId: z.string().optional(),
             });
-            const { dateFrom, dateTo, regionId } = schema.parse(req.query);
+            const { success, data } = schema.safeParse(req.query);
+            if (!success) {
+                return res.status(400).send('Invalid query parameters.');
+            }
+            const { dateFrom, dateTo, regionId } = data;
 
             logger.info('🔎 [report.controller.getMovementReport] Date from: %s, regionId: %s', dateFrom, regionId);
             const rows = await getMovementReportData(dateFrom, dateTo, regionId);
