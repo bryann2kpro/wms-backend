@@ -350,24 +350,36 @@ function formatAmount(value: number): string {
  * Render HTML to PDF using Puppeteer (same layout as preview).
  * Waits for Tailwind CDN script so styles are applied before printing.
  */
-export async function htmlToPdf(html: string, options?: { landscape?: boolean }): Promise<Buffer> {
+export async function htmlToPdf(
+  html: string,
+  options?: { landscape?: boolean; preferCSSPageSize?: boolean },
+): Promise<Buffer> {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   try {
     const page = await browser.newPage();
-    // Default viewport is ~800px; wide landscape tables get clipped in PDF without this.
-    if (options?.landscape) {
+    // Default viewport is ~800px; wide layouts need a larger logical width for PDF.
+    if (options?.preferCSSPageSize) {
+      // Match A4 portrait at 96dpi (210mm × 297mm) — proforma invoice PDF
+      await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+    } else if (options?.landscape) {
       await page.setViewport({ width: 1600, height: 900, deviceScaleFactor: 1 });
     }
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 20000 });
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      landscape: options?.landscape ?? false,
-      printBackground: true,
-      margin: { top: '16px', right: '16px', bottom: '16px', left: '16px' },
-    });
+
+    const pdfBuffer = options?.preferCSSPageSize
+      ? await page.pdf({
+          printBackground: true,
+          preferCSSPageSize: true,
+        })
+      : await page.pdf({
+          format: 'A4',
+          landscape: options?.landscape ?? false,
+          printBackground: true,
+          margin: { top: '16px', right: '16px', bottom: '16px', left: '16px' },
+        });
     return Buffer.from(pdfBuffer);
   } finally {
     await browser.close();

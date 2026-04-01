@@ -1,0 +1,341 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Proforma Invoice {{invoiceNoEscaped}}</title>
+    <style>
+      /* A4 portrait: 210mm × 297mm (ISO 216) */
+      @page {
+        size: A4 portrait;
+        margin: 8mm;
+      }
+      :root {
+        --ink: #111;
+        --muted: #555;
+        --line: #1f1f1f;
+        --soft: #e6e6e6;
+        --a4-w: 210mm;
+        --a4-h: 297mm;
+      }
+      * { box-sizing: border-box; }
+      html {
+        background: #d6d3d1;
+      }
+      html, body {
+        margin: 0;
+      }
+      body {
+        padding: 16px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+        font-family: Arial, Helvetica, sans-serif;
+        color: var(--ink);
+        font-size: 12px;
+      }
+      .page {
+        width: var(--a4-w);
+        max-width: 100%;
+        min-height: var(--a4-h);
+        margin: 0 auto;
+        padding: 8mm;
+        background: #fff;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+        display: flex;
+        flex-direction: column;
+      }
+      .header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        border-bottom: 2px solid var(--line);
+        padding-bottom: 10px;
+        margin-bottom: 10px;
+      }
+      .brand-wrap { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+      .logo { width: 64px; height: auto; object-fit: contain; margin-top: 2px; flex: 0 0 auto; }
+      .brand-text { min-width: 0; }
+      .brand {
+        font-weight: 700;
+        font-size: 14px;
+        letter-spacing: .2px;
+      }
+      .reg-no { font-weight: 400; font-size: 11px; letter-spacing: 0; }
+      .brand-sub { color: var(--muted); margin-top: 3px; line-height: 1.25; font-size: 10px; }
+      .doc-title {
+        text-align: right;
+        min-width: 0;
+        flex: 1 1 140px;
+      }
+      .doc-title h1 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: .4px;
+      }
+      .doc-meta {
+        margin-top: 6px;
+        color: var(--muted);
+        line-height: 1.35;
+        font-size: 9px;
+      }
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-bottom: 10px;
+      }
+      .box {
+        padding: 10px 10px 8px;
+        min-height: 92px;
+      }
+      .box-title {
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .box-body { line-height: 1.35; text-transform: uppercase; }
+      .box-body .name { font-weight: 700; }
+      .box-body .box-address-lines { display: block; }
+      .box-body .box-contact-lines {
+        margin-top: 12px;
+        text-transform: none;
+      }
+      .box-body .box-contact-lines > div + div { margin-top: 6px; }
+      table.items {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        margin-top: 8px;
+        border: 1px solid var(--line);
+        font-size: 7.5px;
+      }
+      table.items thead th {
+        border-bottom: 1px solid var(--line);
+        padding: 4px 2px;
+        text-align: left;
+        font-weight: 700;
+        background: #fafafa;
+        vertical-align: bottom;
+        line-height: 1.15;
+        word-wrap: break-word;
+        hyphens: auto;
+      }
+      table.items tbody td {
+        padding: 3px 2px;
+        border-top: 1px solid var(--soft);
+        vertical-align: top;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+      }
+      table.items tbody tr:first-child td { border-top: none; }
+      .col-no { width: 4%; text-align: left; }
+      .col-sku { width: 11%; font-family: "Courier New", Courier, monospace; font-size: 7px; }
+      .col-desc { width: 18%; }
+      .col-qty { width: 5%; text-align: left; font-variant-numeric: tabular-nums; }
+      .col-num { width: 9%; text-align: left; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 7px; }
+      .col-rate { width: 6%; text-align: left; white-space: nowrap; }
+      .empty { padding: 16px 8px; text-align: center; color: var(--muted); }
+      .totals-wrap {
+        margin-top: 14px;
+        display: flex;
+        justify-content: flex-end;
+      }
+      table.totals-table {
+        width: 100%;
+        max-width: 280px;
+        border-collapse: collapse;
+        font-size: 10px;
+      }
+      table.totals-table td {
+        padding: 4px 0 4px 12px;
+        text-align: right;
+      }
+      table.totals-table td:first-child {
+        text-align: left;
+        padding-left: 0;
+        color: var(--muted);
+      }
+      table.totals-table td.amt {
+        font-variant-numeric: tabular-nums;
+        min-width: 100px;
+      }
+      table.totals-table tr.tot-strong td {
+        font-weight: 700;
+        color: var(--ink);
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
+      }
+      .footer {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-top: auto;
+        padding-top: 16px;
+        align-items: end;
+      }
+      .sign {
+        grid-column: 2;
+        justify-self: end;
+        text-align: left;
+        width: 240px;
+      }
+      .sign-label { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+      .sign-space { height: 70px; }
+      .sign-line { border-bottom: 1px solid var(--line); width: 100%; }
+      .sign-keep {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .received-date {
+        margin-top: 18px;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .received-date .date-line {
+        flex: 1 1 auto;
+        border-bottom: 1px solid var(--line);
+        height: 0;
+        transform: translateY(-2px);
+      }
+      .footer-divider {
+        grid-column: 1 / -1;
+        border-top: 2px solid var(--line);
+        margin-top: 16px;
+      }
+      @media print {
+        html { background: #fff; }
+        body {
+          padding: 0;
+          display: block;
+          min-height: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .page {
+          width: 100%;
+          max-width: none;
+          min-height: 0;
+          margin: 0;
+          padding: 0;
+          box-shadow: none;
+        }
+        .sign,
+        .sign-keep {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="header">
+        <div class="brand-wrap">
+          {{logoImgHtml}}
+          <div class="brand-text">
+            <div class="brand">SMEE EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
+            <div class="brand-sub">
+              NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA, SUNGAI BULOH, 47000 SELANGOR.<br/>
+              TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
+            </div>
+          </div>
+        </div>
+        <div class="doc-title">
+          <h1>Proforma Invoice</h1>
+          <div class="doc-meta">
+            <div><b>Invoice No</b>: {{invoiceNoEscaped}}</div>
+            <div><b>PO No</b>: {{poNoEscaped}}</div>
+            <div><b>DO No</b>: {{doNoEscaped}}</div>
+            <div><b>Issue Date</b>: {{docDateEscaped}}</div>
+            <div><b>Region</b>: {{regionNameEscaped}}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="box">
+          <div class="box-title">Billing Address</div>
+          <div class="box-body">
+            <div class="name">{{billingCompanyNameEscaped}}</div>
+            <div class="box-address-lines">{{billingAddressHtml}}</div>
+            {{billingContactHtml}}
+          </div>
+        </div>
+        <div class="box">
+          <div class="box-title">Delivery Address</div>
+          <div class="box-body">
+            <div class="name">{{deliveryCompanyNameEscaped}}</div>
+            <div class="box-address-lines">{{deliveryAddressHtml}}</div>
+            {{deliveryContactHtml}}
+          </div>
+        </div>
+      </div>
+
+      <table class="items">
+        <thead>
+          <tr>
+            <th class="col-no">No.</th>
+            <th class="col-sku">SKU</th>
+            <th class="col-desc">Desc.</th>
+            <th class="col-qty">Qty</th>
+            <th class="col-num">Price/Unit<br/>(RM)</th>
+            <th class="col-num">Subtotal<br/>(RM)</th>
+            <th class="col-num">Total Excl. Tax<br/>(RM)</th>
+            <th class="col-num">Tax Amount<br/>(RM)</th>
+            <th class="col-num">Total Incl. Tax<br/>(RM)</th>
+            <th class="col-rate">Tax Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{tableRowsHtml}}
+        </tbody>
+      </table>
+
+      <div class="totals-wrap">
+        <table class="totals-table">
+          <tr>
+            <td>Subtotal (line items)</td>
+            <td class="amt">{{lineSubtotalFmt}}</td>
+          </tr>
+          <tr>
+            <td>Total (excl. tax)</td>
+            <td class="amt">{{totalExclTaxFmt}}</td>
+          </tr>
+          <tr>
+            <td>Tax rate</td>
+            <td class="amt">{{taxRateLabel}}</td>
+          </tr>
+          <tr>
+            <td>Tax amount</td>
+            <td class="amt">{{taxAmountFmt}}</td>
+          </tr>
+          <tr class="tot-strong">
+            <td>Total (incl. SST)</td>
+            <td class="amt">{{totalInclTaxFmt}}</td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- <div class="footer">
+        <div class="sign">
+          <div class="sign-label">Receiver Signature:</div>
+          <div class="sign-space"></div>
+          <div class="sign-keep">
+            <div class="sign-line"></div>
+            <div class="received-date">
+              <div><b>Received Date:</b></div>
+              <div class="date-line"></div>
+            </div>
+          </div>
+        </div>
+        <div class="footer-divider"></div>
+      </div> -->
+    </div>
+  </body>
+</html>
