@@ -30,6 +30,7 @@ import { typeDefs as warehousesTypeDefs } from '@/features/master-data/warehouse
 import { typeDefs as reportTypeDefs } from '@/features/report/report.typeDefs';
 import { typeDefs as documentsTypeDefs } from '@/features/documents/documents.typeDefs';
 import { typeDefs as dashboardTypeDefs } from '@/features/dashboard/dashboard.typeDefs';
+import { typeDefs as emailSettingsTypeDefs } from '@/features/notifications/email-settings.typeDefs';
 
 // Directive type definitions
 import { directiveTypeDefs } from './directives';
@@ -118,4 +119,5 @@ export const typeDefs = [
   documentsTypeDefs,
   auditLogTypeDefs,
   dashboardTypeDefs,
+  emailSettingsTypeDefs,
 ];

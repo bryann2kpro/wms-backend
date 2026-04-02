@@ -56,12 +56,17 @@ export async function sendPasswordResetEmail(
   logger.info('✅ [sendPasswordResetEmail] Password reset email sent to:' + to);
 }
 
-export async function sendAdvanceNoticeEmail(to: string, data: AdvanceNoticeEmailData): Promise<void> {
-  logger.info(`ℹ️ [sendAdvanceNoticeEmail] Sending to: ${to}, tranid: ${data.tranid}`);
+export async function sendAdvanceNoticeEmail(
+  to: string | string[],
+  data: AdvanceNoticeEmailData,
+  cc?: string | string[],
+): Promise<void> {
+  logger.info(`ℹ️ [sendAdvanceNoticeEmail] Sending to: ${JSON.stringify(to)}, cc: ${JSON.stringify(cc ?? [])}, tranid: ${data.tranid}`);
   const companyName = env.COMPANY_NAME ?? 'SME Ederan WMS';
   await transporter.sendMail({
     from: `"${companyName}" <${env.SMTP_FROM ?? env.SMTP_USER}>`,
     to,
+    cc,
     subject: `New Advance Notice Received — PO ${data.tranid}`,
     html: buildAdvanceNoticeHtml(data, companyName),
     attachments: [
