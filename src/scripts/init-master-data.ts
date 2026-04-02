@@ -32,7 +32,7 @@ const DEFAULT_REGIONS = [
  * Region-specific rate can be overridden here later.
  */
 const DEFAULT_REGION_PRICING = {
-  rate: '0.00',
+  rate: '10.00',
   minQty: '5',
   sstRate: '0.0600',
 };

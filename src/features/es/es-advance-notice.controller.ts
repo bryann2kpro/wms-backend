@@ -7,6 +7,12 @@ import { logger } from '@/util/logger.js';
 import { env } from '@/env.js';
 import z from 'zod';
 
+const lotsSchema = z.object({
+  serialNumbers: z.string(),
+  quantity: z.number().positive(),
+  expiryDate: z.string(),
+});
+
 const lineSchema = z.object({
   lineuniquekey: z.number(),
   itemid: z.string(),
@@ -14,6 +20,7 @@ const lineSchema = z.object({
   units: z.string(),                       // Required per Field_Mapping_List_v3.0
   custrecord_r2o_order_code: z.string(),   // Required per Field_Mapping_List_v3.0
   displayname: z.string().optional(),      // Optional per Field_Mapping_List_v3.0
+  lots: z.array(lotsSchema).optional(),
 });
 
 const advanceNoticeSchema = z.object({
