@@ -477,6 +477,20 @@
       "when": 1775015403842,
       "tag": "0067_cheerful_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1743580800000,
+      "tag": "0068_email_notification_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1775098099077,
+      "tag": "0069_mature_siren",
+      "breakpoints": true
     }
   ]
 }

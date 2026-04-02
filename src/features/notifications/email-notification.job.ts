@@ -1,11 +1,12 @@
 import { Queue, Worker, type Job } from 'bullmq';
 import { getBullConnection } from '@/jobs/bullmq-connection';
 import { logger } from '@/util/logger';
-import { emailNotificationRepository } from '@/composition-root';
+import { emailNotificationRepository, emailSettingsRepository } from '@/composition-root';
 import { EsAdvanceNoticesTable } from '@/features/es/es-advance-notice.model';
 import { db } from '@/db';
 import { eq } from 'drizzle-orm';
 import { sendAdvanceNoticeEmail } from '@/util/mailer';
+import { ADVANCE_NOTICE_SETTING_KEY } from './email-settings.repository';
 
 const EMAIL_QUEUE_NAME = 'email-notifications';
 const EMAIL_JOB_NAME = 'send-email-notification';
@@ -55,13 +56,21 @@ async function processEmailNotification(notificationId: string): Promise<void> {
       lines: unknown[];
     };
 
-    await sendAdvanceNoticeEmail(notification.toEmail, {
-      tranid: advanceNotice.tranid,
-      duedate: payload.duedate,
-      entity: payload.entity,
-      lineCount: Array.isArray(payload.lines) ? payload.lines.length : 0,
-      receivedAt: advanceNotice.receivedAt,
-    });
+    const emailSettings = await emailSettingsRepository.getByKey(ADVANCE_NOTICE_SETTING_KEY);
+    const toEmails = emailSettings?.toEmails?.length ? emailSettings.toEmails : [notification.toEmail];
+    const ccEmails = emailSettings?.ccEmails?.length ? emailSettings.ccEmails : undefined;
+
+    await sendAdvanceNoticeEmail(
+      toEmails,
+      {
+        tranid: advanceNotice.tranid,
+        duedate: payload.duedate,
+        entity: payload.entity,
+        lineCount: Array.isArray(payload.lines) ? payload.lines.length : 0,
+        receivedAt: advanceNotice.receivedAt,
+      },
+      ccEmails,
+    );
 
     await emailNotificationRepository.markSent(notificationId);
     logger.info(`✅ [EmailJob] Notification sent — id=${notificationId}, tranid=${advanceNotice.tranid}`);
