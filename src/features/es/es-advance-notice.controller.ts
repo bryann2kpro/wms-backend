@@ -21,6 +21,7 @@ const lineSchema = z.object({
   custrecord_r2o_order_code: z.string(),   // Required per Field_Mapping_List_v3.0
   displayname: z.string().optional(),      // Optional per Field_Mapping_List_v3.0
   lots: z.array(lotsSchema).optional(),
+  islotitem: z.string().optional()
 });
 
 const advanceNoticeSchema = z.object({
