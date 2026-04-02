@@ -66,6 +66,7 @@ import { NetSuiteService } from '@/features/es/netsuite.service.js';
 import { EsItemReceiptServiceClass } from '@/features/es/es-item-receipt.service.js';
 // Notifications
 import { EmailNotificationRepositoryClass } from '@/features/notifications/email-notification.repository.js';
+import { EmailSettingsRepositoryClass } from '@/features/notifications/email-settings.repository.js';
 
 
 // ============================================
@@ -144,6 +145,7 @@ export const auditLogRepository = new AuditLogRepositoryClass();
 export const reportController = new ReportControllerClass();
 // Notifications
 export const emailNotificationRepository = new EmailNotificationRepositoryClass();
+export const emailSettingsRepository = new EmailSettingsRepositoryClass();
 // ES Integration
 export const esAdvanceNoticeRepository = new EsAdvanceNoticeRepositoryClass();
 export const esAdvanceNoticeController = new EsAdvanceNoticeControllerClass(esAdvanceNoticeRepository, emailNotificationRepository);

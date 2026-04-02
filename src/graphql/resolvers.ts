@@ -33,6 +33,7 @@ import { resolvers as warehousesResolvers } from '@/features/master-data/warehou
 import { resolvers as reportResolvers } from '@/features/report/report.resolvers';
 import { resolvers as documentsResolvers } from '@/features/documents/documents.resolvers';
 import { resolvers as dashboardResolvers } from '@/features/dashboard/dashboard.resolver';
+import { resolvers as emailSettingsResolvers } from '@/features/notifications/email-settings.resolver';
 
 // ============================================
 // BASE RESOLVERS
@@ -122,4 +123,5 @@ export const resolvers = mergeResolvers([
   reportResolvers,
   documentsResolvers,
   dashboardResolvers,
+  emailSettingsResolvers,
 ]);
