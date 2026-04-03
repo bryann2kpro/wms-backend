@@ -65,6 +65,8 @@ export const typeDefs = `#graphql
     isActive: Boolean!
     """Picking strategy: FIFO (default) | LIFO | FEFO"""
     pickingStrategy: String
+    """Optional initial on-hand quantity for inventory balance (used during import/stock initialization)"""
+    initialOnHandQty: Float
     createdBy: String
     updatedBy: String
   }

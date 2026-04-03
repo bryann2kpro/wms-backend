@@ -299,7 +299,7 @@ async function initStockUnits(): Promise<void> {
 const DEFAULT_WAREHOUSES = [
   {
     warehouseCode: 'SMEE-WH',
-    warehouseName: 'SME Ederan Warehouse',
+    warehouseName: 'SME Edaran Warehouse',
     warehouseAddress: '123 SME Industrial Park, Kuala Lumpur',
   },
 ];
