@@ -151,7 +151,7 @@ export async function renderMovementReportHtml(
     <td class="px-4 py-3" colspan="3">${escapeHtml(regionName)}</td>
   </tr>`;
 
-  const logoImgHtml = await getSmeLogoImgHtml('SME Ederan');
+  const logoImgHtml = await getSmeLogoImgHtml('SME Edaran');
 
   return template
     .replace(/\{\{logoImgHtml\}\}/, logoImgHtml)
@@ -328,7 +328,7 @@ export async function renderProformaInvoicesHtml(
   const [template, regionName, logoImgHtml] = await Promise.all([
     readFile(PROFORMA_INVOICES_HTML_PATH, 'utf-8'),
     resolveRegionName(regionId),
-    getSmeLogoImgHtml('SME Ederan'),
+    getSmeLogoImgHtml('SME Edaran'),
   ]);
 
   return template
