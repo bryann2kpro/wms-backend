@@ -30,14 +30,14 @@ export async function sendPasswordResetEmail(
 ): Promise<void> {
   logger.info('ℹ️ [sendPasswordResetEmail] Sending password reset email to:' + to);
   await transporter.sendMail({
-    from: `"SME Ederan WMS" <${process.env.SMTP_USER}>`,
+    from: `"SME Edaran WMS" <${process.env.SMTP_USER}>`,
     to,
-    subject: 'Reset your password — SME Ederan WMS',
+    subject: 'Reset your password — SME Edaran WMS',
     html: `
       <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px">
         <h2 style="margin-bottom:8px">Reset your password</h2>
         <p style="color:#555;margin-bottom:24px">
-          We received a request to reset the password for your SME Ederan WMS account.
+          We received a request to reset the password for your SME Edaran WMS account.
           Click the button below to set a new password. This link expires in <strong>1 hour</strong>.
         </p>
         <a href="${resetUrl}"
@@ -49,7 +49,7 @@ export async function sendPasswordResetEmail(
           <br/>Your password will not change until you click the link above.
         </p>
         <hr style="border:none;border-top:1px solid #eee;margin-top:32px"/>
-        <p style="color:#bbb;font-size:11px">© ${new Date().getFullYear()} SME Ederan. All rights reserved.</p>
+        <p style="color:#bbb;font-size:11px">© ${new Date().getFullYear()} SME Edaran. All rights reserved.</p>
       </div>
     `,
   });
@@ -62,7 +62,7 @@ export async function sendAdvanceNoticeEmail(
   cc?: string | string[],
 ): Promise<void> {
   logger.info(`ℹ️ [sendAdvanceNoticeEmail] Sending to: ${JSON.stringify(to)}, cc: ${JSON.stringify(cc ?? [])}, tranid: ${data.tranid}`);
-  const companyName = env.COMPANY_NAME ?? 'SME Ederan WMS';
+  const companyName = env.COMPANY_NAME ?? 'SME Edaran WMS';
   await transporter.sendMail({
     from: `"${companyName}" <${env.SMTP_FROM ?? env.SMTP_USER}>`,
     to,

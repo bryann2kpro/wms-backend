@@ -233,6 +233,7 @@ export const resolvers = {
       skuUom: string;
       isActive: boolean;
       pickingStrategy?: string | null;
+      initialOnHandQty?: number | null;
       createdBy?: string | null;
       updatedBy?: string | null;
     }}, context: GraphQLContext) => {
@@ -251,6 +252,7 @@ export const resolvers = {
         }));
 
         const sku = await skuRepository.createSku({
+          organizationId: context.organizationId || '00000000-0000-0000-0000-000000000001',
           skuCode: input.skuCode,
           skuDescription: input.skuDescription,
           skuPrice: input.skuPrice?.toString(),
@@ -263,6 +265,7 @@ export const resolvers = {
           isActive: input.isActive,
           createdBy,
           updatedBy,
+          initialOnHandQty: input.initialOnHandQty ?? undefined,
         });
 
         return transformSku(sku);
