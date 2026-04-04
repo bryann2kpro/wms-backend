@@ -295,6 +295,12 @@
         <tbody>
           {{tableRowsHtml}}
         </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" style="padding: 7px 8px; text-align: right; font-weight: 700; border-top: 2px solid var(--line);">Total Qty</td>
+            <td class="col-qty" style="padding: 7px 8px; font-weight: 700; border-top: 2px solid var(--line);">{{totalQtyEscaped}}</td>
+          </tr>
+        </tfoot>
       </table>
 
       <div class="footer">
