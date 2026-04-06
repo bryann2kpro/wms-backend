@@ -40,9 +40,9 @@ export class StockUnitRepositoryClass {
 
       const whereCondition = [];
 
-      if (organizationId) {
-        whereCondition.push(eq(StockUnitTable.organizationId, organizationId));
-      }
+      // if (organizationId) {
+      //   whereCondition.push(eq(StockUnitTable.organizationId, organizationId));
+      // }
 
       if (Array.isArray(filter.stockUnitId)) {
         whereCondition.push(inArray(StockUnitTable.stockUnitId, filter.stockUnitId));
@@ -118,9 +118,9 @@ export class StockUnitRepositoryClass {
     try {
       logger.info('ℹ️ [StockUnitRepository.getStockUnitByCode] Getting stock unit by code...');
       const whereConditions = [eq(StockUnitTable.unitCode, code)];
-      if (organizationId) {
-        whereConditions.push(eq(StockUnitTable.organizationId, organizationId));
-      }
+        // if (organizationId) {
+        //   whereConditions.push(eq(StockUnitTable.organizationId, organizationId));
+        // }
       const [stockUnit] = await db
         .select()
         .from(StockUnitTable)
@@ -234,9 +234,9 @@ export class StockUnitRepositoryClass {
       const dbClient = tx || db;
       logger.info('ℹ️ [StockUnitRepository.deleteStockUnit] Deleting stock unit...');
       const whereConditions = [eq(StockUnitTable.stockUnitId, id)];
-      if (organizationId) {
-        whereConditions.push(eq(StockUnitTable.organizationId, organizationId));
-      }
+      // if (organizationId) {
+      //   whereConditions.push(eq(StockUnitTable.organizationId, organizationId));
+      // }
 
       await dbClient
         .delete(StockUnitTable)
