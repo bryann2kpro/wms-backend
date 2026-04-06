@@ -274,7 +274,7 @@ export const resolvers = {
             proofUrl?: string | null;
             warehouseId?: string | null;
             status?: string | null;
-            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             inboundQty?: number | null;
             skuId?: string | null;
             advanceNoticeId?: string | null;
