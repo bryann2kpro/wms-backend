@@ -21,6 +21,7 @@ import { resolvers as inventoryResolvers } from '@/features/inventory/inventory-
 import { resolvers as inventoryBalanceResolvers } from '@/features/inventory/inventory-balance/inventory.resolver';
 import { resolvers as stockCountResolvers } from '@/features/inventory/stock-count.resolver';
 import { resolvers as stockCountSessionResolvers } from '@/features/inventory/stock-count-session.resolver';
+import { resolvers as stockAdjustmentResolvers } from '@/features/inventory/stock-adjustment/stock-adjustment.resolver';
 // Master Data resolvers
 import { resolvers as organizationResolvers } from '@/features/master-data/organization.resolver';
 import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
@@ -111,6 +112,7 @@ export const resolvers = mergeResolvers([
   inventoryBalanceResolvers,
   stockCountResolvers,
   stockCountSessionResolvers,
+  stockAdjustmentResolvers,
   // Master Data
   organizationResolvers,
   regionResolvers,

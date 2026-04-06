@@ -398,8 +398,9 @@ function formatDateDMY(d: Date): string {
 
 function normalizeMultilineAddress(address: string | null): string {
   if (!address) return '—';
-  return address
-    .split(/\r?\n|,/)
+  const normalized = address.replace(/\\n|\/n/g, '\n');
+  return normalized
+    .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
     .map(escapeHtml)
@@ -488,6 +489,8 @@ async function buildDeliveryOrderHtml(input: {
           .join('\n')
       : `<tr><td class="empty" colspan="4">No items</td></tr>`;
 
+  const totalQty = input.rows.reduce((sum, r) => sum + (parseInt(r.qty, 10) || 0), 0);
+
   const template = await getDeliveryOrderTemplate();
 
   const logoImgHtml = input.logoDataUrl ? `<img class="logo" alt="SME logo" src="${input.logoDataUrl}" />` : '';
@@ -508,6 +511,7 @@ async function buildDeliveryOrderHtml(input: {
 
     logoImgHtml,
     tableRowsHtml: tableRows,
+    totalQtyEscaped: totalQty.toFixed(2),
   });
 }
 

@@ -19,7 +19,7 @@ export const OutletsTable = MainSchema.table('m_outlet', {
   outletId: uuid('outlet_id').defaultRandom().notNull().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   outletName: text('outlet_name').notNull(),
-  outletCode: text('outlet_code').notNull(),
+  outletCode: text('outlet_code').unique().notNull(),
   address: text('address'),
   regionId: uuid('region_id').references(() => RegionTable.regionId),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

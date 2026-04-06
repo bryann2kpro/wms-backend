@@ -24,6 +24,8 @@ import { GrnItemsTable } from "@/features/inbound/grns.model";
 import { GrnsTable } from "@/features/inbound/grns.model";
 import { InventoryBalancesTable } from "@/features/inventory/inventory-balance/inventory.model";
 import { RacksTable } from "@/features/master-data/racks.model";
+import { PurchaseOrdersTable } from "./purchase-orders.model";
+import { OutletsTable } from "@/features/master-data/outlets.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
@@ -344,8 +346,8 @@ export class DeliveryOrdersRepositoryClass {
    * Joins with SKU table, delivery orders table, and inventory balances table.
    */
   async getDeliveryOrderItemsWithDetails(
-    filter: DeliveryOrderItemFilter & { 
-      purchaseOrderNo?: string; 
+    filter: DeliveryOrderItemFilter & {
+      purchaseOrderNo?: string;
       doNo?: string;
       doStatus?: string | string[];
       search?: string;
@@ -388,6 +390,20 @@ export class DeliveryOrdersRepositoryClass {
         );
       }
 
+      if (filter.regionId) {
+        whereConditions.push(eq(OutletsTable.regionId, filter.regionId));
+      }
+
+      if (filter.scheduledDeliveryDateFrom) {
+        whereConditions.push(gte(PurchaseOrdersTable.scheduledDeliveryDate, new Date(filter.scheduledDeliveryDateFrom)));
+      }
+
+      if (filter.scheduledDeliveryDateTo) {
+        const toDate = new Date(filter.scheduledDeliveryDateTo);
+        toDate.setUTCHours(23, 59, 59, 999);
+        whereConditions.push(lte(PurchaseOrdersTable.scheduledDeliveryDate, toDate));
+      }
+
       const baseQuery = db
         .select({
           id: DeliveryOrderItemsTable.id,
@@ -414,6 +430,8 @@ export class DeliveryOrdersRepositoryClass {
         .leftJoin(SkuTable, eq(DeliveryOrderItemsTable.skuId, SkuTable.skuId))
         .leftJoin(DeliveryOrdersTable, eq(DeliveryOrderItemsTable.purchaseOrderId, DeliveryOrdersTable.purchaseOrderId))
         .leftJoin(InventoryBalancesTable, eq(DeliveryOrderItemsTable.skuId, InventoryBalancesTable.skuId))
+        .leftJoin(PurchaseOrdersTable, eq(DeliveryOrderItemsTable.purchaseOrderId, PurchaseOrdersTable.id))
+        .leftJoin(OutletsTable, eq(PurchaseOrdersTable.outletId, OutletsTable.outletId))
         .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
 
       const pageSize = paginationParams.pageSize ?? 10;
