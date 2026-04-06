@@ -1,0 +1,2 @@
+ALTER TABLE "main"."inventory_movements" ADD COLUMN "stock_adjustment_id" uuid;--> statement-breakpoint
+ALTER TABLE "main"."inventory_movements" ADD CONSTRAINT "inventory_movements_stock_adjustment_id_stock_adjustments_id_fk" FOREIGN KEY ("stock_adjustment_id") REFERENCES "main"."stock_adjustments"("id") ON DELETE no action ON UPDATE no action;

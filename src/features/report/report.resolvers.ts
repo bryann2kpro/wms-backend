@@ -86,11 +86,17 @@ export const resolvers = {
 
     generateDoPickingList: async (
       _: unknown,
-      __: unknown,
+      args: {
+        filter?: {
+          regionId?: string;
+          scheduledDeliveryDateFrom?: string;
+          scheduledDeliveryDateTo?: string;
+        };
+      },
       context: { organizationId: string }
     ) => {
       logger.info('ℹ️ [report.resolvers.generateDoPickingList] Generating DO picking list PDF...');
-      return generateDoPickingListPdf(context.organizationId);
+      return generateDoPickingListPdf(context.organizationId, args.filter);
     },
   },
 };

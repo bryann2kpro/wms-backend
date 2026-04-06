@@ -491,6 +491,41 @@
       "when": 1775098099077,
       "tag": "0069_mature_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1775443081494,
+      "tag": "0070_tense_warhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1775446790355,
+      "tag": "0071_shiny_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1775448362229,
+      "tag": "0072_yielding_lenny_balinger",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1775448501345,
+      "tag": "0073_nostalgic_red_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1775449375529,
+      "tag": "0074_crazy_captain_britain",
+      "breakpoints": true
     }
   ]
 }

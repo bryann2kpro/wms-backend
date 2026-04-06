@@ -383,6 +383,9 @@ export const resolvers = {
           doStatus?: string;
           doStatuses?: string[];
           search?: string;
+          regionId?: string;
+          scheduledDeliveryDateFrom?: string;
+          scheduledDeliveryDateTo?: string;
         };
         pageSize?: number;
         pageNumber?: number;
@@ -407,6 +410,9 @@ export const resolvers = {
             filter.doStatus = args.filter.doStatus;
           }
           if (args.filter.search) filter.search = args.filter.search;
+          if (args.filter.regionId) filter.regionId = args.filter.regionId;
+          if (args.filter.scheduledDeliveryDateFrom) filter.scheduledDeliveryDateFrom = args.filter.scheduledDeliveryDateFrom;
+          if (args.filter.scheduledDeliveryDateTo) filter.scheduledDeliveryDateTo = args.filter.scheduledDeliveryDateTo;
         }
 
         const paginationParams = {
