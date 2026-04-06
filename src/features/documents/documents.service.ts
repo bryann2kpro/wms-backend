@@ -398,8 +398,9 @@ function formatDateDMY(d: Date): string {
 
 function normalizeMultilineAddress(address: string | null): string {
   if (!address) return '—';
-  return address
-    .split(/\r?\n|,/)
+  const normalized = address.replace(/\\n|\/n/g, '\n');
+  return normalized
+    .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
     .map(escapeHtml)
