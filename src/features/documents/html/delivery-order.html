@@ -4,8 +4,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Delivery Order {{doNoEscaped}}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
       /* A4 portrait: 210mm × 297mm (ISO 216) */
       @page {
@@ -29,7 +27,7 @@
         justify-content: center;
         align-items: flex-start;
         min-height: 100vh;
-        font-family: 'IBM Plex Sans', Arial, sans-serif;
+        font-family: Arial, sans-serif;
         color: var(--ink);
         font-size: 12px;
         -webkit-font-smoothing: antialiased;
@@ -58,17 +56,16 @@
       .logo { width: 56px; height: auto; object-fit: contain; margin-top: 1px; flex: 0 0 auto; }
       .brand-text { min-width: 0; }
       .brand {
-        font-weight: 700;
         font-size: 0.925rem;
         letter-spacing: 0.02em;
         line-height: 1.25;
       }
-      .reg-no { font-weight: 500; font-size: 0.7rem; color: var(--muted); }
+      .reg-no { font-size: 0.7rem; color: var(--ink); }
       .brand-sub {
         margin-top: 0.25rem;
         font-size: 0.65rem;
         line-height: 1.45;
-        color: var(--muted);
+        color: var(--ink);
       }
       .doc-title-block {
         text-align: right;
@@ -78,7 +75,7 @@
       .doc-title-block h1 {
         margin: 0;
         font-size: 1.5rem;
-        font-weight: 700;
+        font-weight: 400;
         letter-spacing: -0.025em;
         line-height: 1.1;
         color: var(--ink);
@@ -87,7 +84,7 @@
         margin-top: 0.55rem;
         text-align: right;
         font-size: 0.72rem;
-        color: var(--muted);
+        color: var(--ink);
         line-height: 1.75;
       }
       .doc-meta .meta-row {
@@ -100,11 +97,10 @@
         font-size: 0.6rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: var(--muted);
+        color: var(--ink);
       }
       .doc-meta strong {
-        font-family: 'IBM Plex Mono', monospace;
-        font-weight: 500;
+        font-weight: 400;
         font-size: 0.72rem;
         color: var(--ink);
       }
@@ -119,11 +115,9 @@
         min-height: 92px;
       }
       .box-title {
-        font-weight: 700;
         margin-bottom: 6px;
       }
       .box-body { line-height: 1.35; text-transform: uppercase; }
-      .box-body .name { font-weight: 700; }
       .box-body .box-address-lines { display: block; }
       .box-body .box-contact-lines {
         margin-top: 12px;
@@ -140,7 +134,6 @@
         border-bottom: 1px solid var(--line);
         padding: 8px 8px;
         text-align: left;
-        font-weight: 700;
         background: #fafafa;
       }
       tbody td {
@@ -150,9 +143,9 @@
       }
       tbody tr:first-child td { border-top: none; }
       .col-no { width: 44px; text-align: right; }
-      .col-sku { width: 140px; font-family: "Courier New", Courier, monospace; }
+      .col-sku { width: 140px; }
       .col-qty { width: 80px; text-align: right; font-variant-numeric: tabular-nums; }
-      .empty { padding: 16px 8px; text-align: center; color: var(--muted); }
+      .empty { padding: 16px 8px; text-align: center; color: var(--ink); }
       .footer {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -162,7 +155,7 @@
         align-items: end;
       }
       .note {
-        color: var(--muted);
+        color: var(--ink);
         line-height: 1.35;
         font-size: 11px;
         border-top: 1px solid var(--soft);
@@ -174,7 +167,7 @@
         text-align: left;
         width: 240px;
       }
-      .sign-label { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+      .sign-label { color: var(--ink); font-size: 11px; margin-bottom: 6px; }
       .sign-space { height: 70px; }
       .sign-line { border-bottom: 1px solid var(--line); width: 100%; }
       .sign-keep {
@@ -187,7 +180,7 @@
         align-items: baseline;
         gap: 8px;
         font-size: 11px;
-        color: var(--muted);
+        color: var(--ink);
       }
       .received-date .date-line {
         flex: 1 1 auto;
@@ -201,7 +194,10 @@
         margin-top: 16px;
       }
       @media print {
-        html { background: #fff; }
+        html, body {
+          height: auto;
+          background: #fff;
+        }
         body {
           padding: 0;
           display: block;
@@ -213,10 +209,12 @@
           width: 100%;
           max-width: none;
           min-height: 0;
+          height: auto;
           margin: 0;
           padding: 0;
           box-shadow: none;
         }
+        .footer { margin-top: 16px; }
         tr { page-break-inside: avoid; }
         .sign,
         .sign-keep {
@@ -297,8 +295,8 @@
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="3" style="padding: 7px 8px; text-align: right; font-weight: 700; border-top: 2px solid var(--line);">Total Qty</td>
-            <td class="col-qty" style="padding: 7px 8px; font-weight: 700; border-top: 2px solid var(--line);">{{totalQtyEscaped}}</td>
+            <td colspan="3" style="padding: 7px 8px; text-align: right; border-top: 2px solid var(--line);">Total Qty</td>
+            <td class="col-qty" style="padding: 7px 8px; border-top: 2px solid var(--line);">{{totalQtyEscaped}}</td>
           </tr>
         </tfoot>
       </table>
@@ -310,7 +308,7 @@
           <div class="sign-keep">
             <div class="sign-line"></div>
             <div class="received-date">
-              <div><b>Received Date:</b></div>
+              <div>Received Date:</div>
               <div class="date-line"></div>
             </div>
           </div>
