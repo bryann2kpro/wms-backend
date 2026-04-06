@@ -174,4 +174,5 @@ export const esItemReceiptService = new EsItemReceiptServiceClass(
   suppliersRepository,
   supplierDeliveriesRepository,
   netSuiteService,
+  stockUnitRepository,
 );
