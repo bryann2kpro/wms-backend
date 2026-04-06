@@ -23,7 +23,8 @@ const ItemReceiptLineSchema = z.object({
   location: z.string(),
   custcol_abj_grn_linenum: z.number().int().positive(),
   abj_es_supplier_do: z.string().optional(),
-  lots: z.array(ItemReceiptLotSchema).min(1),
+  // Omitted for non-lot-tracked items; present (with ≥1 entry) for lot-tracked items
+  lots: z.array(ItemReceiptLotSchema).min(1).optional(),
 });
 
 const ItemReceiptPayloadSchema = z.object({
@@ -151,20 +152,23 @@ export class EsItemReceiptServiceClass {
         unmatchedCount++;
       }
 
-      // Build lots from grouped GRN items
+      // Build lots from grouped GRN items (only for lot-tracked items)
       const lots: Array<Record<string, unknown>> = [];
       let totalQuantity = 0;
 
       for (const item of items) {
-        const lot: Record<string, unknown> = {
-          serialnumbers: item.lotNo ?? '',
-          quantity: Number(item.qty),
-        };
-        if (item.expiryDate) {
-          lot.expirationdate = new Date(item.expiryDate).toISOString().split('T')[0];
-        }
-        lots.push(lot);
         totalQuantity += Number(item.qty);
+
+        if (item.lotNo) {
+          const lot: Record<string, unknown> = {
+            serialnumbers: item.lotNo,
+            quantity: Number(item.qty),
+          };
+          if (item.expiryDate) {
+            lot.expirationdate = new Date(item.expiryDate).toISOString().split('T')[0];
+          }
+          lots.push(lot);
+        }
       }
 
       const line: Record<string, unknown> = {
@@ -173,8 +177,12 @@ export class EsItemReceiptServiceClass {
         units: uomMap.get(sku.skuUom) ?? '',
         location: 'Distribution Center (DC)',
         custcol_abj_grn_linenum: lineIndex,
-        lots,
       };
+
+      // Only include lots field when at least one item is lot-tracked
+      if (lots.length > 0) {
+        line.lots = lots;
+      }
 
       if (lineUniqueKey !== undefined) {
         line.lineuniquekey = lineUniqueKey;

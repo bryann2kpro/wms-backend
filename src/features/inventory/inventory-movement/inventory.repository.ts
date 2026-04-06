@@ -26,6 +26,8 @@ export type InventoryMovementsFilter = {
   regionId?: string | string[];
   movementType?: InventoryMovementType | InventoryMovementType[];
   referenceNo?: string;
+  stockAdjustmentId?: string;
+  rackId?: string;
   reason?: string;
 }
 export class InventoryMovementRepositoryClass {
@@ -66,6 +68,14 @@ export class InventoryMovementRepositoryClass {
 
       if (filter.referenceNo) {
         whereCondition.push(like(InventoryMovementsTable.referenceNo, `%${filter.referenceNo}%`));
+      }
+
+      if (filter.stockAdjustmentId) {
+        whereCondition.push(eq(InventoryMovementsTable.stockAdjustmentId, filter.stockAdjustmentId));
+      }
+
+      if (filter.rackId) {
+        whereCondition.push(eq(InventoryMovementsTable.rackId, filter.rackId));
       }
 
       if (filter.reason) {

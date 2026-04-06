@@ -52,6 +52,7 @@ import { InventoryBalanceRepositoryClass } from './features/inventory/inventory-
 import { StockCountServices } from './features/inventory/stock-count.services';
 import { StockCountSessionRepositoryClass } from './features/inventory/stock-count-session.repository';
 import { StockCountSessionService } from './features/inventory/stock-count-session.service';
+import { StockAdjustmentRepositoryClass } from './features/inventory/stock-adjustment/stock-adjustment.repository';
 // Dashboard
 import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
 import { InvoicesRepositoryClass } from './features/invoicing/invoices.repository';
@@ -114,6 +115,7 @@ export const inventoryMovementRepository = new InventoryMovementRepositoryClass(
 export const stockCountServices = new StockCountServices();
 export const stockCountSessionRepository = new StockCountSessionRepositoryClass();
 export const stockCountSessionService = new StockCountSessionService(stockCountSessionRepository);
+export const stockAdjustmentRepository = new StockAdjustmentRepositoryClass(runningNoRepository);
 
 // Dashboard
 export const dashboardRepository = new DashboardRepositoryClass();
