@@ -99,6 +99,11 @@ export const typeDefs = `#graphql
         doStatus: String
         doStatuses: [String!]
         search: String
+        "Filter by outlet region ID (uuid)"
+        regionId: ID
+        "Filter by DO expected delivery date range (inclusive, ISO date string)"
+        scheduledDeliveryDateFrom: String
+        scheduledDeliveryDateTo: String
     }
 
     """

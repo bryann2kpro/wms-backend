@@ -51,6 +51,18 @@ export const typeDefs = `#graphql
     filename: String!
   }
 
+  """
+  Optional filter for DO picking list generation
+  """
+  input DoPickingListFilterInput {
+    "Filter by outlet region ID (uuid)"
+    regionId: ID
+    "Filter by expected delivery date range start (ISO date string, inclusive)"
+    scheduledDeliveryDateFrom: String
+    "Filter by expected delivery date range end (ISO date string, inclusive)"
+    scheduledDeliveryDateTo: String
+  }
+
   extend type Mutation {
     """
     Generate a report PDF. Returns base64-encoded PDF and filename for download.
@@ -66,8 +78,9 @@ export const typeDefs = `#graphql
 
     """
     Generate a DO Picking List PDF — SKU-grouped summary of all active delivery orders.
+    Optionally filter by region and/or expected delivery date range.
     Returns a printable picking reference for the storekeeper.
     """
-    generateDoPickingList: GenerateChecklistPayload! @auth
+    generateDoPickingList(filter: DoPickingListFilterInput): GenerateChecklistPayload! @auth
   }
 `;

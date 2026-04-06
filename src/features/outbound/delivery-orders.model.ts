@@ -105,4 +105,7 @@ export type DeliveryOrderItemFilter = {
   id?: string | string[];
   doId?: string | string[];
   skuId?: string | string[];
+  regionId?: string;
+  scheduledDeliveryDateFrom?: string;
+  scheduledDeliveryDateTo?: string;
 };

@@ -615,14 +615,25 @@ function formatQtyNum(n: number): string {
 
 /**
  * Generate a DO Picking List PDF — SKU-grouped summary of all active DOs.
+ * Optionally filter by region and/or expected delivery date range.
  */
 export async function generateDoPickingListPdf(
   _orgId: string,
+  filter?: {
+    regionId?: string;
+    scheduledDeliveryDateFrom?: string;
+    scheduledDeliveryDateTo?: string;
+  },
 ): Promise<{ pdfBase64: string; filename: string }> {
   const { deliveryOrdersRepository } = await import('@/composition-root');
 
   const itemsResult = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(
-    { doStatus: ACTIVE_DO_STATUSES },
+    {
+      doStatus: ACTIVE_DO_STATUSES,
+      regionId: filter?.regionId,
+      scheduledDeliveryDateFrom: filter?.scheduledDeliveryDateFrom,
+      scheduledDeliveryDateTo: filter?.scheduledDeliveryDateTo,
+    },
     { pageSize: 9999, pageNumber: 1 },
   );
 
