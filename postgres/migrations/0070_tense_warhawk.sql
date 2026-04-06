@@ -1,0 +1,1 @@
+ALTER TABLE "main"."m_outlet" ADD CONSTRAINT "m_outlet_outlet_code_unique" UNIQUE("outlet_code");
