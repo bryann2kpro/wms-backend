@@ -110,6 +110,14 @@ export const typeDefs = `#graphql
     filename: String!
   }
 
+  """
+  Payload returned immediately when a bulk PDF job is initiated.
+  Progress and result are streamed via Socket.IO to room job:{jobId}.
+  """
+  type BulkProformaPdfJobPayload {
+    jobId: String!
+  }
+
   extend type Mutation {
     """
     Update the status of an invoice (e.g. ISSUED → SENT).
@@ -121,6 +129,13 @@ export const typeDefs = `#graphql
     Returns base64-encoded PDF and filename for download.
     """
     generateProformaInvoicePdf(invoiceId: ID!): ProformaInvoicePdfPayload! @auth
+
+    """
+    Kick off bulk proforma invoice PDF generation for up to 50 invoices.
+    Returns a jobId immediately. Progress is streamed via Socket.IO
+    to room job:{jobId} with events: bulk-pdf:progress, bulk-pdf:complete, bulk-pdf:error.
+    """
+    bulkGenerateProformaInvoicesPdf(invoiceIds: [ID!]!): BulkProformaPdfJobPayload! @auth
   }
 
   extend type Query {
