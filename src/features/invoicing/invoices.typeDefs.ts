@@ -78,6 +78,8 @@ export const typeDefs = `#graphql
     dateIssuedTo: String
     createdAtFrom: String
     createdAtTo: String
+    deliveryDateFrom: String
+    deliveryDateTo: String
     pageSize: Int
     pageNumber: Int
     page: Int
