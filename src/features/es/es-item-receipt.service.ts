@@ -69,18 +69,23 @@ export class EsItemReceiptServiceClass {
     const skuMap = new Map(skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuId, s]));
     logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Fetched ${skuResult.query.length} SKUs`);
 
-    // 3. Fetch advance notice and build lineuniquekey map
+    // 3. Fetch advance notice and build lineuniquekey / lot-tracking maps
     let entity: string | undefined;
     const linekeyByItemId = new Map<string, number>();
+    const isLotItemByItemId = new Map<string, boolean>();
 
     if (grn.poNo) {
       const advanceNotice = await this.esAdvanceNoticeRepository.findByTranid(grn.poNo);
       if (advanceNotice) {
-        const noticePayload = advanceNotice.payload as { entity?: string; lines?: Array<{ itemid: string; lineuniquekey: number }> };
+        const noticePayload = advanceNotice.payload as {
+          entity?: string;
+          lines?: Array<{ itemid: string; lineuniquekey: number; islotitem?: string }>;
+        };
         entity = noticePayload.entity;
         const lines = noticePayload.lines ?? [];
         for (const line of lines) {
           linekeyByItemId.set(line.itemid, line.lineuniquekey);
+          isLotItemByItemId.set(line.itemid, (line.islotitem ?? '').toUpperCase() === 'T');
         }
         logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Advance notice found — entity: ${entity}, ${lines.length} lines`);
       } else {
@@ -147,10 +152,12 @@ export class EsItemReceiptServiceClass {
       }
 
       const lineUniqueKey = linekeyByItemId.get(sku.skuCode);
+      const isLotTracked = isLotItemByItemId.get(sku.skuCode) === true;
       if (lineUniqueKey === undefined) {
         logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] No lineuniquekey match for skuCode: ${sku.skuCode}`);
         unmatchedCount++;
       }
+      logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Building line — skuCode: ${sku.skuCode}, lotTracked: ${isLotTracked}`);
 
       // Build lots from grouped GRN items (only for lot-tracked items)
       const lots: Array<Record<string, unknown>> = [];
@@ -179,7 +186,13 @@ export class EsItemReceiptServiceClass {
         custcol_abj_grn_linenum: lineIndex,
       };
 
-      // Only include lots field when at least one item is lot-tracked
+      if (isLotTracked && lots.length === 0) {
+        const errorMessage = `Lot-tracked ASN line is missing GRN lot_no for skuCode ${sku.skuCode} (GRN ${grn.grnNo}, PO ${grn.poNo ?? 'N/A'})`;
+        logger.error(`❌ [EsItemReceiptService.sendItemReceipt] ${errorMessage}`);
+        return { success: false, nsResponse: { error: errorMessage } };
+      }
+
+      // Keep existing behavior: include lots only when lot rows exist.
       if (lots.length > 0) {
         line.lots = lots;
       }
@@ -226,6 +239,7 @@ export class EsItemReceiptServiceClass {
 
     // 9. POST to NetSuite
     try {
+      logger.debug("ℹ️ [EsItemReceiptServiceClass.sendItemReceipt] payload", payload);
       const nsResult = await this.netSuiteService.postItemReceipt(payload);
       const success = nsResult.status >= 200 && nsResult.status < 300;
 

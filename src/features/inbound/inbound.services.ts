@@ -26,6 +26,7 @@ export type CreateInboundItemInput = {
     rackId?: string | null;
     rackIds?: string[] | null;
     expiryDate?: string | null;
+    lotNo?: string | null;
     skuCode?: string | null;
     skuDescription?: string | null;
     skuUom?: string | null;
@@ -156,7 +157,7 @@ export class InboundServices {
                 }, tx);
 
                 // 4. Create GRN items (same as createGrn)
-                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; createdBy: string; updatedBy?: string }> = [];
+                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
                 if (data.items?.length) {
                     for (const item of data.items) {
                         const skuIdToUse = await this.resolveOrCreateSkuForItem(item, createdBy, updatedBy, tx);
@@ -172,6 +173,7 @@ export class InboundServices {
                             remarks: item.remarks ?? undefined,
                             rackId: rackIds[0] ?? undefined,
                             expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
+                            lotNo: item.lotNo ?? null,
                             createdBy,
                             updatedBy,
                         });
