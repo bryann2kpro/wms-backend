@@ -35,6 +35,7 @@ function serializeInvoice(inv: Record<string, unknown>) {
     updatedAt: (inv.updatedAt as Date)?.toISOString?.() ?? String(inv.updatedAt),
     issuedAt: inv.issuedAt ? (inv.issuedAt as Date)?.toISOString?.() ?? String(inv.issuedAt) : null,
     dateIssued: inv.dateIssued ? (inv.dateIssued as Date)?.toISOString?.() ?? String(inv.dateIssued) : null,
+    deliveryDate: inv.deliveryDate ? (inv.deliveryDate as Date)?.toISOString?.() ?? String(inv.deliveryDate) : null,
     doNo: (inv.doNo as string | null) ?? null,
   };
 }

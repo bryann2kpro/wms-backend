@@ -296,6 +296,7 @@ export class InvoicesRepositoryClass {
           createdBy: InvoicesTable.createdBy,
           updatedBy: InvoicesTable.updatedBy,
           doNo: DeliveryOrdersTable.doNo,
+          deliveryDate: PurchaseOrdersTable.scheduledDeliveryDate,
         })
         .from(InvoicesTable)
         .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))

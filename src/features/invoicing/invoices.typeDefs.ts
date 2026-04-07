@@ -25,6 +25,7 @@ export const typeDefs = `#graphql
     salesExecutive: String
     pageNo: String
     dateIssued: String
+    deliveryDate: String
 
     totalExclTax: String
     taxAmount: String
