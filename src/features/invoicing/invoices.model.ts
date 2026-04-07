@@ -123,6 +123,8 @@ export type InvoiceFilter = {
   dateIssuedTo?: string;
   createdAtFrom?: string;
   createdAtTo?: string;
+  deliveryDateFrom?: string;
+  deliveryDateTo?: string;
 };
 
 export type InvoiceSummaryData = {
