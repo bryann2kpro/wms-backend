@@ -8,6 +8,7 @@ import { z } from "zod";
 import { logger } from "@/util/logger";
 import { invoicesRepository } from "@/composition-root";
 import { generateProformaInvoicePdf as generateProformaInvoicePdfService } from "@/features/documents/documents.service";
+import { runBulkProformaPdfJob } from "./bulk-proforma-pdf.service";
 import type { GraphQLContext } from "@/graphql/context";
 import type { InvoiceFilter } from "./invoices.model";
 
@@ -152,6 +153,26 @@ export const resolvers = {
         throw new Error("Unauthorized");
       }
       return generateProformaInvoicePdfService(args.invoiceId, organizationId);
+    },
+
+    bulkGenerateProformaInvoicesPdf: async (
+      _: unknown,
+      args: { invoiceIds: string[] },
+      context: GraphQLContext,
+    ) => {
+      const organizationId = context.organizationId;
+      if (!organizationId) throw new Error("Unauthorized");
+      if (args.invoiceIds.length === 0) throw new Error("No invoice IDs provided");
+      if (args.invoiceIds.length > 50) throw new Error("Maximum 50 invoices per bulk export");
+
+      const jobId = crypto.randomUUID();
+
+      // Fire-and-forget — client tracks progress via Socket.IO
+      runBulkProformaPdfJob(jobId, args.invoiceIds, organizationId).catch((err) => {
+        logger.error("❌ [bulk-pdf] Unhandled job error", err);
+      });
+
+      return { jobId };
     },
   },
 };

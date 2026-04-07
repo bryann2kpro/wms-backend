@@ -1,5 +1,6 @@
 import 'dotenv/config';
 
+import http from 'node:http';
 import express from "express";
 import ViteExpress from "vite-express";
 import path from 'path';
@@ -27,6 +28,7 @@ import { initAccounts } from "./scripts/init-accounts";
 import { initMasterData } from "./scripts/init-master-data";
 import { startInvoicesCron } from "./features/invoicing/invoices.cron";
 import { startEmailNotificationWorker } from "./features/notifications/email-notification.job";
+import { initSocketServer } from "@/socket/socket-server";
 
 const app = express();
 
@@ -268,7 +270,10 @@ async function startApolloServer(): Promise<void> {
 // Start Apollo Server before Express
 await startApolloServer();
 
-ViteExpress.listen(app, Number(PORT), async () => {
+const server = http.createServer(app);
+initSocketServer(server);
+ViteExpress.bind(app, server);
+server.listen(Number(PORT), async () => {
   console.log(`Server is listening on port ${PORT}...`);
 
   try {
