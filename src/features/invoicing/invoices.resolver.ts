@@ -24,6 +24,8 @@ const invoiceFilterSchema = z
     dateIssuedTo: z.string().optional(),
     createdAtFrom: z.string().optional(),
     createdAtTo: z.string().optional(),
+    deliveryDateFrom: z.string().optional(),
+    deliveryDateTo: z.string().optional(),
   })
   .transform((data): InvoiceFilter => {
     return Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)) as InvoiceFilter;
@@ -163,7 +165,7 @@ export const resolvers = {
       const organizationId = context.organizationId;
       if (!organizationId) throw new Error("Unauthorized");
       if (args.invoiceIds.length === 0) throw new Error("No invoice IDs provided");
-      if (args.invoiceIds.length > 50) throw new Error("Maximum 50 invoices per bulk export");
+      if (args.invoiceIds.length > 500) throw new Error("Maximum 500 invoices per bulk export");
 
       const jobId = crypto.randomUUID();
 

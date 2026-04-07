@@ -252,6 +252,12 @@ export class InvoicesRepositoryClass {
       if (filter.createdAtTo) {
         conditions.push(lte(InvoicesTable.createdAt, new Date(filter.createdAtTo)));
       }
+      if (filter.deliveryDateFrom) {
+        conditions.push(gte(PurchaseOrdersTable.scheduledDeliveryDate, new Date(filter.deliveryDateFrom)));
+      }
+      if (filter.deliveryDateTo) {
+        conditions.push(lte(PurchaseOrdersTable.scheduledDeliveryDate, new Date(filter.deliveryDateTo)));
+      }
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -259,11 +265,12 @@ export class InvoicesRepositoryClass {
       const pageNumber = paginationParams.pageNumber ?? 1;
       const offset = (pageNumber - 1) * pageSize;
 
-      // Count query
+      // Count query (must join PO table when delivery date filter is active)
       const [countRow] = await db
         .select({ total: count() })
         .from(InvoicesTable)
         .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
+        .leftJoin(PurchaseOrdersTable, eq(InvoicesTable.poId, PurchaseOrdersTable.id))
         .where(whereClause);
       const totalCount = countRow?.total ?? 0;
 
