@@ -282,13 +282,16 @@ server.listen(Number(PORT), async () => {
       await runMigrations();
     }
 
-    logger.info('🚀 Initializing accounts...');
-    await initAccounts();
-    logger.info('✅ Accounts initialized successfully');
+    if (env.NODE_ENV === 'test') {
+      logger.info('🚀 Initializing accounts...');
+      await initAccounts();
+      logger.info('✅ Accounts initialized successfully');
+  
+      logger.info('🚀 Initializing master data...');
+      await initMasterData();
+      logger.info('✅ Master data initialized successfully');
+    }
 
-    logger.info('🚀 Initializing master data...');
-    await initMasterData();
-    logger.info('✅ Master data initialized successfully');
 
     startInvoicesCron();
     startEmailNotificationWorker();
