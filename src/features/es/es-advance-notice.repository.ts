@@ -1,7 +1,9 @@
 import { eq, isNull } from 'drizzle-orm';
 import { db } from '@/db/index';
 import { logger } from '@/util/logger.js';
-import { EsAdvanceNoticesTable, EsAdvanceNoticeType } from './es-advance-notice.model.js';
+import { EsAdvanceNoticesTable, EsAdvanceNoticeType, EsItemReceiptsTable } from './es-advance-notice.model.js';
+import { Transaction } from 'ioredis/built/transaction.js';
+import { DbTransaction } from '@/types/db-transaction.js';
 
 export class EsAdvanceNoticeRepositoryClass {
   /**
@@ -103,4 +105,19 @@ export class EsAdvanceNoticeRepositoryClass {
       throw error;
     }
   }
+
+  async saveItemReceipt(esAdvanceNoticeId: string, payload: unknown, nsResponse: unknown, tx?: DbTransaction): Promise<void> {
+    try {
+
+      const client = tx ?? db;
+
+      logger.info(`ℹ️ [EsAdvanceNoticeRepository.saveItemReceipt] Saving item receipt for esAdvanceNoticeId: ${esAdvanceNoticeId}`);
+      const [record] = await client.insert(EsItemReceiptsTable).values({ esAdvanceNoticeId, payload, nsResponse }).returning();
+      logger.info(`✅ [EsAdvanceNoticeRepository.saveItemReceipt] Saved record id: ${record.id}`);
+    } catch (error) {
+      logger.error('❌ [EsAdvanceNoticeRepository.saveItemReceipt] Error:', error);
+      throw error;
+    }
+  }
+
 }

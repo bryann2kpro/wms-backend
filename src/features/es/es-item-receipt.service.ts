@@ -249,6 +249,8 @@ export class EsItemReceiptServiceClass {
         logger.error(`❌ [EsItemReceiptService.sendItemReceipt] NetSuite rejected — status: ${nsResult.status}`, nsResult.body);
       }
 
+      await this.esAdvanceNoticeRepository.saveItemReceipt(grn.advanceNoticeId ?? '', payload, nsResult.body);
+
       return { success, nsResponse: nsResult.body };
     } catch (error) {
       logger.error('❌ [EsItemReceiptService.sendItemReceipt] HTTP error calling NetSuite:', error);
