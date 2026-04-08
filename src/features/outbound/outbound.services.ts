@@ -18,6 +18,7 @@ import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 import { RegionPricingTable } from "../master-data/region.model";
 import { and, eq } from "drizzle-orm";
+import { env } from "@/env";
 
 /** Line item input: must have qtyRequired and either skuId or skuCode. */
 export type CreateDeliveryOrderItemInput = {
@@ -305,8 +306,14 @@ export class OutboundServices {
                 throw new Error('Delivery order is SHIPPED — upload proof of delivery to mark as DELIVERED.');
             }
             const nextStatus = flow[currentIndex + 1];
-            // const updateTime = new Date();
-            const updateTime = new Date('2026-03-30');
+
+            let updateTime: Date;
+            if (env.NODE_ENV === 'production') {
+                updateTime = new Date();
+            } else {
+                // for testing purposes
+                updateTime = new Date('2026-03-30');
+            }
 
             const updated = await db.transaction(async (tx) => {
                 const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(
