@@ -156,6 +156,12 @@ export const resolvers = {
                             quantity: number;
                             units: string;
                             custrecord_r2o_order_code?: string;
+                            islotitem?: string;
+                            lots?: Array<{
+                                serialNumbers: string;
+                                quantity: number;
+                                expiryDate: string;
+                            }>;
                         }>;
                     };
                     return {
@@ -164,14 +170,32 @@ export const resolvers = {
                         entity: p.entity ?? '',
                         duedate: p.duedate ?? '',
                         receivedAt: r.receivedAt instanceof Date ? r.receivedAt.toISOString() : r.receivedAt,
-                        lines: (p.lines ?? []).map((l) => ({
-                            lineuniquekey: l.lineuniquekey,
-                            itemid: l.itemid,
-                            displayname: l.displayname ?? null,
-                            quantity: l.quantity,
-                            units: l.units,
-                            custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
-                        })),
+                        lines: (p.lines ?? []).map((l) => {
+                            const firstLot = l.lots?.[0];
+                            const lotSerial =
+                                firstLot &&
+                                typeof firstLot.serialNumbers === 'string' &&
+                                firstLot.serialNumbers.trim()
+                                    ? firstLot.serialNumbers.trim()
+                                    : null;
+                            const lotExpiry =
+                                firstLot &&
+                                typeof firstLot.expiryDate === 'string' &&
+                                firstLot.expiryDate.trim()
+                                    ? firstLot.expiryDate.trim()
+                                    : null;
+                            return {
+                                lineuniquekey: l.lineuniquekey,
+                                itemid: l.itemid,
+                                displayname: l.displayname ?? null,
+                                quantity: l.quantity,
+                                units: l.units,
+                                custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
+                                islotitem: l.islotitem ?? null,
+                                lotNo: lotSerial,
+                                expiryDate: lotExpiry,
+                            };
+                        }),
                     };
                 });
             } catch (error) {
