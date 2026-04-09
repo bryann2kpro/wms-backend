@@ -65,6 +65,25 @@ const updateDeliveryOrderInputSchema = z.object({
   status: z.enum(["NEW", "PICKING", "PACKING", "SHIPPED", "DELIVERED"]).optional(),
 });
 
+const updatePurchaseOrderItemInputSchema = z.object({
+  id: z.string().uuid(),
+  qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => Number(v)),
+});
+
+const newPurchaseOrderItemInputSchema = z.object({
+  skuId: z.string().uuid(),
+  skuCode: z.string().min(1),
+  qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => Number(v)),
+});
+
+const updatePurchaseOrderInputSchema = z.object({
+  scheduledDeliveryDate: z.string().optional(),
+  outletId: z.string().uuid().optional(),
+  items: z.array(updatePurchaseOrderItemInputSchema).optional(),
+  newItems: z.array(newPurchaseOrderItemInputSchema).optional(),
+  removedItemIds: z.array(z.string().uuid()).optional(),
+});
+
 // ============================================
 // HELPERS
 // ============================================
@@ -488,6 +507,46 @@ export const resolvers = {
           isEmergency: data.isEmergency,
         });
         return transformPurchaseOrder(created);
+      }
+    ),
+
+    updatePurchaseOrder: withAudit<
+      unknown,
+      { id: string; input: unknown },
+      unknown
+    >(
+      {
+        entity: "PurchaseOrder",
+        action: "UPDATE",
+        getEntityId: (result) =>
+          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
+      },
+      async (_: unknown, { id, input }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to update a purchase order", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+        const parseResult = updatePurchaseOrderInputSchema.safeParse(input);
+        if (!parseResult.success) {
+          const message = prettifyError(parseResult.error);
+          throw new GraphQLError(message, {
+            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
+          });
+        }
+        const data = parseResult.data;
+        const po = await outboundServices.updatePurchaseOrder({
+          id,
+          userId,
+          organizationId: context.organizationId!,
+          scheduledDeliveryDate: data.scheduledDeliveryDate,
+          outletId: data.outletId,
+          items: data.items,
+          newItems: data.newItems,
+          removedItemIds: data.removedItemIds,
+        });
+        return transformPurchaseOrder(po);
       }
     ),
 
