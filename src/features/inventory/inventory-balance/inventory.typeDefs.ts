@@ -7,17 +7,22 @@
 
 export const typeDefs = `#graphql
   """
-  Inventory Balance - on-hand and reserved quantities per SKU at a point in time.
+  Inventory Balance - on-hand and reserved quantities per SKU.
   Available Quantity = onHandQty - reservedQty
   """
   type InventoryBalance {
     id: ID!
     skuId: ID!
-    skuCode: String!
-    recordedDate: String!
     onHandQty: String!
     lossQty: String!
     reservedQty: String!
+    updatedAt: String!
+    skuCode: String!
+    skuDescription: String!
+    pickingStrategy: String!
+    skuExpiryDate: String
+    unitCode: String
+    unitName: String
   }
 
   """
@@ -36,12 +41,14 @@ export const typeDefs = `#graphql
     skuIds: [ID!]
     skuCode: String
     skuCodes: [String!]
+    search: String
     recordedDate: String
   }
 
   extend type Query {
     """
     Get inventory balances with optional filtering and pagination.
+    Joins with SKU and stock unit data.
     """
     inventoryBalances(
       filter: InventoryBalanceFilterInput
@@ -52,7 +59,7 @@ export const typeDefs = `#graphql
     ): InventoryBalancePaginatedResponse
 
     """
-    Get inventory balances for the given SKU IDs at the latest recorded date.
+    Get inventory balances for the given SKU IDs.
     """
     inventoryBalancesBySkuIds(skuIds: [ID!]!): [InventoryBalance!]
   }

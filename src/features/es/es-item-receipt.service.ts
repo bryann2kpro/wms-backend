@@ -12,7 +12,7 @@ import { z } from 'zod';
 const ItemReceiptLotSchema = z.object({
   serialnumbers: z.string(),
   quantity: z.number().positive(),
-  expirationdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD').optional(),
+  expirationdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD'),
 });
 
 const ItemReceiptLineSchema = z.object({
