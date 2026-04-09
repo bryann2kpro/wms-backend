@@ -317,6 +317,33 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
+  /**
+   * Fetch all delivery order items for a purchase order, joined with SkuTable to return skuCode.
+   * Used in updatePurchaseOrder to match PO items (by skuCode) to DO items (by skuId).
+   */
+  async getDeliveryOrderItemsForPo(
+    purchaseOrderId: string,
+    tx?: DbTransaction
+  ): Promise<Array<{ id: string; skuId: string; skuCode: string | null; qtyRequired: string }>> {
+    try {
+      const dbClient = tx ?? db;
+      const rows = await dbClient
+        .select({
+          id: DeliveryOrderItemsTable.id,
+          skuId: DeliveryOrderItemsTable.skuId,
+          skuCode: SkuTable.skuCode,
+          qtyRequired: DeliveryOrderItemsTable.qtyRequired,
+        })
+        .from(DeliveryOrderItemsTable)
+        .leftJoin(SkuTable, eq(DeliveryOrderItemsTable.skuId, SkuTable.skuId))
+        .where(eq(DeliveryOrderItemsTable.purchaseOrderId, purchaseOrderId));
+      return rows;
+    } catch (error) {
+      logger.error("❌ [DeliveryOrdersRepository.getDeliveryOrderItemsForPo] Error:", error);
+      throw error;
+    }
+  }
+
   async deleteDeliveryOrderItem(id: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx ?? db;

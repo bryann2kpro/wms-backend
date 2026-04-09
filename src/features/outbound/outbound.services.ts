@@ -11,7 +11,7 @@ import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../
 import { OutletsRepositoryClass } from "../master-data/outlets.repository";
 import { DeliveryOrderType } from "./delivery-orders.model";
 import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
-import { PurchaseOrderType } from "./purchase-orders.model";
+import { PurchaseOrderType, PurchaseOrderItemsTable } from "./purchase-orders.model";
 import { DocumentsRepository } from "../documents/documents.repository";
 
 import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
@@ -151,6 +151,7 @@ export class OutboundServices {
                     regionId: outlet.regionId,
                     quantity: line.qtyRequired,
                     movementType: InventoryMovementType.RESERVED,
+                    referenceNo: data.purchaseOrderNo,
                     createdBy: data.userId,
                     updatedBy: data.userId,
                 }));
@@ -389,6 +390,191 @@ export class OutboundServices {
             return updated;
         } catch (error) {
             logger.error('❌ [OutboundServices.advanceDeliveryOrderStatus] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Updates editable fields of an existing purchase order.
+     * Editable: notes, scheduledDeliveryDate, outletId, item quantities.
+     * PO status, DO status, and createdBy are not touched.
+     */
+    async updatePurchaseOrder(data: {
+        id: string;
+        userId: string;
+        organizationId: string;
+        scheduledDeliveryDate?: string;
+        outletId?: string;
+        items?: Array<{ id: string; qtyRequired: number }>;
+        newItems?: Array<{ skuId: string; skuCode: string; qtyRequired: number }>;
+        removedItemIds?: string[];
+    }): Promise<PurchaseOrderType> {
+        logger.info('ℹ️ [OutboundServices.updatePurchaseOrder] Updating purchase order...');
+        try {
+            const poResult = await this.purchaseOrdersRepository.getPurchaseOrders(
+                { id: data.id },
+                { pageSize: 1, pageNumber: 1 }
+            );
+            const po = poResult.query[0];
+            if (!po) throw new Error('Purchase order not found');
+
+            const updated = await db.transaction(async (tx) => {
+                const poUpdates: Record<string, unknown> = { updatedBy: data.userId };
+                if (data.outletId !== undefined) poUpdates.outletId = data.outletId;
+                if (data.scheduledDeliveryDate !== undefined) {
+                    poUpdates.scheduledDeliveryDate = new Date(data.scheduledDeliveryDate);
+                }
+
+                const updatedPo = await this.purchaseOrdersRepository.updatePurchaseOrder(
+                    data.id,
+                    poUpdates as any,
+                    undefined,
+                    tx
+                );
+
+                const hasItemChanges =
+                    (data.items?.length ?? 0) +
+                    (data.newItems?.length ?? 0) +
+                    (data.removedItemIds?.length ?? 0) > 0;
+
+                if (hasItemChanges) {
+                    // Guard: block item changes if DO is already being picked/packed/shipped
+                    const doRow = await this.deliveryOrderRepository.getDeliveryOrderByPurchaseOrderId(po.id);
+                    const blockedStatuses = ['PICKING', 'PACKING', 'SHIPPED', 'DELIVERED'];
+                    if (doRow && blockedStatuses.includes(doRow.status)) {
+                        throw new Error(`Cannot edit items: delivery order is already in status "${doRow.status}"`);
+                    }
+
+                    // Resolve outlet for regionId (required for inventory movements)
+                    const effectiveOutletId = data.outletId ?? po.outletId;
+                    const outlet = await this.outletsRepository.getOutletById(effectiveOutletId);
+                    if (!outlet?.regionId) throw new Error('Outlet not found or has no region assigned');
+
+                    // Fetch current PO items (need old qtyRequired to compute delta)
+                    const currentPoItems = await tx
+                        .select()
+                        .from(PurchaseOrderItemsTable)
+                        .where(eq(PurchaseOrderItemsTable.purchaseOrderNo, po.purchaseOrderNo));
+
+                    // Fetch DO items with skuCode for matching
+                    const doItems = doRow
+                        ? await this.deliveryOrderRepository.getDeliveryOrderItemsForPo(po.id, tx)
+                        : [];
+
+                    const movementsToCreate: InventoryMovementsInsertType[] = [];
+
+                    // Update existing item quantities
+                    for (const itemUpdate of data.items ?? []) {
+                        const currentPoItem = currentPoItems.find(i => i.id === itemUpdate.id);
+                        if (!currentPoItem) throw new Error(`PO item ${itemUpdate.id} not found`);
+
+                        await this.purchaseOrdersRepository.updatePurchaseOrderItem(
+                            itemUpdate.id,
+                            { qtyRequired: String(itemUpdate.qtyRequired), updatedBy: data.userId },
+                            tx
+                        );
+
+                        const doItem = doItems.find(d => d.skuCode === currentPoItem.skuCode);
+                        if (doItem) {
+                            await this.deliveryOrderRepository.updateDeliveryOrderItem(
+                                doItem.id,
+                                { qtyRequired: String(itemUpdate.qtyRequired), updatedBy: data.userId },
+                                tx
+                            );
+                            const delta = itemUpdate.qtyRequired - parseFloat(currentPoItem.qtyRequired);
+                            if (delta !== 0) {
+                                movementsToCreate.push({
+                                    skuId: doItem.skuId,
+                                    regionId: outlet.regionId,
+                                    quantity: String(delta),
+                                    movementType: InventoryMovementType.RESERVED,
+                                    referenceNo: po.purchaseOrderNo,
+                                    createdBy: data.userId,
+                                });
+                            }
+                        }
+                    }
+
+                    // Remove items: delete PO item + DO item, release reservation
+                    for (const removedPoItemId of data.removedItemIds ?? []) {
+                        const currentPoItem = currentPoItems.find(i => i.id === removedPoItemId);
+                        if (!currentPoItem) continue;
+
+                        await tx
+                            .delete(PurchaseOrderItemsTable)
+                            .where(eq(PurchaseOrderItemsTable.id, removedPoItemId));
+
+                        const doItem = doItems.find(d => d.skuCode === currentPoItem.skuCode);
+                        if (doItem) {
+                            await this.deliveryOrderRepository.deleteDeliveryOrderItem(doItem.id, tx);
+                            movementsToCreate.push({
+                                skuId: doItem.skuId,
+                                regionId: outlet.regionId,
+                                quantity: String(-parseFloat(currentPoItem.qtyRequired)),
+                                movementType: InventoryMovementType.RESERVED,
+                                referenceNo: po.purchaseOrderNo,
+                                createdBy: data.userId,
+                            });
+                        }
+                    }
+
+                    // Add new items to PO, DO, and create RESERVED movements
+                    if (data.newItems?.length) {
+                        await this.purchaseOrdersRepository.createPurchaseOrderItems(
+                            data.newItems.map(item => ({
+                                purchaseOrderNo: po.purchaseOrderNo,
+                                skuCode: item.skuCode,
+                                qtyRequired: String(item.qtyRequired),
+                                createdBy: data.userId,
+                                updatedBy: data.userId,
+                            })),
+                            tx
+                        );
+
+                        if (doRow) {
+                            await this.deliveryOrderRepository.createDeliveryOrderItems(
+                                data.newItems.map(item => ({
+                                    purchaseOrderId: po.id,
+                                    purchaseOrderNo: po.purchaseOrderNo,
+                                    skuId: item.skuId,
+                                    qtyRequired: String(item.qtyRequired),
+                                    createdBy: data.userId,
+                                    updatedBy: data.userId,
+                                })),
+                                tx
+                            );
+                        }
+
+                        for (const item of data.newItems) {
+                            movementsToCreate.push({
+                                skuId: item.skuId,
+                                regionId: outlet.regionId,
+                                quantity: String(item.qtyRequired),
+                                movementType: InventoryMovementType.RESERVED,
+                                referenceNo: po.purchaseOrderNo,
+                                createdBy: data.userId,
+                            });
+                        }
+                    }
+
+                    // Batch-create all inventory movements
+                    if (movementsToCreate.length > 0) {
+                        await this.inventoryMovementRepository.createInventoryMovement(
+                            movementsToCreate,
+                            data.userId,
+                            data.organizationId,
+                            tx
+                        );
+                    }
+                }
+
+                return updatedPo;
+            });
+
+            logger.info(`✅ [OutboundServices.updatePurchaseOrder] Purchase order updated`);
+            return updated;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.updatePurchaseOrder] Error:', error);
             throw error;
         }
     }

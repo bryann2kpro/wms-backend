@@ -292,6 +292,37 @@ export const typeDefs = `#graphql
     }
 
     """
+    Input for a single line item when updating a purchase order.
+    """
+    input UpdatePurchaseOrderItemInput {
+        id: ID!
+        qtyRequired: Float!
+    }
+
+    """
+    Input for a new line item to add to an existing purchase order.
+    """
+    input NewPurchaseOrderItemInput {
+        skuId: ID!
+        skuCode: String!
+        qtyRequired: Float!
+    }
+
+    """
+    Input for updating an existing Purchase Order (partial update from UI).
+    Only the fields provided will be changed.
+    """
+    input UpdatePurchaseOrderInput {
+        scheduledDeliveryDate: String
+        outletId: ID
+        items: [UpdatePurchaseOrderItemInput!]
+        "New line items to add to the PO and its linked DO"
+        newItems: [NewPurchaseOrderItemInput!]
+        "IDs of existing PO items to remove (also removes linked DO item and releases inventory reservation)"
+        removedItemIds: [ID!]
+    }
+
+    """
     Input for updating a delivery order (partial update).
     Status must follow the flow: NEW -> PACKING -> SHIPPED -> DELIVERED.
     """
@@ -307,6 +338,12 @@ export const typeDefs = `#graphql
         Create a purchase order and its line items. Used when creating POs from the UI.
         """
         createPurchaseOrder(input: CreatePurchaseOrderInput!): PurchaseOrder!
+
+        """
+        Update an existing purchase order. Editable fields: notes, scheduledDeliveryDate, outletId, item quantities.
+        PO status, DO status, NetSuite status, and createdBy are not editable via this mutation.
+        """
+        updatePurchaseOrder(id: ID!, input: UpdatePurchaseOrderInput!): PurchaseOrder!
 
         """
         Create a delivery order. Validates line items (SKU resolution), checks stock,
