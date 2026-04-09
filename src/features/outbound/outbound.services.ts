@@ -307,6 +307,30 @@ export class OutboundServices {
             }
             const nextStatus = flow[currentIndex + 1];
 
+            let shipmentMovements: InventoryMovementsInsertType[] = [];
+            if (nextStatus === 'SHIPPED') {
+                const poResult = await this.purchaseOrdersRepository.getPurchaseOrders(
+                    { id: existing.purchaseOrderId },
+                    { pageSize: 1, pageNumber: 1 },
+                );
+                const po = poResult.query[0];
+                if (!po) throw new Error('Purchase order not found');
+
+                const outlet = await this.outletsRepository.getOutletById(po.outletId);
+
+                const doItemsResult = await this.deliveryOrderRepository.getDeliveryOrderItemsWithDetails(
+                    { purchaseOrderNo: existing.poNo },
+                    { pageSize: 1000, pageNumber: 1 },
+                );
+                shipmentMovements = doItemsResult.query.map((item) => ({
+                    skuId: item.skuId as string,
+                    regionId: outlet?.regionId ?? undefined,
+                    quantity: item.qtyPacked ?? item.qtyRequired,
+                    movementType: InventoryMovementType.SHIPMENT,
+                    createdBy: data.userId,
+                }));
+            }
+
             let updateTime: Date;
             if (env.NODE_ENV === 'production') {
                 updateTime = new Date();
@@ -337,6 +361,14 @@ export class OutboundServices {
                         tx,
                     );
                     logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] PO updated to SHIPPED');
+
+                    await this.inventoryMovementRepository.createInventoryMovement(
+                        shipmentMovements,
+                        data.userId,
+                        existing.organizationId,
+                        tx,
+                    );
+                    logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] Inventory movement created for SHIPPED');
                 }
 
                 if ((nextStatus === "SHIPPED" || nextStatus === "DELIVERED") && isWithinMonthEndWindow(updateTime, { timeZone: "Asia/Kuala_Lumpur", daysFromEndInclusive: 2 })) {

@@ -1,16 +1,12 @@
-import { generateProformaInvoicePdf } from '@/features/documents/documents.service';
+import { generateDeliveryOrderPdfData } from '@/features/documents/documents.service';
 import { io } from '@/socket/socket-server';
 import { logger } from '@/util/logger';
 import { createSemaphore } from '@/util/semaphore';
 import { buildZip } from '@/util/zip';
 
-// ============================================
-// BULK JOB
-// ============================================
-
 /**
- * Fire-and-forget bulk PDF generation job.
- * Generates up to `invoiceIds.length` proforma PDFs concurrently (max 3 at a time),
+ * Fire-and-forget bulk Delivery Order PDF generation job.
+ * Generates up to `deliveryOrderIds.length` DOs concurrently (max 3 at a time),
  * bundles them into a zip, and streams progress + result back via Socket.IO.
  *
  * Socket events emitted to room `job:{jobId}`:
@@ -18,19 +14,17 @@ import { buildZip } from '@/util/zip';
  *   bulk-pdf:complete  { jobId, zipBase64, zipFilename, successCount, failedCount }
  *   bulk-pdf:error     { jobId, message }
  */
-export async function runBulkProformaPdfJob(
+export async function runBulkDeliveryOrderPdfJob(
   jobId: string,
-  invoiceIds: string[],
-  organizationId: string,
+  deliveryOrderIds: string[],
 ): Promise<void> {
   const room = `job:${jobId}`;
-  const total = invoiceIds.length;
+  const total = deliveryOrderIds.length;
   let completed = 0;
 
   const semaphore = createSemaphore(3);
 
   try {
-    // Announce job start
     io.to(room).emit('bulk-pdf:progress', {
       jobId,
       completed: 0,
@@ -39,10 +33,10 @@ export async function runBulkProformaPdfJob(
     });
 
     const results = await Promise.allSettled(
-      invoiceIds.map((id) =>
+      deliveryOrderIds.map((id) =>
         semaphore(async () => {
           try {
-            const result = await generateProformaInvoicePdf(id, organizationId);
+            const result = await generateDeliveryOrderPdfData(id);
             completed++;
             io.to(room).emit('bulk-pdf:progress', {
               jobId,
@@ -66,8 +60,9 @@ export async function runBulkProformaPdfJob(
     );
 
     const succeeded = results
-      .filter((r): r is PromiseFulfilledResult<{ pdfBase64: string; filename: string }> =>
-        r.status === 'fulfilled',
+      .filter(
+        (r): r is PromiseFulfilledResult<{ pdfBase64: string; filename: string }> =>
+          r.status === 'fulfilled',
       )
       .map((r) => r.value);
 
@@ -81,7 +76,7 @@ export async function runBulkProformaPdfJob(
     const zipBuffer = await buildZip(zipEntries);
     const zipBase64 = zipBuffer.toString('base64');
     const dateStr = new Date().toISOString().slice(0, 10);
-    const zipFilename = `Proforma_Invoices_${dateStr}.zip`;
+    const zipFilename = `Delivery_Orders_${dateStr}.zip`;
 
     io.to(room).emit('bulk-pdf:complete', {
       jobId,
@@ -91,10 +86,10 @@ export async function runBulkProformaPdfJob(
       failedCount,
     });
   } catch (err) {
-    logger.error('[bulk-pdf] Job failed unexpectedly', err);
+    logger.error('[bulk-delivery-order-pdf] Job failed unexpectedly', err);
     io.to(room).emit('bulk-pdf:error', {
       jobId,
-      message: 'Bulk PDF generation failed unexpectedly',
+      message: 'Bulk delivery order PDF generation failed unexpectedly',
     });
   }
 }
