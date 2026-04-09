@@ -79,6 +79,21 @@ export async function renderDeliveryOrderPreviewHtml(doId: string): Promise<stri
 }
 
 /**
+ * Generate Delivery Order PDF and return the raw buffer + filename (no S3 upload).
+ * Used by the bulk zip export job.
+ */
+export async function generateDeliveryOrderPdfData(doId: string): Promise<{ pdfBase64: string; filename: string }> {
+  const html = await renderDeliveryOrderPreviewHtml(doId);
+  const pdfBuffer = await htmlToPdf(html);
+  const doRow = await deliveryOrdersRepository.getDeliveryOrderById(doId);
+  if (!doRow) throw new Error(`Delivery order not found: ${doId}`);
+  const dateStr = new Date().toISOString().split('T')[0];
+  const safeDoNo = String(doRow.doNo ?? 'DO').replace(/[^a-zA-Z0-9-_]/g, '_');
+  const filename = `Delivery_Order_${safeDoNo}_${dateStr}.pdf`;
+  return { pdfBase64: pdfBuffer.toString('base64'), filename };
+}
+
+/**
  * Generate Delivery Order PDF (invoice-like layout) without pricing fields.
  * @returns Public S3 URL of the uploaded PDF.
  */
