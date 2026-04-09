@@ -362,8 +362,9 @@ export class InboundServices {
             }
         }
 
-        // 3. Auto-create: need at minimum skuCode and skuDescription
-        if (item.skuCode && item.skuDescription) {
+        // 3. Auto-create: need at minimum skuCode; fall back to skuCode as description when skuDescription is blank
+        if (item.skuCode) {
+            const descriptionToUse = item.skuDescription?.trim() || item.skuCode;
             const resolvedUom = await this.resolveSkuUom(item.skuUom ?? null);
             if (!resolvedUom) {
                 logger.error('[InboundServices] Cannot create SKU — no valid UOM could be resolved', { skuCode: item.skuCode, skuUom: item.skuUom });
@@ -372,7 +373,7 @@ export class InboundServices {
             try {
                 const newSku = await this.skuRepository.createSku({
                     skuCode: item.skuCode,
-                    skuDescription: item.skuDescription,
+                    skuDescription: descriptionToUse,
                     cartonQuantity: '0',
                     lossQuantity: '0',
                     skuUom: resolvedUom,
