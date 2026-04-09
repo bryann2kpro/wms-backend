@@ -19,7 +19,7 @@ import {
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
-import { eq, and, like, inArray, gte, lte } from "drizzle-orm";
+import { eq, and, like, inArray, gte, lte, sql } from "drizzle-orm";
 import { SkuTable } from "@/features/master-data/sku.model";
 
 export class PurchaseOrdersRepositoryClass {
@@ -248,10 +248,11 @@ export class PurchaseOrdersRepositoryClass {
           updatedAt: PurchaseOrderItemsTable.updatedAt,
           createdBy: PurchaseOrderItemsTable.createdBy,
           updatedBy: PurchaseOrderItemsTable.updatedBy,
-          skuDescription: SkuTable.skuDescription,
+          // Correlated subquery to get one description per skuCode, avoiding row multiplication
+          // that would occur if SkuTable has multiple records with the same skuCode.
+          skuDescription: sql<string | null>`(SELECT sku_description FROM ${SkuTable} WHERE sku_code = ${PurchaseOrderItemsTable.skuCode} LIMIT 1)`,
         })
         .from(PurchaseOrderItemsTable)
-        .leftJoin(SkuTable, eq(PurchaseOrderItemsTable.skuCode, SkuTable.skuCode))
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
 
       const pageSize = paginationParams.pageSize ?? 10;
