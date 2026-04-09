@@ -57,7 +57,7 @@ export class EsItemReceiptServiceClass {
 
     // 1. Fetch GRN items
     const grnItems = await this.grnItemsRepository.getGrnItems({ grnId: grn.id });
-    if (!grnItems || grnItems === false || grnItems.length === 0) {
+    if (!grnItems || grnItems.length === 0) {
       logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] No GRN items found for grnId: ${grn.id}`);
       return { success: false, nsResponse: { error: 'No GRN items found' } };
     }
@@ -97,7 +97,7 @@ export class EsItemReceiptServiceClass {
 
     // Fallback entity: supplier name
     if (!entity && grn.supplierId) {
-      const supplierResult = await this.suppliersRepository.getSuppliers({ supplierId: grn.supplierId }, undefined, organizationId);
+      const supplierResult = await this.suppliersRepository.getSupplier({ supplierId: grn.supplierId }, {}, organizationId);
       const supplier = supplierResult && 'query' in supplierResult ? supplierResult.query?.[0] : null;
       if (supplier?.supplierName) {
         entity = supplier.supplierName;
