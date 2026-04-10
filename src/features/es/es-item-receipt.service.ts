@@ -239,7 +239,8 @@ export class EsItemReceiptServiceClass {
 
     // 9. POST to NetSuite
     try {
-      logger.debug("ℹ️ [EsItemReceiptServiceClass.sendItemReceipt] payload", payload);
+      logger.debug("ℹ️ [EsItemReceiptServiceClass.sendItemReceipt] payload:", );
+      console.log("payload: ", payload);
       const nsResult = await this.netSuiteService.postItemReceipt(payload);
       const success = nsResult.status >= 200 && nsResult.status < 300;
 
