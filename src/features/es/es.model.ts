@@ -29,6 +29,7 @@ export const EsAdvanceNoticesTable = MainSchema.table('es_advance_notices', {
 
 export const EsItemReceiptsTable = MainSchema.table('es_item_receipts', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
+  poNumber: varchar('po_number', { length: 50 }),
   esAdvanceNoticeId: uuid('es_advance_notice_id').references(() => EsAdvanceNoticesTable.id),
   payload: jsonb('payload').notNull(),
   sentAt: timestamp('sent_at', { withTimezone: true }).defaultNow().notNull(),

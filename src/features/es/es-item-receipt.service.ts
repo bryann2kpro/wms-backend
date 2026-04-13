@@ -250,7 +250,12 @@ export class EsItemReceiptServiceClass {
         logger.error(`❌ [EsItemReceiptService.sendItemReceipt] NetSuite rejected — status: ${nsResult.status}`, nsResult.body);
       }
 
-      await this.esRepository.saveItemReceipt(grn.advanceNoticeId ?? '', payload, nsResult.body);
+      if (!grn.poNo) {
+        logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] GRN has no poNo — cannot save item receipt`);
+        return { success: false, nsResponse: { error: 'GRN has no poNo' } };
+      }
+
+      await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', payload, nsResult.body);
 
       return { success, nsResponse: nsResult.body };
     } catch (error) {

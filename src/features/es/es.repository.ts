@@ -106,16 +106,33 @@ export class EsRepositoryClass {
     }
   }
 
-  async saveItemReceipt(esAdvanceNoticeId: string, payload: unknown, nsResponse: unknown, tx?: DbTransaction): Promise<void> {
+  async saveItemReceipt(poNumber: string, esAdvanceNoticeId: string, payload: unknown, nsResponse: unknown, tx?: DbTransaction): Promise<void> {
     try {
 
       const client = tx ?? db;
 
       logger.info(`ℹ️ [EsAdvanceNoticeRepository.saveItemReceipt] Saving item receipt for esAdvanceNoticeId: ${esAdvanceNoticeId}`);
-      const [record] = await client.insert(EsItemReceiptsTable).values({ esAdvanceNoticeId, payload, nsResponse }).returning();
+      const [record] = await client.insert(EsItemReceiptsTable).values({ poNumber, esAdvanceNoticeId, payload, nsResponse }).returning();
       logger.info(`✅ [EsAdvanceNoticeRepository.saveItemReceipt] Saved record id: ${record.id}`);
     } catch (error) {
       logger.error('❌ [EsAdvanceNoticeRepository.saveItemReceipt] Error:', error);
+      throw error;
+    }
+  }
+
+  async getItemReceipt(poNumber: string): Promise<any | null> {
+    try {
+      logger.info(`ℹ️ [EsAdvanceNoticeRepository.getItemReceipt] Fetching item receipt by poNumber: ${poNumber}`);
+      const [record] = await db
+        .select()
+        .from(EsItemReceiptsTable)
+        .leftJoin(EsAdvanceNoticesTable, eq(EsItemReceiptsTable.esAdvanceNoticeId, EsAdvanceNoticesTable.id))
+        .where(eq(EsAdvanceNoticesTable.tranid, poNumber))
+        .limit(1);
+      logger.info(`✅ [EsAdvanceNoticeRepository.getItemReceipt] Fetched record successfully!`);
+      return record ?? null;
+    } catch (error) {
+      logger.error('❌ [EsAdvanceNoticeRepository.getItemReceipt] Error:', error);
       throw error;
     }
   }

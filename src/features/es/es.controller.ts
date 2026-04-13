@@ -119,4 +119,45 @@ export class EsControllerClass {
       });
     }
   }
+
+  /**
+   * Get item receipt by id
+   * GET /api/v1/es/item-receipt?id=<id>
+   *
+   * @description Get sent item receipt data by id.
+   * @headers Authorization: <bearer-token>
+   * @returns { success: boolean, message: string, data: ItemReceipt }
+   */
+  async getItemReceipt(req: Request, res: Response) {
+    try {
+      logger.info('ℹ️ [EsController.getItemReceipt] Item receipt request received');
+
+      // Note: Id here refers to PO number
+      const { success, data: poNumber, error } = z.string().min(1).safeParse(req.query.id);
+
+      if (!success) {
+        logger.warn(`⚠️ [EsController.getItemReceipt] Invalid PO Number: ${error.message}`);
+        return res.status(400).json({
+          success: false,
+          message: `Invalid PO Number: ${error.message}`,
+        });
+      }
+
+      const itemReceipt = await this.esRepository.getItemReceipt(poNumber);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Item receipt fetched successfully.',
+        data: itemReceipt,
+      });
+
+    } catch (error) {
+      logger.error('❌ [EsController.getItemReceipt] Unexpected error:', error);
+      return res.status(500).json({
+        success: false,
+        message: Error.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
 }
