@@ -352,14 +352,19 @@ export async function generateProformaInvoicePdf(
   invoiceId: string,
   organizationId: string,
 ): Promise<{ pdfBase64: string; filename: string }> {
+  try {
   logger.info('ℹ️ [documents.service.generateProformaInvoicePdf] Generating proforma PDF for invoice %s', invoiceId);
-  const row = await loadInvoiceForPdfOrThrow(invoiceId, organizationId);
-  const html = await buildProformaInvoiceHtml(row);
-  const pdfBuffer = await htmlToPdf(html, { preferCSSPageSize: true });
-  const safeNo = String(row.invoiceNo ?? 'invoice').replace(/[^a-zA-Z0-9-_]/g, '_');
-  const dateStr = new Date().toISOString().split('T')[0];
-  const filename = `Proforma_${safeNo}_${dateStr}.pdf`;
-  return { pdfBase64: pdfBuffer.toString('base64'), filename };
+    const row = await loadInvoiceForPdfOrThrow(invoiceId, organizationId);
+    const html = await buildProformaInvoiceHtml(row);
+    const pdfBuffer = await htmlToPdf(html, { preferCSSPageSize: true });
+    const safeNo = String(row.invoiceNo ?? 'invoice').replace(/[^a-zA-Z0-9-_]/g, '_');
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `Proforma_${safeNo}_${dateStr}.pdf`;
+    return { pdfBase64: pdfBuffer.toString('base64'), filename };
+  } catch (error) {
+    logger.error('🚨 [documents.service.generateProformaInvoicePdf]', error);
+    throw error;
+  }
 }
 
 /**
