@@ -323,10 +323,11 @@ export class OutboundServices {
                     { purchaseOrderNo: existing.poNo },
                     { pageSize: 1000, pageNumber: 1 },
                 );
+
                 shipmentMovements = doItemsResult.query.map((item) => ({
                     skuId: item.skuId as string,
                     regionId: outlet?.regionId ?? undefined,
-                    quantity: item.qtyPacked ?? item.qtyRequired,
+                    quantity: item.qtyRequired ?? item.qtyPicked,
                     movementType: InventoryMovementType.SHIPMENT,
                     createdBy: data.userId,
                 }));
