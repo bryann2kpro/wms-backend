@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService, esAdvanceNoticeRepository } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService, esRepository } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -143,7 +143,7 @@ export const resolvers = {
         },
         listPendingAdvanceNotices: async () => {
             try {
-                const records = await esAdvanceNoticeRepository.findPending();
+                const records = await esRepository.findPending();
                 return records.map((r) => {
                     const p = r.payload as {
                         tranid: string;

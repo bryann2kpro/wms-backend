@@ -1,11 +1,11 @@
 import { eq, isNull } from 'drizzle-orm';
 import { db } from '@/db/index';
 import { logger } from '@/util/logger.js';
-import { EsAdvanceNoticesTable, EsAdvanceNoticeType, EsItemReceiptsTable } from './es-advance-notice.model.js';
+import { EsAdvanceNoticesTable, EsAdvanceNoticeType, EsItemReceiptsTable } from './es.model.js';
 import { Transaction } from 'ioredis/built/transaction.js';
 import { DbTransaction } from '@/types/db-transaction.js';
 
-export class EsAdvanceNoticeRepositoryClass {
+export class EsRepositoryClass {
   /**
    * Find an advance notice by its record id.
    * Used when createInbound receives advanceNoticeId from the UI.

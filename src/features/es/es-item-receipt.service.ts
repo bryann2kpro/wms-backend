@@ -1,5 +1,5 @@
 import { logger } from '@/util/logger.js';
-import { EsAdvanceNoticeRepositoryClass } from './es-advance-notice.repository.js';
+import { EsRepositoryClass } from './es.repository.js';
 import { NetSuiteService } from './netsuite.service.js';
 import { GrnItemsRepositoryClass } from '@/features/inbound/grns-items.repository.js';
 import { SkuRepositoryClass } from '@/features/master-data/sku.repository.js';
@@ -39,7 +39,7 @@ const ItemReceiptPayloadSchema = z.object({
 
 export class EsItemReceiptServiceClass {
   constructor(
-    private esAdvanceNoticeRepository: EsAdvanceNoticeRepositoryClass,
+    private esRepository: EsRepositoryClass,
     private grnItemsRepository: GrnItemsRepositoryClass,
     private skuRepository: SkuRepositoryClass,
     private suppliersRepository: SuppliersRepositoryClass,
@@ -75,7 +75,7 @@ export class EsItemReceiptServiceClass {
     const isLotItemByItemId = new Map<string, boolean>();
 
     if (grn.poNo) {
-      const advanceNotice = await this.esAdvanceNoticeRepository.findByTranid(grn.poNo);
+      const advanceNotice = await this.esRepository.findByTranid(grn.poNo);
       if (advanceNotice) {
         const noticePayload = advanceNotice.payload as {
           entity?: string;
@@ -250,7 +250,7 @@ export class EsItemReceiptServiceClass {
         logger.error(`❌ [EsItemReceiptService.sendItemReceipt] NetSuite rejected — status: ${nsResult.status}`, nsResult.body);
       }
 
-      await this.esAdvanceNoticeRepository.saveItemReceipt(grn.advanceNoticeId ?? '', payload, nsResult.body);
+      await this.esRepository.saveItemReceipt(grn.advanceNoticeId ?? '', payload, nsResult.body);
 
       return { success, nsResponse: nsResult.body };
     } catch (error) {

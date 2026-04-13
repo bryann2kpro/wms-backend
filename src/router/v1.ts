@@ -8,7 +8,7 @@ import { rbacRoutes } from '@/features/rbac';
 import { reportPreviewRoutes } from '@/features/report/report.routes.js';
 import { documentPreviewRoutes } from '@/features/documents/documents.routes.js';
 import apiKeysRoutes from '@/features/api-keys/api-keys.routes.js';
-import esRoutes from '@/features/es/es-advance-notice.routes.js';
+import esRoutes from '@/features/es/es.routes.js';
 
 const v1Router = express.Router();
 

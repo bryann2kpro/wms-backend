@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { EsAdvanceNoticeRepositoryClass } from './es-advance-notice.repository.js';
+import { EsRepositoryClass } from './es.repository.js';
 import { EmailNotificationRepositoryClass } from '@/features/notifications/email-notification.repository.js';
 import { enqueueEmailNotification } from '@/features/notifications/email-notification.job.js';
 import { Error } from '@/error/index.js';
@@ -34,9 +34,9 @@ const advanceNoticeSchema = z.object({
   lines: z.array(lineSchema).min(1),
 });
 
-export class EsAdvanceNoticeControllerClass {
+export class EsControllerClass {
   constructor(
-    private esAdvanceNoticeRepository: EsAdvanceNoticeRepositoryClass,
+    private esRepository: EsRepositoryClass,
     private emailNotificationRepository: EmailNotificationRepositoryClass,
   ) {}
 
@@ -50,14 +50,14 @@ export class EsAdvanceNoticeControllerClass {
    */
   async receiveAdvanceNotice(req: Request, res: Response) {
     try {
-      logger.info('ℹ️ [EsAdvanceNoticeController.receiveAdvanceNotice] Advance notice request received');
+      logger.info('ℹ️ [EsController.receiveAdvanceNotice] Advance notice request received');
 
       // Step 1: Schema validation
       const result = advanceNoticeSchema.safeParse(req.body);
 
       if (!result.success) {
         const missingFields = result.error.issues.map((i) => i.path.join('.')).join(', ');
-        logger.warn(`⚠️ [EsAdvanceNoticeController.receiveAdvanceNotice] Schema validation failed — invalid fields: ${missingFields}`);
+        logger.warn(`⚠️ [EsController.receiveAdvanceNotice] Schema validation failed — invalid fields: ${missingFields}`);
         return res.status(400).json({
           success: false,
           message: `Validation failed. Invalid or missing fields: ${missingFields}.`,
@@ -65,14 +65,14 @@ export class EsAdvanceNoticeControllerClass {
       }
 
       const payload = result.data;
-      logger.info(`ℹ️ [EsAdvanceNoticeController.receiveAdvanceNotice] Schema valid — tranid: ${payload.tranid}`);
+      logger.info(`ℹ️ [EsController.receiveAdvanceNotice] Schema valid — tranid: ${payload.tranid}`);
 
       // Step 2: Duplicate tranid check
-      logger.info(`ℹ️ [EsAdvanceNoticeController.receiveAdvanceNotice] Checking for duplicate tranid: ${payload.tranid}`);
-      const existing = await this.esAdvanceNoticeRepository.findByTranid(payload.tranid);
+      logger.info(`ℹ️ [EsController.receiveAdvanceNotice] Checking for duplicate tranid: ${payload.tranid}`);
+      const existing = await this.esRepository.findByTranid(payload.tranid);
 
       if (existing) {
-        logger.warn(`⚠️ [EsAdvanceNoticeController.receiveAdvanceNotice] Duplicate tranid detected: ${payload.tranid}`);
+        logger.warn(`⚠️ [EsController.receiveAdvanceNotice] Duplicate tranid detected: ${payload.tranid}`);
         return res.status(400).json({
           success: false,
           message: `Duplicate tranid: '${payload.tranid}' has already been received.`,
@@ -80,14 +80,14 @@ export class EsAdvanceNoticeControllerClass {
       }
 
       // Step 3: Save
-      logger.info(`ℹ️ [EsAdvanceNoticeController.receiveAdvanceNotice] No duplicate found — saving advance notice for tranid: ${payload.tranid}`);
-      const record = await this.esAdvanceNoticeRepository.saveAdvanceNotice({
+      logger.info(`ℹ️ [EsController.receiveAdvanceNotice] No duplicate found — saving advance notice for tranid: ${payload.tranid}`);
+      const record = await this.esRepository.saveAdvanceNotice({
         tranid: payload.tranid,
         apiKeyId: req.apiKey!.id,
         payload,
       });
 
-      logger.info(`✅ [EsAdvanceNoticeController.receiveAdvanceNotice] Advance notice saved — id: ${record.id}, tranid: ${payload.tranid}`);
+      logger.info(`✅ [EsController.receiveAdvanceNotice] Advance notice saved — id: ${record.id}, tranid: ${payload.tranid}`);
 
       // Step 4: Enqueue admin email notification (non-fatal — never blocks the 200)
       if (env.ADMIN_EMAIL) {
@@ -99,12 +99,12 @@ export class EsAdvanceNoticeControllerClass {
             toEmail: env.ADMIN_EMAIL,
           });
           await enqueueEmailNotification(notification.id);
-          logger.info(`ℹ️ [EsAdvanceNoticeController.receiveAdvanceNotice] Admin notification enqueued — notificationId: ${notification.id}`);
+          logger.info(`ℹ️ [EsController.receiveAdvanceNotice] Admin notification enqueued — notificationId: ${notification.id}`);
         } catch (notifError) {
-          logger.error('❌ [EsAdvanceNoticeController.receiveAdvanceNotice] Failed to enqueue admin notification:', notifError);
+          logger.error('❌ [EsController.receiveAdvanceNotice] Failed to enqueue admin notification:', notifError);
         }
       } else {
-        logger.warn('⚠️ [EsAdvanceNoticeController.receiveAdvanceNotice] ADMIN_EMAIL not set — skipping notification');
+        logger.warn('⚠️ [EsController.receiveAdvanceNotice] ADMIN_EMAIL not set — skipping notification');
       }
 
       return res.status(200).json({
@@ -112,7 +112,7 @@ export class EsAdvanceNoticeControllerClass {
         message: 'Advance notice received successfully.',
       });
     } catch (error) {
-      logger.error('❌ [EsAdvanceNoticeController.receiveAdvanceNotice] Unexpected error:', error);
+      logger.error('❌ [EsController.receiveAdvanceNotice] Unexpected error:', error);
       return res.status(500).json({
         success: false,
         message: Error.INTERNAL_SERVER_ERROR,

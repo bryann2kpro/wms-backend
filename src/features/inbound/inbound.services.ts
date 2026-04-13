@@ -10,7 +10,7 @@ import { InventoryMovementType } from "../inventory/inventory-movement/inventory
 import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
 import { GrnItemRacksTable } from "./grns.model";
 import { OrganizationRepositoryClass } from "../master-data/organization.repository";
-import { EsAdvanceNoticeRepositoryClass } from "../es/es-advance-notice.repository";
+import { EsAdvanceNoticeRepositoryClass } from "../es/es.repository";
 import { SuppliersRepositoryClass } from "../master-data/suppliers.repository";
 import { StockUnitRepositoryClass } from "../master-data/stock-unit.repository";
 

@@ -2,7 +2,7 @@ import { Queue, Worker, type Job } from 'bullmq';
 import { getBullConnection } from '@/jobs/bullmq-connection';
 import { logger } from '@/util/logger';
 import { emailNotificationRepository, emailSettingsRepository } from '@/composition-root';
-import { EsAdvanceNoticesTable } from '@/features/es/es-advance-notice.model';
+import { EsAdvanceNoticesTable } from '@/features/es/es.model';
 import { db } from '@/db';
 import { eq } from 'drizzle-orm';
 import { sendAdvanceNoticeEmail } from '@/util/mailer';

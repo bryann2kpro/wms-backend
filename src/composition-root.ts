@@ -61,8 +61,8 @@ import { RunningNoRepositoryClass } from './features/running-no/running-no.repos
 import { ApiKeysRepositoryClass } from '@/features/api-keys/api-keys.repository.js';
 import { ApiKeysControllerClass } from '@/features/api-keys/api-keys.controller.js';
 // ES Integration
-import { EsAdvanceNoticeRepositoryClass } from '@/features/es/es-advance-notice.repository.js';
-import { EsAdvanceNoticeControllerClass } from '@/features/es/es-advance-notice.controller.js';
+import { EsRepositoryClass } from '@/features/es/es.repository.js';
+import { EsControllerClass } from '@/features/es/es.controller.js';
 import { NetSuiteService } from '@/features/es/netsuite.service.js';
 import { EsItemReceiptServiceClass } from '@/features/es/es-item-receipt.service.js';
 // Notifications
@@ -149,8 +149,8 @@ export const reportController = new ReportControllerClass();
 export const emailNotificationRepository = new EmailNotificationRepositoryClass();
 export const emailSettingsRepository = new EmailSettingsRepositoryClass();
 // ES Integration
-export const esAdvanceNoticeRepository = new EsAdvanceNoticeRepositoryClass();
-export const esAdvanceNoticeController = new EsAdvanceNoticeControllerClass(esAdvanceNoticeRepository, emailNotificationRepository);
+export const esRepository = new EsRepositoryClass();
+export const esController = new EsControllerClass(esRepository, emailNotificationRepository);
 
 export const inboundServices = new InboundServices(
     grnsRepository,
@@ -161,7 +161,7 @@ export const inboundServices = new InboundServices(
     inventoryMovementRepository,
     suppliersRepository,
     stockUnitRepository,
-    esAdvanceNoticeRepository,
+    esRepository,
 );
 
 // API Keys
@@ -170,7 +170,7 @@ export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
 
 export const netSuiteService = new NetSuiteService();
 export const esItemReceiptService = new EsItemReceiptServiceClass(
-  esAdvanceNoticeRepository,
+  esRepository,
   grnItemsRepository,
   skuRepository,
   suppliersRepository,
