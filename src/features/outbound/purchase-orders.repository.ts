@@ -19,7 +19,7 @@ import {
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
-import { eq, and, like, inArray, gte, lte, sql } from "drizzle-orm";
+import { eq, and, like, inArray, gte, lte, sql, notInArray, ne } from "drizzle-orm";
 import { SkuTable } from "@/features/master-data/sku.model";
 
 export class PurchaseOrdersRepositoryClass {
@@ -324,6 +324,64 @@ export class PurchaseOrdersRepositoryClass {
       return true;
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.deletePurchaseOrderItem] Error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Returns all non-cancelled/rejected POs for the same outlet on the same calendar delivery date,
+   * each with their summed item quantity. Used to compute the group-level QOM charge.
+   *
+   * @param excludePurchaseOrderNo - PO being created right now; exclude it so we only get siblings.
+   */
+  async getSiblingPurchaseOrdersWithQty(
+    outletId: string,
+    deliveryDate: Date,
+    organizationId: string,
+    excludePurchaseOrderNo?: string,
+    tx?: DbTransaction
+  ): Promise<Array<{ id: string; purchaseOrderNo: string; totalQty: number }>> {
+    try {
+      const dbClient = tx ?? db;
+
+      const startOfDay = new Date(deliveryDate);
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const endOfDay = new Date(deliveryDate);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+
+      const conditions = [
+        eq(PurchaseOrdersTable.outletId, outletId),
+        eq(PurchaseOrdersTable.organizationId, organizationId),
+        gte(PurchaseOrdersTable.scheduledDeliveryDate, startOfDay),
+        lte(PurchaseOrdersTable.scheduledDeliveryDate, endOfDay),
+        notInArray(PurchaseOrdersTable.status, ['CANCELLED', 'REJECTED']),
+      ];
+
+      if (excludePurchaseOrderNo) {
+        conditions.push(ne(PurchaseOrdersTable.purchaseOrderNo, excludePurchaseOrderNo));
+      }
+
+      const rows = await dbClient
+        .select({
+          id: PurchaseOrdersTable.id,
+          purchaseOrderNo: PurchaseOrdersTable.purchaseOrderNo,
+          totalQty: sql<string>`COALESCE(SUM(${PurchaseOrderItemsTable.qtyRequired}::numeric), '0')`,
+        })
+        .from(PurchaseOrdersTable)
+        .leftJoin(
+          PurchaseOrderItemsTable,
+          eq(PurchaseOrdersTable.purchaseOrderNo, PurchaseOrderItemsTable.purchaseOrderNo)
+        )
+        .where(and(...conditions))
+        .groupBy(PurchaseOrdersTable.id, PurchaseOrdersTable.purchaseOrderNo);
+
+      return rows.map((r) => ({
+        id: r.id,
+        purchaseOrderNo: r.purchaseOrderNo,
+        totalQty: parseFloat(r.totalQty),
+      }));
+    } catch (error) {
+      logger.error("❌ [PurchaseOrdersRepository.getSiblingPurchaseOrdersWithQty] Error:", error);
       throw error;
     }
   }
