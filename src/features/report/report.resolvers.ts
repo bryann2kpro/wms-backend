@@ -21,6 +21,18 @@ const REPORT_TYPE_S3_FOLDER: Record<string, string> = {
 };
 
 export const resolvers = {
+  Query: {
+    invoiceSummaryReportData: async (
+      _: unknown,
+      args: {
+        dateFrom: string;
+        dateTo: string;
+        regionId: string;
+      }
+    ) => {
+      return getInvoiceSummaryData(args.dateFrom, args.dateTo, args.regionId);
+    },
+  },
   Mutation: {
     /**
      * Generate a report PDF. Returns base64-encoded PDF and filename for download.

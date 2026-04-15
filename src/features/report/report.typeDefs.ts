@@ -63,6 +63,31 @@ export const typeDefs = `#graphql
     scheduledDeliveryDateTo: String
   }
 
+  """
+  Row item for Proforma Invoice Summary export data.
+  """
+  type InvoiceSummaryReportRow {
+    proformaId: String!
+    invoiceDate: String!
+    poNumber: String!
+    doNumber: String!
+    outlet: String!
+    region: String!
+    ctn: Int!
+    amount: Float!
+  }
+
+  extend type Query {
+    """
+    Fetch Proforma Invoice Summary rows for Excel export.
+    """
+    invoiceSummaryReportData(
+      dateFrom: String!
+      dateTo: String!
+      regionId: ID!
+    ): [InvoiceSummaryReportRow!]! @auth
+  }
+
   extend type Mutation {
     """
     Generate a report PDF. Returns base64-encoded PDF and filename for download.
