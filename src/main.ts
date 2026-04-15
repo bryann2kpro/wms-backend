@@ -228,6 +228,7 @@ async function startApolloServer(): Promise<void> {
         createOutlet: 'Unable to create outlet. Please check the details (e.g. outlet code or region) and try again.',
         updateOutlet: 'Unable to update outlet. Please check the details and try again.',
         assignOutletToRegion: 'Unable to assign outlet to region. Please try again.',
+        createPurchaseOrder: 'Unable to create purchase order. Please check the details and try again.',
       };
 
       const clientMessage =
