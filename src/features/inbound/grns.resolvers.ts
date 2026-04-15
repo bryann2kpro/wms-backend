@@ -30,6 +30,7 @@ function transformGrn(grn: GrnType) {
         grnNo: grn.grnNo,
         supplierId: grn.supplierId,
         supplierDeliveryId: grn.supplierDeliveryId,
+        advanceNoticeId: grn.advanceNoticeId ?? null,
         poNo: grn.poNo,
         status: grn.status,
         receivedAt: grn.receivedAt,
@@ -39,7 +40,7 @@ function transformGrn(grn: GrnType) {
         proofUrl: grn.proofUrl ?? null,
         warehouseId: grn.warehouseId ?? null,
         nsError: grn.nsError ? JSON.stringify(grn.nsError) : null,
-        nsSentAt: grn.nsSentAt ? (grn.nsSentAt instanceof Date ? grn.nsSentAt.toISOString() : grn.nsSentAt) : null,
+        nsSentAt: grn.nsSentAt ?? null,
         createdAt: grn.createdAt,
         updatedAt: grn.updatedAt,
         createdBy: grn.createdBy,
@@ -73,6 +74,57 @@ function transformGrnItem(
         createdBy: item.createdBy,
         updatedBy: item.updatedBy,
     };
+}
+
+type CreateInboundResolverItemInput = {
+    skuCode?: string | null;
+    lotNo?: string | null;
+    expiryDate?: string | null;
+};
+
+async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
+    advanceNoticeId?: string | null;
+    items?: CreateInboundResolverItemInput[] | null;
+}) {
+    if (!input.advanceNoticeId) return;
+
+    const asn = await esRepository.findById(input.advanceNoticeId);
+    if (!asn) {
+        throw new GraphQLError('Advance notice not found.', {
+            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+        });
+    }
+
+    const payload = asn.payload as {
+        lines?: Array<{ itemid?: string; islotitem?: string }>;
+    } | null;
+    const lotTrackedItemIds = new Set(
+        (payload?.lines ?? [])
+            .filter((line) => (line.islotitem ?? '').trim().toUpperCase() === 'T')
+            .map((line) => (line.itemid ?? '').trim())
+            .filter(Boolean),
+    );
+    if (lotTrackedItemIds.size === 0) return;
+
+    const itemList = input.items ?? [];
+    const invalidLotTrackedSkus = [...lotTrackedItemIds].filter((itemId) => {
+        const matchingItems = itemList.filter(
+            (item) => (item.skuCode ?? '').trim() === itemId,
+        );
+        if (matchingItems.length === 0) return true;
+        return matchingItems.some(
+            (item) => !(item.lotNo ?? '').trim() || !(item.expiryDate ?? '').trim(),
+        );
+    });
+
+    if (invalidLotTrackedSkus.length > 0) {
+        throw new GraphQLError(
+            `Lot-tracked ASN items require both lotNo and expiryDate: ${invalidLotTrackedSkus.join(', ')}`,
+            {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            },
+        );
+    }
 }
 
 export const resolvers = {
@@ -304,6 +356,10 @@ export const resolvers = {
             advanceNoticeId?: string | null;
         } }, context: GraphQLContext) => {
             try {
+                await assertLotTrackedAsnItemsHaveLotAndExpiry({
+                    advanceNoticeId: input.advanceNoticeId,
+                    items: input.items,
+                });
                 const result = await inboundServices.createInbound({
                     userId: input.userId,
                     organizationId: context.organizationId!,
