@@ -74,6 +74,8 @@ export const typeDefs = `#graphql
     outlet: String!
     region: String!
     ctn: Int!
+    beforeTaxAmount: Float!
+    afterTaxAmount: Float!
     amount: Float!
   }
 

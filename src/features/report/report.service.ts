@@ -44,6 +44,8 @@ export interface InvoiceSummaryRow {
   outlet: string;
   region: string;
   ctn: number;
+  beforeTaxAmount: number;
+  afterTaxAmount: number;
   amount: number;
 }
 
@@ -197,7 +199,9 @@ export async function getInvoiceSummaryData(
       outlet: OutletsTable.outletName,
       region: sql<string>`coalesce(${RegionTable.regionName}, '—')`,
       ctn: sql<number>`coalesce(sum(${InvoiceItemsTable.qty}), 0)::float8`,
-      // PO amount from NetSuite pull — invoice totals are often unset when proforma is issued
+      beforeTaxAmount: sql<number>`coalesce(${InvoicesTable.totalExclTax}::float8, 0)`,
+      afterTaxAmount: sql<number>`coalesce(${InvoicesTable.totalInclTax}::float8, ${PurchaseOrdersTable.amount}::float8, 0)`,
+      // Kept for existing PDF template compatibility.
       amount: sql<number>`coalesce(${PurchaseOrdersTable.amount}::float8, 0)`,
     })
     .from(InvoicesTable)
@@ -233,6 +237,8 @@ export async function getInvoiceSummaryData(
       outlet: r.outlet ?? '',
       region: r.region ?? '—',
       ctn: Math.round(Number(r.ctn ?? 0)),
+      beforeTaxAmount: Number(r.beforeTaxAmount ?? 0),
+      afterTaxAmount: Number(r.afterTaxAmount ?? 0),
       amount: Number(r.amount ?? 0),
     };
   });
