@@ -346,6 +346,14 @@ export const typeDefs = `#graphql
         updatePurchaseOrder(id: ID!, input: UpdatePurchaseOrderInput!): PurchaseOrder!
 
         """
+        Cancel a purchase order and its linked delivery order.
+        Releases all inventory reservations and recalculates the QOM group charge for any
+        remaining sibling POs going to the same outlet on the same delivery date.
+        POs in SHIPPED or DELIVERED status cannot be cancelled.
+        """
+        cancelPurchaseOrder(id: ID!): PurchaseOrder!
+
+        """
         Create a delivery order. Validates line items (SKU resolution), checks stock,
         computes next delivery date, then creates the DO and items in a transaction.
         """

@@ -116,9 +116,63 @@ export class OutboundServices {
                 const rate = regionPricing ? parseFloat(regionPricing.rate) : 0;
                 const minQty = regionPricing ? parseFloat(regionPricing.minQty) : 5;
                 const sstRate = regionPricing ? parseFloat(regionPricing.sstRate) : 0.06;
-                const totalQty = resolvedLines.reduce((sum, line) => sum + (parseFloat(line.qtyRequired) || 0), 0);
-                const effectiveQty = Math.max(totalQty, minQty);
-                const amount = effectiveQty * rate * (1 + sstRate);
+                const newPOQty = resolvedLines.reduce((sum, line) => sum + (parseFloat(String(line.qtyRequired)) || 0), 0);
+
+                // --- Group QOM: consolidate with sibling POs for same outlet + delivery date ---
+                const siblings = await this.purchaseOrdersRepository.getSiblingPurchaseOrdersWithQty(
+                    data.outletId,
+                    nextDelivery.deliveryDate,
+                    organizationId,
+                    data.purchaseOrderNo,
+                    tx
+                );
+                const combinedQty = siblings.reduce((sum, s) => sum + s.totalQty, 0) + newPOQty;
+                const combinedEffectiveQty = combinedQty > 0 ? Math.max(combinedQty, minQty) : 0;
+                const groupTotalCharge = combinedEffectiveQty * rate * (1 + sstRate);
+
+                const getShareAmount = (qty: number) =>
+                    combinedQty > 0 ? (groupTotalCharge * qty) / combinedQty : 0;
+
+                // Update sibling PO amounts to reflect the new group calculation
+                for (const sibling of siblings) {
+                    const siblingAmount = getShareAmount(sibling.totalQty);
+                    await this.purchaseOrdersRepository.updatePurchaseOrder(
+                        sibling.id,
+                        {
+                            amount: siblingAmount.toFixed(2),
+                            amountCalcSnapshot: {
+                                rate,
+                                minQty,
+                                sstRate,
+                                poQty: sibling.totalQty,
+                                combinedQty,
+                                combinedEffectiveQty,
+                                groupTotalCharge: groupTotalCharge.toFixed(2),
+                                minApplied: combinedQty < minQty,
+                                deliveryDate: nextDelivery.deliveryDate.toISOString().split('T')[0],
+                                siblingPONos: [...siblings.filter(s => s.id !== sibling.id).map(s => s.purchaseOrderNo), data.purchaseOrderNo],
+                                updatedByGrouping: true,
+                            },
+                            updatedBy: data.userId,
+                        },
+                        organizationId,
+                        tx
+                    );
+                }
+
+                const amount = getShareAmount(newPOQty);
+                const amountCalcSnapshot = {
+                    rate,
+                    minQty,
+                    sstRate,
+                    poQty: newPOQty,
+                    combinedQty,
+                    combinedEffectiveQty,
+                    groupTotalCharge: groupTotalCharge.toFixed(2),
+                    minApplied: combinedQty < minQty,
+                    deliveryDate: nextDelivery.deliveryDate.toISOString().split('T')[0],
+                    siblingPONos: siblings.map(s => s.purchaseOrderNo),
+                };
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 3: Create Purchase Order...');
                 created = await this.purchaseOrdersRepository.createPurchaseOrder(
@@ -126,6 +180,7 @@ export class OutboundServices {
                         purchaseOrderNo: data.purchaseOrderNo,
                         outletId: data.outletId,
                         amount: amount.toFixed(2),
+                        amountCalcSnapshot,
                         status: "NEW",
                         scheduledDeliveryDate: nextDelivery.deliveryDate,
                         createdBy: data.userId,
@@ -590,6 +645,163 @@ export class OutboundServices {
             return updated;
         } catch (error) {
             logger.error('❌ [OutboundServices.updatePurchaseOrder] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Cancels a purchase order and its linked delivery order.
+     * Releases all inventory reservations and recalculates the QOM group charge
+     * for any sibling POs (same outlet + delivery date) that remain active.
+     *
+     * Guard: POs in SHIPPED or DELIVERED status cannot be cancelled.
+     */
+    async cancelPurchaseOrder(data: {
+        id: string;
+        userId: string;
+        organizationId: string;
+    }): Promise<PurchaseOrderType> {
+        logger.info('ℹ️ [OutboundServices.cancelPurchaseOrder] Cancelling purchase order...');
+        try {
+            const poResult = await this.purchaseOrdersRepository.getPurchaseOrders(
+                { id: data.id },
+                { pageSize: 1, pageNumber: 1 }
+            );
+            const po = poResult.query[0];
+            if (!po) throw new Error('Purchase order not found');
+
+            if (['SHIPPED', 'DELIVERED'].includes(po.status)) {
+                throw new Error(`Purchase order cannot be cancelled: current status is "${po.status}"`);
+            }
+
+            const cancelled = await db.transaction(async (tx) => {
+                // 1. Resolve region pricing (needed for sibling recalculation)
+                const outlet = await this.outletsRepository.getOutletById(po.outletId);
+                if (!outlet?.regionId) throw new Error('Outlet not found or has no region assigned');
+
+                const [regionPricing] = await tx
+                    .select({
+                        rate: RegionPricingTable.rate,
+                        minQty: RegionPricingTable.minQty,
+                        sstRate: RegionPricingTable.sstRate,
+                    })
+                    .from(RegionPricingTable)
+                    .where(and(
+                        eq(RegionPricingTable.regionId, outlet.regionId),
+                        eq(RegionPricingTable.isActive, true),
+                    ))
+                    .limit(1);
+
+                const rate = regionPricing ? parseFloat(regionPricing.rate) : 0;
+                const minQty = regionPricing ? parseFloat(regionPricing.minQty) : 5;
+                const sstRate = regionPricing ? parseFloat(regionPricing.sstRate) : 0.06;
+
+                // 2. Cancel the PO
+                const cancelledPo = await this.purchaseOrdersRepository.updatePurchaseOrder(
+                    po.id,
+                    { status: 'CANCELLED', updatedBy: data.userId },
+                    data.organizationId,
+                    tx
+                );
+
+                // 3. Cancel the linked DO (bypass service-level status flow guard)
+                const doRow = await this.deliveryOrderRepository.getDeliveryOrderByPurchaseOrderId(po.id);
+                if (doRow && !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(doRow.status)) {
+                    await this.deliveryOrderRepository.updateDeliveryOrder(
+                        doRow.id,
+                        { status: 'CANCELLED', updatedBy: data.userId },
+                        data.organizationId,
+                        tx
+                    );
+                }
+
+                // 4. Release inventory reservations for all PO items
+                const poItems = await tx
+                    .select()
+                    .from(PurchaseOrderItemsTable)
+                    .where(eq(PurchaseOrderItemsTable.purchaseOrderNo, po.purchaseOrderNo));
+
+                if (poItems.length > 0 && doRow) {
+                    const doItems = await this.deliveryOrderRepository.getDeliveryOrderItemsForPo(po.id, tx);
+                    const releaseMovements: InventoryMovementsInsertType[] = [];
+
+                    for (const poItem of poItems) {
+                        const doItem = doItems.find(d => d.skuCode === poItem.skuCode);
+                        if (doItem) {
+                            releaseMovements.push({
+                                skuId: doItem.skuId,
+                                regionId: outlet.regionId,
+                                quantity: String(-parseFloat(poItem.qtyRequired)),
+                                movementType: InventoryMovementType.RESERVED,
+                                referenceNo: po.purchaseOrderNo,
+                                createdBy: data.userId,
+                                updatedBy: data.userId,
+                            });
+                        }
+                    }
+
+                    if (releaseMovements.length > 0) {
+                        await this.inventoryMovementRepository.createInventoryMovement(
+                            releaseMovements,
+                            data.userId,
+                            data.organizationId,
+                            tx
+                        );
+                    }
+                }
+
+                // 5. Recalculate sibling PO amounts — the cancelled PO is now excluded
+                //    automatically by the status filter in getSiblingPurchaseOrdersWithQty
+                if (po.scheduledDeliveryDate) {
+                    const siblings = await this.purchaseOrdersRepository.getSiblingPurchaseOrdersWithQty(
+                        po.outletId,
+                        new Date(po.scheduledDeliveryDate),
+                        data.organizationId,
+                        undefined,
+                        tx
+                    );
+
+                    if (siblings.length > 0) {
+                        const combinedQty = siblings.reduce((sum, s) => sum + s.totalQty, 0);
+                        const combinedEffectiveQty = combinedQty > 0 ? Math.max(combinedQty, minQty) : 0;
+                        const groupTotalCharge = combinedEffectiveQty * rate * (1 + sstRate);
+                        const getShareAmount = (qty: number) =>
+                            combinedQty > 0 ? (groupTotalCharge * qty) / combinedQty : 0;
+
+                        for (const sibling of siblings) {
+                            await this.purchaseOrdersRepository.updatePurchaseOrder(
+                                sibling.id,
+                                {
+                                    amount: getShareAmount(sibling.totalQty).toFixed(2),
+                                    amountCalcSnapshot: {
+                                        rate,
+                                        minQty,
+                                        sstRate,
+                                        poQty: sibling.totalQty,
+                                        combinedQty,
+                                        combinedEffectiveQty,
+                                        groupTotalCharge: groupTotalCharge.toFixed(2),
+                                        minApplied: combinedQty < minQty,
+                                        deliveryDate: new Date(po.scheduledDeliveryDate!).toISOString().split('T')[0],
+                                        siblingPONos: siblings.filter(s => s.id !== sibling.id).map(s => s.purchaseOrderNo),
+                                        updatedByGrouping: true,
+                                    },
+                                    updatedBy: data.userId,
+                                },
+                                data.organizationId,
+                                tx
+                            );
+                        }
+                    }
+                }
+
+                return cancelledPo;
+            });
+
+            logger.info(`✅ [OutboundServices.cancelPurchaseOrder] Purchase order ${po.purchaseOrderNo} cancelled`);
+            return cancelled;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.cancelPurchaseOrder] Error:', error);
             throw error;
         }
     }

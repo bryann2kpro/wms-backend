@@ -550,6 +550,33 @@ export const resolvers = {
       }
     ),
 
+    cancelPurchaseOrder: withAudit<
+      unknown,
+      { id: string },
+      unknown
+    >(
+      {
+        entity: "PurchaseOrder",
+        action: "UPDATE",
+        getEntityId: (result) =>
+          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
+      },
+      async (_: unknown, { id }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to cancel a purchase order", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+        const po = await outboundServices.cancelPurchaseOrder({
+          id,
+          userId,
+          organizationId: context.organizationId!,
+        });
+        return transformPurchaseOrder(po);
+      }
+    ),
+
     applyEmergencyDelivery: withAudit<
       unknown,
       { id: string },
