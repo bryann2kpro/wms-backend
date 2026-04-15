@@ -190,6 +190,20 @@ export class OutboundServices {
             return created;
         } catch (error) {
             logger.error("❌ [OutboundServices.createPurchaseOrder] Error:", error);
+            // Drizzle wraps PostgreSQL errors so the PG code/detail lives on error.cause,
+            // not on the error itself. Detect unique-constraint violations and convert
+            // them into a clean message before the raw SQL leaks to the client.
+            const cause = error instanceof Error
+                ? (error as unknown as { cause?: { code?: string; constraint?: string } }).cause
+                : undefined;
+            const isDuplicatePo =
+                cause?.code === '23505' &&
+                cause?.constraint?.includes('purchase_order_no');
+            if (isDuplicatePo) {
+                throw new Error(
+                    `Purchase order number "${data.purchaseOrderNo}" already exists.`
+                );
+            }
             throw error;
         }
     }
