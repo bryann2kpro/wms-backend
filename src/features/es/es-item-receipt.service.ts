@@ -59,6 +59,13 @@ export class EsItemReceiptServiceClass {
     const grnItems = await this.grnItemsRepository.getGrnItems({ grnId: grn.id });
     if (!grnItems || grnItems.length === 0) {
       logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] No GRN items found for grnId: ${grn.id}`);
+      if (grn.poNo) {
+        try {
+          await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', {}, { success: false, error: 'No GRN items found' });
+        } catch (saveErr) {
+          logger.error('❌ [EsItemReceiptService.sendItemReceipt] Failed to save failure log:', saveErr);
+        }
+      }
       return { success: false, nsResponse: { error: 'No GRN items found' } };
     }
     logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Found ${grnItems.length} GRN items`);
@@ -189,6 +196,13 @@ export class EsItemReceiptServiceClass {
       if (isLotTracked && lots.length === 0) {
         const errorMessage = `Lot-tracked ASN line is missing GRN lot_no for skuCode ${sku.skuCode} (GRN ${grn.grnNo}, PO ${grn.poNo ?? 'N/A'})`;
         logger.error(`❌ [EsItemReceiptService.sendItemReceipt] ${errorMessage}`);
+        if (grn.poNo) {
+          try {
+            await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', {}, { success: false, error: errorMessage });
+          } catch (saveErr) {
+            logger.error('❌ [EsItemReceiptService.sendItemReceipt] Failed to save failure log:', saveErr);
+          }
+        }
         return { success: false, nsResponse: { error: errorMessage } };
       }
 
@@ -234,6 +248,13 @@ export class EsItemReceiptServiceClass {
     if (!parsed.success) {
       const errors = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
       logger.error(`❌ [EsItemReceiptService.sendItemReceipt] Payload validation failed — ${errors}`);
+      if (grn.poNo) {
+        try {
+          await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', payload, { success: false, error: `Payload validation failed: ${errors}` });
+        } catch (saveErr) {
+          logger.error('❌ [EsItemReceiptService.sendItemReceipt] Failed to save failure log:', saveErr);
+        }
+      }
       return { success: false, nsResponse: { error: `Payload validation failed: ${errors}` } };
     }
 
@@ -260,9 +281,17 @@ export class EsItemReceiptServiceClass {
       return { success, nsResponse: nsResult.body };
     } catch (error) {
       logger.error('❌ [EsItemReceiptService.sendItemReceipt] HTTP error calling NetSuite:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (grn.poNo) {
+        try {
+          await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', payload, { success: false, error: errorMessage });
+        } catch (saveErr) {
+          logger.error('❌ [EsItemReceiptService.sendItemReceipt] Failed to save failure log:', saveErr);
+        }
+      }
       return {
         success: false,
-        nsResponse: { error: error instanceof Error ? error.message : String(error) },
+        nsResponse: { error: errorMessage },
       };
     }
   }

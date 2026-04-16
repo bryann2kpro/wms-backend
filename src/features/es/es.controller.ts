@@ -2,10 +2,12 @@ import { Request, Response } from 'express';
 import { EsRepositoryClass } from './es.repository.js';
 import { EmailNotificationRepositoryClass } from '@/features/notifications/email-notification.repository.js';
 import { enqueueEmailNotification } from '@/features/notifications/email-notification.job.js';
-import { Error } from '@/error/index.js';
+import { Error as AppError } from '@/error/index.js';
 import { logger } from '@/util/logger.js';
 import { env } from '@/env.js';
 import z from 'zod';
+
+type AdvanceNoticeLogStatus = 'success' | 'validation_error' | 'duplicate' | 'error';
 
 const lotsSchema = z.object({
   serialNumbers: z.string(),
@@ -49,6 +51,22 @@ export class EsControllerClass {
    * Requires a valid API key via the `x-api-key` header (set by authenticateApiKey middleware).
    */
   async receiveAdvanceNotice(req: Request, res: Response) {
+    const apiKeyId = req.apiKey?.id;
+
+    const saveLog = async (status: AdvanceNoticeLogStatus, opts?: { errorMessage?: string; advanceNoticeId?: string }) => {
+      try {
+        await this.esRepository.saveAdvanceNoticeLog({
+          apiKeyId: apiKeyId ?? null,
+          rawPayload: req.body ?? {},
+          status,
+          errorMessage: opts?.errorMessage ?? null,
+          advanceNoticeId: opts?.advanceNoticeId ?? null,
+        });
+      } catch (logErr) {
+        logger.error('❌ [EsController.receiveAdvanceNotice] Failed to write request log:', logErr);
+      }
+    };
+
     try {
       logger.info('ℹ️ [EsController.receiveAdvanceNotice] Advance notice request received');
 
@@ -58,6 +76,7 @@ export class EsControllerClass {
       if (!result.success) {
         const missingFields = result.error.issues.map((i) => i.path.join('.')).join(', ');
         logger.warn(`⚠️ [EsController.receiveAdvanceNotice] Schema validation failed — invalid fields: ${missingFields}`);
+        await saveLog('validation_error', { errorMessage: `Validation failed. Invalid or missing fields: ${missingFields}.` });
         return res.status(400).json({
           success: false,
           message: `Validation failed. Invalid or missing fields: ${missingFields}.`,
@@ -73,6 +92,7 @@ export class EsControllerClass {
 
       if (existing) {
         logger.warn(`⚠️ [EsController.receiveAdvanceNotice] Duplicate tranid detected: ${payload.tranid}`);
+        await saveLog('duplicate', { errorMessage: `Duplicate tranid: '${payload.tranid}' has already been received.` });
         return res.status(400).json({
           success: false,
           message: `Duplicate tranid: '${payload.tranid}' has already been received.`,
@@ -88,6 +108,7 @@ export class EsControllerClass {
       });
 
       logger.info(`✅ [EsController.receiveAdvanceNotice] Advance notice saved — id: ${record.id}, tranid: ${payload.tranid}`);
+      await saveLog('success', { advanceNoticeId: record.id });
 
       // Step 4: Enqueue admin email notification (non-fatal — never blocks the 200)
       if (env.ADMIN_EMAIL) {
@@ -113,9 +134,11 @@ export class EsControllerClass {
       });
     } catch (error) {
       logger.error('❌ [EsController.receiveAdvanceNotice] Unexpected error:', error);
+      const errorMessage = error instanceof globalThis.Error ? error.message : String(error);
+      await saveLog('error', { errorMessage });
       return res.status(500).json({
         success: false,
-        message: Error.INTERNAL_SERVER_ERROR,
+        message: AppError.INTERNAL_SERVER_ERROR,
       });
     }
   }
@@ -155,7 +178,7 @@ export class EsControllerClass {
       logger.error('❌ [EsController.getItemReceipt] Unexpected error:', error);
       return res.status(500).json({
         success: false,
-        message: Error.INTERNAL_SERVER_ERROR,
+        message: AppError.INTERNAL_SERVER_ERROR,
       });
     }
   }

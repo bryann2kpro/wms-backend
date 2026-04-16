@@ -1,9 +1,23 @@
-import { eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, isNull, lte, sql } from 'drizzle-orm';
 import { db } from '@/db/index';
 import { logger } from '@/util/logger.js';
-import { EsAdvanceNoticesTable, EsAdvanceNoticeType, EsItemReceiptsTable } from './es.model.js';
-import { Transaction } from 'ioredis/built/transaction.js';
+import { EsAdvanceNoticeLogTable, EsAdvanceNoticesTable, EsAdvanceNoticeType, EsItemReceiptsTable } from './es.model.js';
 import { DbTransaction } from '@/types/db-transaction.js';
+import { pagination, PgQueryType } from '@/util/pagination.js';
+import { PaginatedResponse, PaginationParams } from '@/features/rbac/rbac.model.js';
+
+export type EsAdvanceNoticeLogFilter = {
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+};
+
+export type EsItemReceiptFilter = {
+  dateFrom?: string;
+  dateTo?: string;
+  poNumber?: string;
+  status?: string; // "success" | "error"
+};
 
 export class EsRepositoryClass {
   /**
@@ -102,6 +116,108 @@ export class EsRepositoryClass {
       return record;
     } catch (error) {
       logger.error('❌ [EsRepository.saveAdvanceNotice] Error:', error);
+      throw error;
+    }
+  }
+
+  async saveAdvanceNoticeLog(input: {
+    apiKeyId: string | null;
+    rawPayload: unknown;
+    status: string;
+    errorMessage: string | null;
+    advanceNoticeId: string | null;
+  }): Promise<void> {
+    try {
+      await db.insert(EsAdvanceNoticeLogTable).values({
+        apiKeyId: input.apiKeyId ?? undefined,
+        rawPayload: input.rawPayload,
+        status: input.status,
+        errorMessage: input.errorMessage ?? undefined,
+        advanceNoticeId: input.advanceNoticeId ?? undefined,
+      });
+    } catch (error) {
+      logger.error('❌ [EsRepository.saveAdvanceNoticeLog] Error:', error);
+      throw error;
+    }
+  }
+
+  async listAdvanceNoticeLogs(
+    filter: EsAdvanceNoticeLogFilter,
+    paginationParams: PaginationParams,
+  ): Promise<PaginatedResponse<any>> {
+    try {
+      logger.info('ℹ️ [EsRepository.listAdvanceNoticeLogs] Fetching advance notice logs');
+      const whereCondition = [];
+
+      if (filter.dateFrom) {
+        whereCondition.push(gte(EsAdvanceNoticeLogTable.receivedAt, new Date(filter.dateFrom)));
+      }
+      if (filter.dateTo) {
+        whereCondition.push(lte(EsAdvanceNoticeLogTable.receivedAt, new Date(filter.dateTo)));
+      }
+      if (filter.status) {
+        whereCondition.push(eq(EsAdvanceNoticeLogTable.status, filter.status));
+      }
+
+      const baseQuery = db
+        .select()
+        .from(EsAdvanceNoticeLogTable)
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+        .orderBy(desc(EsAdvanceNoticeLogTable.receivedAt));
+
+      const pageSize = paginationParams.pageSize || 20;
+      const pageNumber = paginationParams.pageNumber || 1;
+      const totalCount = (await baseQuery).length;
+      const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
+      const data = await paginatedQuery.query;
+
+      logger.info('✅ [EsRepository.listAdvanceNoticeLogs] Fetched successfully');
+      return { query: data, pagination: paginatedQuery.pagination };
+    } catch (error) {
+      logger.error('❌ [EsRepository.listAdvanceNoticeLogs] Error:', error);
+      throw error;
+    }
+  }
+
+  async listItemReceipts(
+    filter: EsItemReceiptFilter,
+    paginationParams: PaginationParams,
+  ): Promise<PaginatedResponse<any>> {
+    try {
+      logger.info('ℹ️ [EsRepository.listItemReceipts] Fetching item receipts');
+      const whereCondition = [];
+
+      if (filter.dateFrom) {
+        whereCondition.push(gte(EsItemReceiptsTable.sentAt, new Date(filter.dateFrom)));
+      }
+      if (filter.dateTo) {
+        whereCondition.push(lte(EsItemReceiptsTable.sentAt, new Date(filter.dateTo)));
+      }
+      if (filter.poNumber) {
+        whereCondition.push(ilike(EsItemReceiptsTable.poNumber, `%${filter.poNumber}%`));
+      }
+      if (filter.status === 'success') {
+        whereCondition.push(sql`${EsItemReceiptsTable.nsResponse}->>'success' = 'true'`);
+      } else if (filter.status === 'error') {
+        whereCondition.push(sql`${EsItemReceiptsTable.nsResponse}->>'success' != 'true'`);
+      }
+
+      const baseQuery = db
+        .select()
+        .from(EsItemReceiptsTable)
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+        .orderBy(desc(EsItemReceiptsTable.sentAt));
+
+      const pageSize = paginationParams.pageSize || 20;
+      const pageNumber = paginationParams.pageNumber || 1;
+      const totalCount = (await baseQuery).length;
+      const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
+      const data = await paginatedQuery.query;
+
+      logger.info('✅ [EsRepository.listItemReceipts] Fetched successfully');
+      return { query: data, pagination: paginatedQuery.pagination };
+    } catch (error) {
+      logger.error('❌ [EsRepository.listItemReceipts] Error:', error);
       throw error;
     }
   }
