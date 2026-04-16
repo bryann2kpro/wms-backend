@@ -1,6 +1,8 @@
-import { Client, LocalAuth } from 'whatsapp-web.js';
+import WhatsAppWeb from 'whatsapp-web.js';
 import { logger } from '@/util/logger';
 import { io } from '@/socket/socket-server';
+
+const { Client, LocalAuth } = WhatsAppWeb;
 
 type WhatsAppConnectionStatus = 'initializing' | 'qr_needed' | 'ready' | 'disconnected';
 
@@ -11,7 +13,7 @@ type WhatsAppStatusSnapshot = {
 };
 
 class WhatsAppClientManager {
-  private client: Client | null = null;
+  private client: InstanceType<typeof Client> | null = null;
   private initialized = false;
   private status: WhatsAppConnectionStatus = 'disconnected';
   private connectedPhone: string | null = null;
@@ -31,9 +33,10 @@ class WhatsAppClientManager {
     this.status = 'initializing';
     this.emitStatus();
 
-    this.client.on('qr', (qr) => {
+    this.client.on('qr', (qr: string) => {
       this.status = 'qr_needed';
       this.lastQr = qr;
+      // Do not log raw QR payload; treat it as sensitive credential material.
       logger.info('ℹ️ [WhatsAppClient] QR code generated');
       this.emitStatus();
       io?.to('whatsapp-admin').emit('whatsapp:qr', { qr });
@@ -56,11 +59,11 @@ class WhatsAppClientManager {
       this.emitStatus();
     });
 
-    this.client.on('change_state', (state) => {
+    this.client.on('change_state', (state: string) => {
       logger.info(`ℹ️ [WhatsAppClient] State changed: ${state}`);
     });
 
-    this.client.on('disconnected', (reason) => {
+    this.client.on('disconnected', (reason: string) => {
       this.status = 'disconnected';
       this.connectedPhone = null;
       logger.warn(`⚠️ [WhatsAppClient] Disconnected: ${reason}`);
@@ -72,7 +75,7 @@ class WhatsAppClientManager {
       .then(() => {
         this.initialized = true;
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         this.status = 'disconnected';
         logger.error('❌ [WhatsAppClient] Failed to initialize', error);
         this.emitStatus();

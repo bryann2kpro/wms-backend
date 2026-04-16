@@ -298,7 +298,7 @@ server.listen(Number(PORT), async () => {
 
     startInvoicesCron();
     startEmailNotificationWorker();
-    if (env.WHATSAPP_ENABLED === 'true') {
+    if (env.WHATSAPP_ENABLED) {
       whatsAppClient.init();
       startWhatsAppNotificationWorker();
     }
