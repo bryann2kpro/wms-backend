@@ -129,18 +129,19 @@ export class EsControllerClass {
         logger.warn('⚠️ [EsController.receiveAdvanceNotice] ADMIN_EMAIL not set — skipping notification');
       }
 
-      // Step 5: Enqueue WhatsApp notifications (non-fatal)
-      if (env.WHATSAPP_ENABLED === 'true') {
-        try {
-          await enqueueWhatsAppNotificationsForTrigger({
-            triggerType: 'ADVANCE_NOTICE_RECEIVED',
-            referenceId: record.id,
-            referenceLabel: payload.tranid,
+      // Step 5: Enqueue WhatsApp notifications (non-fatal, fully async)
+      if (env.WHATSAPP_ENABLED) {
+        void enqueueWhatsAppNotificationsForTrigger({
+          triggerType: 'ADVANCE_NOTICE_RECEIVED',
+          referenceId: record.id,
+          referenceLabel: payload.tranid,
+        })
+          .then(() => {
+            logger.info(`ℹ️ [EsController.receiveAdvanceNotice] WhatsApp notifications enqueued for tranid: ${payload.tranid}`);
+          })
+          .catch((waError) => {
+            logger.error('❌ [EsController.receiveAdvanceNotice] Failed to enqueue WhatsApp notifications:', waError);
           });
-          logger.info(`ℹ️ [EsController.receiveAdvanceNotice] WhatsApp notifications enqueued for tranid: ${payload.tranid}`);
-        } catch (waError) {
-          logger.error('❌ [EsController.receiveAdvanceNotice] Failed to enqueue WhatsApp notifications:', waError);
-        }
       }
 
       return res.status(200).json({

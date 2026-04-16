@@ -64,6 +64,18 @@ export const resolvers = {
         updatedAt: settings.updatedAt.toISOString(),
       };
     },
+
+    resetWhatsAppSession: async (_: unknown, __: unknown, context: GraphQLContext) => {
+      if (!context.user) {
+        throw new GraphQLError('Not authenticated', {
+          extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } },
+        });
+      }
+
+      const status = await whatsAppClient.resetSession();
+      logger.info(`✅ [Mutation.resetWhatsAppSession] Reset requested by user=${context.user.id}`);
+      return status;
+    },
   },
 };
 

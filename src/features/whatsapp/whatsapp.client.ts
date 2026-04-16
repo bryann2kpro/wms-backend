@@ -92,6 +92,35 @@ class WhatsAppClientManager {
     logger.info(`✅ [WhatsAppClient] Message sent to ${chatId}`);
   }
 
+  async resetSession(): Promise<WhatsAppStatusSnapshot> {
+    logger.warn('⚠️ [WhatsAppClient] Reset session requested');
+
+    const currentClient = this.client;
+    this.client = null;
+    this.initialized = false;
+    this.status = 'disconnected';
+    this.connectedPhone = null;
+    this.lastQr = null;
+    this.emitStatus();
+
+    if (currentClient) {
+      try {
+        await currentClient.logout();
+      } catch (error) {
+        logger.warn('⚠️ [WhatsAppClient] logout failed during reset:', error);
+      }
+
+      try {
+        await currentClient.destroy();
+      } catch (error) {
+        logger.warn('⚠️ [WhatsAppClient] destroy failed during reset:', error);
+      }
+    }
+
+    this.init();
+    return this.getStatus();
+  }
+
   getStatus(): WhatsAppStatusSnapshot {
     return {
       status: this.status,

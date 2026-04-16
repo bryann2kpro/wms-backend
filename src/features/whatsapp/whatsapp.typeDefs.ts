@@ -18,6 +18,7 @@ export const typeDefs = `#graphql
 
   extend type Mutation {
     updateWhatsAppSettings(settingKey: String!, toPhones: [String!]!): WhatsAppSettings! @auth
+    resetWhatsAppSession: WhatsAppStatus! @auth
   }
 `;
 
