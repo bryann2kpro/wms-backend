@@ -137,3 +137,5 @@ pnpm-lock.yaml
 .idea
 .vscode
 bun.lockb
+
+.wwebjs*
