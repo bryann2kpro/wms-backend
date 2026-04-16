@@ -36,6 +36,7 @@ import { resolvers as documentsResolvers } from '@/features/documents/documents.
 import { resolvers as dashboardResolvers } from '@/features/dashboard/dashboard.resolver';
 import { resolvers as emailSettingsResolvers } from '@/features/notifications/email-settings.resolver';
 import { resolvers as esResolvers } from '@/features/es/es.resolvers';
+import { resolvers as whatsAppResolvers } from '@/features/whatsapp/whatsapp.resolver';
 
 // ============================================
 // BASE RESOLVERS
@@ -128,4 +129,5 @@ export const resolvers = mergeResolvers([
   dashboardResolvers,
   emailSettingsResolvers,
   esResolvers,
+  whatsAppResolvers,
 ]);

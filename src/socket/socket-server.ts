@@ -40,7 +40,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
 
     // Allow clients to join/leave job rooms (e.g. 'job:<uuid>')
     socket.on('join-room', (room: unknown) => {
-      if (typeof room === 'string' && room.startsWith('job:')) {
+      if (typeof room === 'string' && (room.startsWith('job:') || room === 'whatsapp-admin')) {
         socket.join(room);
       }
     });
