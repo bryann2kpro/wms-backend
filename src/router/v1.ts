@@ -9,6 +9,7 @@ import { reportPreviewRoutes } from '@/features/report/report.routes.js';
 import { documentPreviewRoutes } from '@/features/documents/documents.routes.js';
 import apiKeysRoutes from '@/features/api-keys/api-keys.routes.js';
 import esRoutes from '@/features/es/es.routes.js';
+import whatsAppRoutes from '@/features/whatsapp/whatsapp.routes.js';
 
 const v1Router = express.Router();
 
@@ -28,5 +29,6 @@ v1Router.use('/document', documentPreviewRoutes);
 // Third-party integration
 v1Router.use('/api-keys', apiKeysRoutes);
 v1Router.use('/es', esRoutes);
+v1Router.use('/whatsapp', whatsAppRoutes);
 
 export default v1Router;

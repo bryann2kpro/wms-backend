@@ -68,6 +68,8 @@ import { EsItemReceiptServiceClass } from '@/features/es/es-item-receipt.service
 // Notifications
 import { EmailNotificationRepositoryClass } from '@/features/notifications/email-notification.repository.js';
 import { EmailSettingsRepositoryClass } from '@/features/notifications/email-settings.repository.js';
+import { WhatsAppNotificationRepositoryClass, WhatsAppSettingsRepositoryClass } from '@/features/whatsapp/whatsapp.repository.js';
+import { whatsAppClient as whatsAppClientInstance } from '@/features/whatsapp/whatsapp.client.js';
 
 
 // ============================================
@@ -148,6 +150,9 @@ export const reportController = new ReportControllerClass();
 // Notifications
 export const emailNotificationRepository = new EmailNotificationRepositoryClass();
 export const emailSettingsRepository = new EmailSettingsRepositoryClass();
+export const whatsAppNotificationRepository = new WhatsAppNotificationRepositoryClass();
+export const whatsAppSettingsRepository = new WhatsAppSettingsRepositoryClass();
+export const whatsAppClient = whatsAppClientInstance;
 // ES Integration
 export const esRepository = new EsRepositoryClass();
 export const esController = new EsControllerClass(esRepository, emailNotificationRepository);

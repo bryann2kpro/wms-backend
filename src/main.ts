@@ -28,6 +28,8 @@ import { initAccounts } from "./scripts/init-accounts";
 import { initMasterData } from "./scripts/init-master-data";
 import { startInvoicesCron } from "./features/invoicing/invoices.cron";
 import { startEmailNotificationWorker } from "./features/notifications/email-notification.job";
+import { startWhatsAppNotificationWorker } from "./features/whatsapp/whatsapp.job";
+import { whatsAppClient } from "./composition-root";
 import { initSocketServer } from "@/socket/socket-server";
 
 const app = express();
@@ -296,6 +298,10 @@ server.listen(Number(PORT), async () => {
 
     startInvoicesCron();
     startEmailNotificationWorker();
+    if (env.WHATSAPP_ENABLED) {
+      whatsAppClient.init();
+      startWhatsAppNotificationWorker();
+    }
   } catch (error) {
     console.error('❌ Error during initialization:', error);
   }

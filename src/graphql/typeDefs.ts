@@ -32,6 +32,8 @@ import { typeDefs as reportTypeDefs } from '@/features/report/report.typeDefs';
 import { typeDefs as documentsTypeDefs } from '@/features/documents/documents.typeDefs';
 import { typeDefs as dashboardTypeDefs } from '@/features/dashboard/dashboard.typeDefs';
 import { typeDefs as emailSettingsTypeDefs } from '@/features/notifications/email-settings.typeDefs';
+import { typeDefs as esTypeDefs } from '@/features/es/es.typeDefs';
+import { typeDefs as whatsAppTypeDefs } from '@/features/whatsapp/whatsapp.typeDefs';
 
 // Directive type definitions
 import { directiveTypeDefs } from './directives';
@@ -122,4 +124,6 @@ export const typeDefs = [
   auditLogTypeDefs,
   dashboardTypeDefs,
   emailSettingsTypeDefs,
+  esTypeDefs,
+  whatsAppTypeDefs,
 ];

@@ -1,4 +1,4 @@
-import { jsonb, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { jsonb, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { MainSchema } from '@/db/db.schema';
 import { ApiKeysTable } from '@/features/api-keys/api-keys.model';
 
@@ -38,3 +38,25 @@ export const EsItemReceiptsTable = MainSchema.table('es_item_receipts', {
 
 export type EsAdvanceNoticeType = typeof EsAdvanceNoticesTable.$inferSelect;
 export type EsAdvanceNoticeInsertType = typeof EsAdvanceNoticesTable.$inferInsert;
+
+/**
+ * ES Advance Notice Log Table
+ *
+ * @description Records every inbound advance notice request — success, validation errors,
+ * duplicates, and unexpected failures. Enables full audit visibility on the API Log page.
+ *
+ * @field status  - "success" | "validation_error" | "duplicate" | "error"
+ * @field advanceNoticeId - set only when status = "success", links to es_advance_notices
+ */
+export const EsAdvanceNoticeLogTable = MainSchema.table('es_advance_notice_log', {
+  id: uuid('id').defaultRandom().notNull().primaryKey(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+  apiKeyId: uuid('api_key_id').references(() => ApiKeysTable.id),
+  rawPayload: jsonb('raw_payload').notNull(),
+  status: varchar('status', { length: 30 }).notNull(),
+  errorMessage: text('error_message'),
+  advanceNoticeId: uuid('advance_notice_id'),
+});
+
+export type EsAdvanceNoticeLogType = typeof EsAdvanceNoticeLogTable.$inferSelect;
+export type EsAdvanceNoticeLogInsertType = typeof EsAdvanceNoticeLogTable.$inferInsert;

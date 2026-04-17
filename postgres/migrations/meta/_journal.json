@@ -540,6 +540,20 @@
       "when": 1776050083924,
       "tag": "0076_keen_guardsmen",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1776306128845,
+      "tag": "0077_classy_spacker_dave",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1776323848383,
+      "tag": "0078_flawless_reavers",
+      "breakpoints": true
     }
   ]
 }
