@@ -9,12 +9,6 @@ import { GrnType } from '@/features/inbound/grns.model.js';
 import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repository.js';
 import { z } from 'zod';
 
-const ItemReceiptLotSchema = z.object({
-  serialnumbers: z.string(),
-  quantity: z.number().positive(),
-  expirationdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD'),
-});
-
 const ItemReceiptLineSchema = z.object({
   lineuniquekey: z.number().optional(),
   itemid: z.string().min(1),
@@ -23,8 +17,9 @@ const ItemReceiptLineSchema = z.object({
   location: z.string(),
   custcol_abj_grn_linenum: z.number().int().positive(),
   abj_es_supplier_do: z.string().optional(),
-  // Omitted for non-lot-tracked items; present (with ≥1 entry) for lot-tracked items
-  lots: z.array(ItemReceiptLotSchema).min(1).optional(),
+  // Lot data is flattened on the line (reverted contract, no nested lots array)
+  serialnumbers: z.string().min(1).optional(),
+  expirationdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD').optional(),
 });
 
 const ItemReceiptPayloadSchema = z.object({
@@ -137,7 +132,7 @@ export class EsItemReceiptServiceClass {
       logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Fetched ${uomResult.query.length} UOMs`);
     }
 
-    // 6. Group GRN items by SKU and build Item Receipt lines with lots
+    // 6. Group GRN items by SKU and build Item Receipt lines
     const lines: Array<Record<string, unknown>> = [];
     let lineIndex = 1;
     let unmatchedCount = 0;
@@ -166,22 +161,26 @@ export class EsItemReceiptServiceClass {
       }
       logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Building line — skuCode: ${sku.skuCode}, lotTracked: ${isLotTracked}`);
 
-      // Build lots from grouped GRN items (only for lot-tracked items)
-      const lots: Array<Record<string, unknown>> = [];
+      // Reverted contract: lot fields are flattened at line-level.
       let totalQuantity = 0;
+      const distinctLots = new Set<string>();
+      let serialnumbers: string | undefined;
+      let expirationdate: string | undefined;
 
       for (const item of items) {
         totalQuantity += Number(item.qty);
 
         if (item.lotNo) {
-          const lot: Record<string, unknown> = {
-            serialnumbers: item.lotNo,
-            quantity: Number(item.qty),
-          };
-          if (item.expiryDate) {
-            lot.expirationdate = new Date(item.expiryDate).toISOString().split('T')[0];
+          distinctLots.add(item.lotNo);
+
+          // Temporary assumption from partner testing: single lot per grouped SKU line.
+          if (!serialnumbers) {
+            serialnumbers = item.lotNo;
           }
-          lots.push(lot);
+
+          if (!expirationdate && item.expiryDate) {
+            expirationdate = new Date(item.expiryDate).toISOString().split('T')[0];
+          }
         }
       }
 
@@ -193,7 +192,7 @@ export class EsItemReceiptServiceClass {
         custcol_abj_grn_linenum: lineIndex,
       };
 
-      if (isLotTracked && lots.length === 0) {
+      if (isLotTracked && !serialnumbers) {
         const errorMessage = `Lot-tracked ASN line is missing GRN lot_no for skuCode ${sku.skuCode} (GRN ${grn.grnNo}, PO ${grn.poNo ?? 'N/A'})`;
         logger.error(`❌ [EsItemReceiptService.sendItemReceipt] ${errorMessage}`);
         if (grn.poNo) {
@@ -206,9 +205,24 @@ export class EsItemReceiptServiceClass {
         return { success: false, nsResponse: { error: errorMessage } };
       }
 
-      // Keep existing behavior: include lots only when lot rows exist.
-      if (lots.length > 0) {
-        line.lots = lots;
+      if (distinctLots.size > 1) {
+        const errorMessage = `Multi-lot payload is temporarily unsupported for skuCode ${sku.skuCode} under reverted IR contract (GRN ${grn.grnNo}, PO ${grn.poNo ?? 'N/A'})`;
+        logger.error(`❌ [EsItemReceiptService.sendItemReceipt] ${errorMessage}`);
+        if (grn.poNo) {
+          try {
+            await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', {}, { success: false, error: errorMessage });
+          } catch (saveErr) {
+            logger.error('❌ [EsItemReceiptService.sendItemReceipt] Failed to save failure log:', saveErr);
+          }
+        }
+        return { success: false, nsResponse: { error: errorMessage } };
+      }
+
+      if (serialnumbers) {
+        line.serialnumbers = serialnumbers;
+      }
+      if (expirationdate) {
+        line.expirationdate = expirationdate;
       }
 
       if (lineUniqueKey !== undefined) {
