@@ -69,6 +69,7 @@ export const typeDefs = `#graphql
   type InvoiceSummaryReportRow {
     proformaId: String!
     invoiceDate: String!
+    deliveryDate: String!
     poNumber: String!
     doNumber: String!
     outlet: String!

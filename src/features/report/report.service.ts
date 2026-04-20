@@ -39,6 +39,7 @@ export interface MovementReportRow {
 export interface InvoiceSummaryRow {
   proformaId: string;
   invoiceDate: string;
+  deliveryDate: string;
   poNumber: string;
   doNumber: string;
   outlet: string;
@@ -48,30 +49,6 @@ export interface InvoiceSummaryRow {
   afterTaxAmount: number;
   amount: number;
 }
-
-const INVOICE_SUMMARY_MOCK_ROWS: InvoiceSummaryRow[] = [
-  { proformaId: 'ES-20260213-0001', invoiceDate: '22/1/2026', poNumber: '#PO260170528', doNumber: 'DO-0001', outlet: 'Aeon Midtown Falim', region: "Klang Valley" , ctn: 10, amount: 1250.00 },
-  { proformaId: 'ES-20260213-0002', invoiceDate: '22/1/2026', poNumber: '#PO260173297', doNumber: 'DO-0002', outlet: 'Lotuss Taiping', region: "Klang Valley" , ctn: 8, amount: 980.00 },
-  { proformaId: 'ES-20260213-0003', invoiceDate: '22/1/2026', poNumber: '#PO260173298', doNumber: 'DO-0003', outlet: 'Gurney Paragon', region: "Klang Valley" , ctn: 5, amount: 620.50 },
-  { proformaId: 'ES-20260213-0004', invoiceDate: '22/1/2026', poNumber: '#PO260173299', doNumber: 'DO-0004', outlet: 'Amanjaya', region: "Klang Valley" , ctn: 24, amount: 3120.00 },
-  { proformaId: 'ES-20260213-0005', invoiceDate: '22/1/2026', poNumber: '#PO260173300', doNumber: 'DO-0005', outlet: 'AEON Bukit Mertajam', region: "Klang Valley" , ctn: 18, amount: 2340.00 },
-  { proformaId: 'ES-2026213-0006', invoiceDate: '22/1/2026', poNumber: '#PO260173301', doNumber: 'DO-0006', outlet: 'Aman Central LG', region: "Klang Valley" , ctn: 15, amount: 1950.00 },
-  { proformaId: 'ES-2026213-0007', invoiceDate: '22/1/2026', poNumber: '#PO260173302', doNumber: 'DO-0007', outlet: 'Lotuss Teluk Intan', region: "Klang Valley" , ctn: 9, amount: 1107.00 },
-  { proformaId: 'ES-2026213-0008', invoiceDate: '22/1/2026', poNumber: '#PO260173303', doNumber: 'DO-0008', outlet: 'Pearl City', region: "North" , ctn: 13, amount: 1690.00 },
-  { proformaId: 'ES-2026213-0009', invoiceDate: '22/1/2026', poNumber: '#PO260173304', doNumber: 'DO-0009', outlet: 'Nibong Tebal', region: "South" , ctn: 6, amount: 744.00 },
-  { proformaId: 'ES-2026213-0010', invoiceDate: '22/1/2026', poNumber: '#PO260173305', doNumber: 'DO-0010', outlet: 'Lotuss Ipoh Bercham', region: "South" , ctn: 24, amount: 2976.00 },
-  { proformaId: 'ES-2026213-0011', invoiceDate: '22/1/2026', poNumber: '#PO260173306', doNumber: 'DO-0011', outlet: 'Sunway Carnival', region: "South" , ctn: 5, amount: 620.00 },
-  { proformaId: 'ES-2026213-0012', invoiceDate: '22/1/2026', poNumber: '#PO260173307', doNumber: 'DO-0012', outlet: 'Sentra Mall', region: "South" , ctn: 8, amount: 992.00 },
-  { proformaId: 'ES-2026213-0013', invoiceDate: '22/1/2026', poNumber: '#PO260173308', doNumber: 'DO-0013', outlet: 'AEON Seri Manjung', region: "South" , ctn: 6, amount: 744.00 },
-  { proformaId: 'ES-2026213-0014', invoiceDate: '22/1/2026', poNumber: '#PO260173309', doNumber: 'DO-0014', outlet: 'AEON Taiping', region: "South" , ctn: 6, amount: 744.00 },
-  { proformaId: 'ES-2026213-0015', invoiceDate: '22/1/2026', poNumber: '#PO260173310', doNumber: 'DO-0015', outlet: 'AEON Ipoh S18', region: "South" , ctn: 13, amount: 1612.00 },
-  { proformaId: 'ES-2026213-0016', invoiceDate: '22/1/2026', poNumber: '#PO260173311', doNumber: 'DO-0016', outlet: '1st Avenue', region: "South" , ctn: 17, amount: 2108.00 },
-  { proformaId: 'ES-2026213-0017', invoiceDate: '22/1/2026', poNumber: '#PO260173312', doNumber: 'DO-0017', outlet: 'Queensbay Mall', region: "South" , ctn: 10, amount: 1240.00 },
-  { proformaId: 'ES-2026213-0018', invoiceDate: '22/1/2026', poNumber: '#PO260173313', doNumber: 'DO-0018', outlet: 'Mydin Bukit Mertajam', region: "North" , ctn: 12, amount: 1488.00 },
-  { proformaId: 'ES-2026213-0019', invoiceDate: '22/1/2026', poNumber: '#PO260173314', doNumber: 'DO-0019', outlet: 'Gurney Plaza', region: "South" , ctn: 13, amount: 1612.00 },
-  { proformaId: 'ES-2026213-0020', invoiceDate: '22/1/2026', poNumber: '#PO260173315', doNumber: 'DO-0020', outlet: 'Serai Wangi', region: "South" , ctn: 10, amount: 1240.00 },
-  { proformaId: 'ES-2026213-0021', invoiceDate: '22/1/2026', poNumber: '#PO260173316', doNumber: 'DO-0021', outlet: 'AEON Kinta City', region: "South" , ctn: 12, amount: 1488.00 },
-]; 
 
 /**
  * Fetch movement report data. Replace with DB query when ready.
@@ -194,6 +171,7 @@ export async function getInvoiceSummaryData(
     .select({
       proformaId: InvoicesTable.invoiceNo,
       dateIssued: InvoicesTable.dateIssued,
+      scheduledDeliveryDate: PurchaseOrdersTable.scheduledDeliveryDate,
       poNumber: PurchaseOrdersTable.purchaseOrderNo,
       doNumber: InvoicesTable.doNo,
       outlet: OutletsTable.outletName,
@@ -216,6 +194,7 @@ export async function getInvoiceSummaryData(
       InvoicesTable.dateIssued,
       InvoicesTable.doNo,
       PurchaseOrdersTable.purchaseOrderNo,
+      PurchaseOrdersTable.scheduledDeliveryDate,
       PurchaseOrdersTable.amount,
       OutletsTable.outletName,
       RegionTable.regionName
@@ -229,9 +208,16 @@ export async function getInvoiceSummaryData(
         ? `${issued.getUTCDate()}/${issued.getUTCMonth() + 1}/${issued.getUTCFullYear()}`
         : '—';
 
+    const sdd = r.scheduledDeliveryDate instanceof Date ? r.scheduledDeliveryDate : r.scheduledDeliveryDate ? new Date(r.scheduledDeliveryDate as unknown as string) : undefined;
+    const deliveryDate =
+      sdd && !Number.isNaN(sdd.getTime())
+        ? `${sdd.getUTCDate()}/${sdd.getUTCMonth() + 1}/${sdd.getUTCFullYear()}`
+        : '—';
+
     return {
       proformaId: r.proformaId ?? '',
       invoiceDate,
+      deliveryDate,
       poNumber: (r.poNumber ?? '').startsWith('#') ? r.poNumber ?? '' : `#${r.poNumber ?? ''}`,
       doNumber: r.doNumber ?? '', // TODO: join DeliveryOrdersTable when DO linkage is finalized
       outlet: r.outlet ?? '',
