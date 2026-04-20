@@ -498,37 +498,49 @@ export class InvoicesRepositoryClass {
       const sstRate = regionPricingRow ? parseFloat(regionPricingRow.sstRate) : 0.06;
 
       // --- Group QOM: sum PO item quantities across all non-cancelled POs for same outlet + delivery date ---
+      // combinedQty must cover the whole group so the min-surcharge is applied once per group,
+      // not once per individual PO. Fall back to thisPOQty only when we have no delivery date to
+      // anchor the group (legacy POs with null scheduledDeliveryDate).
       const thisPOQty = doItems.reduce((sum, item) => sum + parseFloat(item.qtyRequired), 0);
       let combinedQty = thisPOQty;
 
-      if (regionPricingRow?.outletId && regionPricingRow.scheduledDeliveryDate && regionPricingRow.organizationId) {
-        const deliveryDate = new Date(regionPricingRow.scheduledDeliveryDate);
-        const startOfDay = new Date(deliveryDate);
-        startOfDay.setUTCHours(0, 0, 0, 0);
-        const endOfDay = new Date(deliveryDate);
-        endOfDay.setUTCHours(23, 59, 59, 999);
+      if (regionPricingRow?.outletId && regionPricingRow.organizationId) {
+        if (regionPricingRow.scheduledDeliveryDate) {
+          // Normal path: group by outlet + calendar day
+          const deliveryDate = new Date(regionPricingRow.scheduledDeliveryDate);
+          const startOfDay = new Date(deliveryDate);
+          startOfDay.setUTCHours(0, 0, 0, 0);
+          const endOfDay = new Date(deliveryDate);
+          endOfDay.setUTCHours(23, 59, 59, 999);
 
-        const [groupQtyRow] = await dbClient
-          .select({
-            combinedQty: sql<string>`COALESCE(SUM(${PurchaseOrderItemsTable.qtyRequired}::numeric), '0')`,
-          })
-          .from(PurchaseOrdersTable)
-          .leftJoin(
-            PurchaseOrderItemsTable,
-            eq(PurchaseOrdersTable.purchaseOrderNo, PurchaseOrderItemsTable.purchaseOrderNo)
-          )
-          .where(
-            and(
-              eq(PurchaseOrdersTable.outletId, regionPricingRow.outletId),
-              eq(PurchaseOrdersTable.organizationId, regionPricingRow.organizationId),
-              gte(PurchaseOrdersTable.scheduledDeliveryDate, startOfDay),
-              lte(PurchaseOrdersTable.scheduledDeliveryDate, endOfDay),
-              notInArray(PurchaseOrdersTable.status, ['CANCELLED', 'REJECTED']),
+          const [groupQtyRow] = await dbClient
+            .select({
+              combinedQty: sql<string>`COALESCE(SUM(${PurchaseOrderItemsTable.qtyRequired}::numeric), '0')`,
+            })
+            .from(PurchaseOrdersTable)
+            .leftJoin(
+              PurchaseOrderItemsTable,
+              eq(PurchaseOrdersTable.purchaseOrderNo, PurchaseOrderItemsTable.purchaseOrderNo)
             )
-          );
+            .where(
+              and(
+                eq(PurchaseOrdersTable.outletId, regionPricingRow.outletId),
+                eq(PurchaseOrdersTable.organizationId, regionPricingRow.organizationId),
+                gte(PurchaseOrdersTable.scheduledDeliveryDate, startOfDay),
+                lte(PurchaseOrdersTable.scheduledDeliveryDate, endOfDay),
+                notInArray(PurchaseOrdersTable.status, ['CANCELLED', 'REJECTED']),
+              )
+            );
 
-        if (groupQtyRow) {
-          combinedQty = parseFloat(groupQtyRow.combinedQty);
+          if (groupQtyRow) {
+            combinedQty = parseFloat(groupQtyRow.combinedQty);
+          }
+        } else {
+          // Fallback for POs without a scheduled delivery date: use this PO's total qty.
+          // Min-surcharge is still applied at PO level (all items summed), not per item.
+          logger.warn(
+            `⚠️ [InvoicesRepository.createInvoiceFromDeliveryOrder] PO ${doRow.purchaseOrderId} has no scheduledDeliveryDate — group QOM lookup skipped, using thisPOQty=${thisPOQty}`
+          );
         }
       }
 

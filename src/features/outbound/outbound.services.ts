@@ -636,6 +636,100 @@ export class OutboundServices {
                             tx
                         );
                     }
+
+                    // Recalculate group QOM amounts for this PO and all siblings.
+                    // Must run AFTER all item mutations so the DB reflects the new quantities.
+                    const effectiveDeliveryDate = updatedPo.scheduledDeliveryDate
+                        ? new Date(updatedPo.scheduledDeliveryDate)
+                        : null;
+
+                    if (effectiveDeliveryDate) {
+                        const [regionPricing] = await tx
+                            .select({
+                                rate: RegionPricingTable.rate,
+                                minQty: RegionPricingTable.minQty,
+                                sstRate: RegionPricingTable.sstRate,
+                            })
+                            .from(RegionPricingTable)
+                            .where(and(
+                                eq(RegionPricingTable.regionId, outlet.regionId),
+                                eq(RegionPricingTable.isActive, true),
+                            ))
+                            .limit(1);
+
+                        const rate = regionPricing ? parseFloat(regionPricing.rate) : 0;
+                        const minQty = regionPricing ? parseFloat(regionPricing.minQty) : 5;
+                        const sstRate = regionPricing ? parseFloat(regionPricing.sstRate) : 0.06;
+
+                        // Re-query this PO's items from DB (reflects all mutations above)
+                        const freshPoItems = await tx
+                            .select({ qtyRequired: PurchaseOrderItemsTable.qtyRequired })
+                            .from(PurchaseOrderItemsTable)
+                            .where(eq(PurchaseOrderItemsTable.purchaseOrderNo, po.purchaseOrderNo));
+                        const updatedPoQty = freshPoItems.reduce(
+                            (sum, i) => sum + (parseFloat(i.qtyRequired) || 0), 0
+                        );
+
+                        const allSiblings = await this.purchaseOrdersRepository.getSiblingPurchaseOrdersWithQty(
+                            effectiveOutletId,
+                            effectiveDeliveryDate,
+                            data.organizationId,
+                            po.purchaseOrderNo,
+                            tx
+                        );
+                        const combinedQty = allSiblings.reduce((sum, s) => sum + s.totalQty, 0) + updatedPoQty;
+                        const combinedEffectiveQty = combinedQty > 0 ? Math.max(combinedQty, minQty) : 0;
+                        const groupTotalCharge = combinedEffectiveQty * rate * (1 + sstRate);
+                        const getShare = (qty: number) =>
+                            combinedQty > 0 ? (groupTotalCharge * qty) / combinedQty : 0;
+
+                        // Update this PO's amount
+                        await this.purchaseOrdersRepository.updatePurchaseOrder(
+                            po.id,
+                            {
+                                amount: getShare(updatedPoQty).toFixed(2),
+                                amountCalcSnapshot: {
+                                    rate, minQty, sstRate,
+                                    poQty: updatedPoQty,
+                                    combinedQty, combinedEffectiveQty,
+                                    groupTotalCharge: groupTotalCharge.toFixed(2),
+                                    minApplied: combinedQty < minQty,
+                                    deliveryDate: effectiveDeliveryDate.toISOString().split('T')[0],
+                                    siblingPONos: allSiblings.map(s => s.purchaseOrderNo),
+                                    updatedByGrouping: true,
+                                },
+                                updatedBy: data.userId,
+                            },
+                            data.organizationId,
+                            tx
+                        );
+
+                        // Update sibling amounts
+                        for (const sibling of allSiblings) {
+                            await this.purchaseOrdersRepository.updatePurchaseOrder(
+                                sibling.id,
+                                {
+                                    amount: getShare(sibling.totalQty).toFixed(2),
+                                    amountCalcSnapshot: {
+                                        rate, minQty, sstRate,
+                                        poQty: sibling.totalQty,
+                                        combinedQty, combinedEffectiveQty,
+                                        groupTotalCharge: groupTotalCharge.toFixed(2),
+                                        minApplied: combinedQty < minQty,
+                                        deliveryDate: effectiveDeliveryDate.toISOString().split('T')[0],
+                                        siblingPONos: [
+                                            ...allSiblings.filter(s => s.id !== sibling.id).map(s => s.purchaseOrderNo),
+                                            po.purchaseOrderNo,
+                                        ],
+                                        updatedByGrouping: true,
+                                    },
+                                    updatedBy: data.userId,
+                                },
+                                data.organizationId,
+                                tx
+                            );
+                        }
+                    }
                 }
 
                 return updatedPo;
@@ -735,7 +829,6 @@ export class OutboundServices {
                                 movementType: InventoryMovementType.RESERVED,
                                 referenceNo: po.purchaseOrderNo,
                                 createdBy: data.userId,
-                                updatedBy: data.userId,
                             });
                         }
                     }
