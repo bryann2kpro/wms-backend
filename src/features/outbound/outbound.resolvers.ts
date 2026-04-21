@@ -335,11 +335,11 @@ export const resolvers = {
         }
 
         const entries: Array<{ date: string; orders: PurchaseOrderType[] }> = [];
-        const cursor = new Date(fromDate);
-        while (cursor <= toDate) {
+        const cursor = new Date(toDate);
+        while (cursor >= fromDate) {
           const key = formatDateKeyBusinessTZ(cursor);
           entries.push({ date: key, orders: byDate.get(key) ?? [] });
-          cursor.setUTCDate(cursor.getUTCDate() + 1);
+          cursor.setUTCDate(cursor.getUTCDate() - 1);
         }
 
         return entries.map((e) => ({
