@@ -15,6 +15,8 @@ import {
   generateDoPickingListPdf,
 } from './report.service';
 
+type DeliveryDateSortOrder = 'ASC' | 'DESC';
+
 const REPORT_TYPE_S3_FOLDER: Record<string, string> = {
   MOVEMENT_REPORT: 'movement',
   INVOICE_SUMMARY: 'invoice-summary',
@@ -28,9 +30,15 @@ export const resolvers = {
         dateFrom: string;
         dateTo: string;
         regionId: string;
+        deliveryDateSortOrder?: DeliveryDateSortOrder;
       }
     ) => {
-      return getInvoiceSummaryData(args.dateFrom, args.dateTo, args.regionId);
+      return getInvoiceSummaryData(
+        args.dateFrom,
+        args.dateTo,
+        args.regionId,
+        args.deliveryDateSortOrder
+      );
     },
   },
   Mutation: {
@@ -47,18 +55,20 @@ export const resolvers = {
           dateTo: string;
           format?: 'PDF' | 'EXCEL';
           regionId: string;
+          deliveryDateSortOrder?: DeliveryDateSortOrder;
           saveToS3?: boolean;
         };
       }
     ) => {
       logger.info('ℹ️ [report.resolvers.generateReport] Generating report...');
-      const { type, dateFrom, dateTo, format, regionId, saveToS3 } = args.input;
+      const { type, dateFrom, dateTo, format, regionId, deliveryDateSortOrder, saveToS3 } = args.input;
 
       logger.debug('🔎 [report.resolvers.generateReport] Report type: %s', type);
       logger.debug('🔎 [report.resolvers.generateReport] Date from: %s', dateFrom);
       logger.debug('🔎 [report.resolvers.generateReport] Date to: %s', dateTo);
       logger.debug('🔎 [report.resolvers.generateReport] Format: %s', format);
       logger.debug('🔎 [report.resolvers.generateReport] Region ID: %s', regionId);
+      logger.debug('🔎 [report.resolvers.generateReport] Delivery date sort order: %s', deliveryDateSortOrder);
       logger.debug('🔎 [report.resolvers.generateReport] Save to S3: %s', saveToS3);
 
       let result: { pdfBase64: string; filename: string };
@@ -67,7 +77,12 @@ export const resolvers = {
         const rows = await getMovementReportData(dateFrom, dateTo, regionId);
         result = await generateMovementReportPdf(rows, dateFrom, dateTo, regionId);
       } else if (type === 'INVOICE_SUMMARY') {
-        const rows = await getInvoiceSummaryData(dateFrom, dateTo, regionId);
+        const rows = await getInvoiceSummaryData(
+          dateFrom,
+          dateTo,
+          regionId,
+          deliveryDateSortOrder
+        );
         result = await generateInvoiceSummaryPdf(rows, dateFrom, dateTo, regionId);
       } else {
         throw new Error(`Unsupported report type: ${type}`);

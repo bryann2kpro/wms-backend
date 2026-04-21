@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 import { regionRepository } from '@/composition-root';
 import { db } from '@/db';
-import { eq, and, gte, lt, sql } from 'drizzle-orm';
+import { eq, and, gte, lt, sql, asc, desc } from 'drizzle-orm';
 import { InventoryMovementsTable, InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
 import { SkuTable } from '../master-data/sku.model';
 import { InvoicesTable, InvoiceItemsTable } from '../invoicing/invoices.model';
@@ -49,6 +49,8 @@ export interface InvoiceSummaryRow {
   afterTaxAmount: number;
   amount: number;
 }
+
+export type DeliveryDateSortOrder = 'ASC' | 'DESC';
 
 /**
  * Fetch movement report data. Replace with DB query when ready.
@@ -155,15 +157,16 @@ function escapeHtml(s: string): string {
 export async function getInvoiceSummaryData(
   _dateFrom?: string,
   _dateTo?: string,
-  regionId?: string
+  regionId?: string,
+  deliveryDateSortOrder: DeliveryDateSortOrder = 'ASC'
 ): Promise<InvoiceSummaryRow[]> {
   const dateFrom = _dateFrom ? new Date(_dateFrom) : undefined;
   const dateToExclusive = _dateTo ? new Date(_dateTo) : undefined;
   if (dateToExclusive) dateToExclusive.setUTCDate(dateToExclusive.getUTCDate() + 1);
 
   const whereConditions = [
-    dateFrom ? gte(InvoicesTable.dateIssued, dateFrom) : undefined,
-    dateToExclusive ? lt(InvoicesTable.dateIssued, dateToExclusive) : undefined,
+    dateFrom ? gte(PurchaseOrdersTable.scheduledDeliveryDate, dateFrom) : undefined,
+    dateToExclusive ? lt(PurchaseOrdersTable.scheduledDeliveryDate, dateToExclusive) : undefined,
     regionId ? eq(OutletsTable.regionId, regionId) : undefined,
   ].filter(Boolean) as unknown as Parameters<typeof and>;
 
@@ -199,7 +202,15 @@ export async function getInvoiceSummaryData(
       OutletsTable.outletName,
       RegionTable.regionName
     )
-    .orderBy(InvoicesTable.dateIssued);
+    .orderBy(
+      // Keep rows with missing delivery date at the end regardless of selected direction.
+      sql<number>`case when ${PurchaseOrdersTable.scheduledDeliveryDate} is null then 1 else 0 end`,
+      deliveryDateSortOrder === 'DESC'
+        ? desc(PurchaseOrdersTable.scheduledDeliveryDate)
+        : asc(PurchaseOrdersTable.scheduledDeliveryDate),
+      asc(InvoicesTable.dateIssued),
+      asc(InvoicesTable.invoiceNo)
+    );
 
   return rows.map((r) => {
     const issued = r.dateIssued instanceof Date ? r.dateIssued : r.dateIssued ? new Date(r.dateIssued as unknown as string) : undefined;
