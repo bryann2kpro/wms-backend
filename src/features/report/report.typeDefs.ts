@@ -14,6 +14,14 @@ export const typeDefs = `#graphql
   }
 
   """
+  Sort direction for invoice summary delivery dates.
+  """
+  enum DeliveryDateSortOrder {
+    ASC
+    DESC
+  }
+
+  """
   Input for generating a report
   """
   input GenerateReportInput {
@@ -25,6 +33,8 @@ export const typeDefs = `#graphql
     dateTo: String!
     """Region ID to filter or display (e.g. for movement report header) (required)"""
     regionId: ID!
+    """Optional delivery date sort order for invoice summary reports"""
+    deliveryDateSortOrder: DeliveryDateSortOrder
     """If true, upload the generated PDF to S3 and return s3Url"""
     saveToS3: Boolean
   }
@@ -88,6 +98,7 @@ export const typeDefs = `#graphql
       dateFrom: String!
       dateTo: String!
       regionId: ID!
+      deliveryDateSortOrder: DeliveryDateSortOrder
     ): [InvoiceSummaryReportRow!]! @auth
   }
 
