@@ -39,23 +39,23 @@ async function getOrCreateDefaultOrganization(): Promise<string> {
 }
 
 /**
- * Get or create the SME-Ederan organization (used for all non-superadmin accounts).
+ * Get or create the SME-Edaran organization (used for all non-superadmin accounts).
  * Returns the organization ID.
  */
-async function getOrCreateSmeEderanOrganization(): Promise<string> {
+async function getOrCreateSmeEdaranOrganization(): Promise<string> {
   const existing = await organizationRepository.getOrganizationByCode('SME');
   if (existing) {
-    logger.info('✓ SME-Ederan organization already exists');
+    logger.info('✓ SME-Edaran organization already exists');
     return existing.organizationId;
   }
   const org = await organizationRepository.createOrganization({
-    organizationName: 'SME-Ederan',
+    organizationName: 'SME-Edaran',
     organizationCode: 'SME',
     status: 'active',
     createdBy: 'system',
     updatedBy: 'system',
   });
-  logger.info('✅ SME-Ederan organization created successfully');
+  logger.info('✅ SME-Edaran organization created successfully');
   return org.organizationId;
 }
 
@@ -338,7 +338,7 @@ async function initAdminUser(defaultOrgId: string): Promise<void> {
     logger.debug(`   Password: ${password}`);
   } else {
     logger.info('✓ Admin user account already exists');
-    // Ensure user is assigned to this organization (e.g. after adding SME-Ederan)
+    // Ensure user is assigned to this organization (e.g. after adding SME-Edaran)
     if (existingAdminUser.primaryOrganizationId !== defaultOrgId) {
       await authRepository.updateUser(existingAdminUser.id, {
         primaryOrganizationId: defaultOrgId,
@@ -548,10 +548,10 @@ export async function initAccounts() {
 
     // Ensure default organization exists (same ID as migrations); used for Super Admin only
     const defaultOrgId = await getOrCreateDefaultOrganization();
-    // SME-Ederan organization for all other accounts (admin, storekeeper, logistic, management)
-    const smeOrgId = await getOrCreateSmeEderanOrganization();
+    // SME-Edaran organization for all other accounts (admin, storekeeper, logistic, management)
+    const smeOrgId = await getOrCreateSmeEdaranOrganization();
 
-    // Initialize users and roles: non-superadmin accounts → SME-Ederan; Super Admin → default org
+    // Initialize users and roles: non-superadmin accounts → SME-Edaran; Super Admin → default org
     await initAdminUser(smeOrgId);
     await initStorekeeperUser(smeOrgId);
     await initLogisticUser(smeOrgId);

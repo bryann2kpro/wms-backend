@@ -4,7 +4,7 @@ import { uuid, text, timestamp, numeric, boolean } from "drizzle-orm/pg-core";
 /**
  * Region Table
  * 
- * @description This table is used to store the SME Ederan regions data.
+ * @description This table is used to store the SME Edaran regions data.
  * Regions are used to group outlets for delivery scheduling purposes.
  * 
  * @field regionId - Primary key
