@@ -8,6 +8,8 @@
 import { authRepository, inventoryMovementRepository, warehousesRepository } from '@/composition-root';
 import { InventoryMovementsFilter } from './inventory.repository';
 import { InventoryMovementType } from './inventory.model';
+import { withAudit } from '@/features/audit-log/audit.wrapper';
+import type { GraphQLContext } from '@/graphql/context';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -21,8 +23,11 @@ function transformInventoryMovement(inventoryMovement: {
   balanceAfter: number;
   referenceNo: string;
   reason: string;
+  lotNo?: string | null;
+  rackId?: string | null;
   createdAt: Date;
   createdBy: string;
+  createdByUser?: { id: string; displayName: string } | null;
 }) {
   return {
     id: inventoryMovement.id,
@@ -32,8 +37,11 @@ function transformInventoryMovement(inventoryMovement: {
     balanceAfter: inventoryMovement.balanceAfter,
     referenceNo: inventoryMovement.referenceNo,
     reason: inventoryMovement.reason,
+    lotNo: inventoryMovement.lotNo ?? null,
+    rackId: inventoryMovement.rackId ?? null,
     createdAt: inventoryMovement.createdAt instanceof Date ? inventoryMovement.createdAt.toISOString() : inventoryMovement.createdAt,
     createdBy: inventoryMovement.createdBy,
+    createdByUser: inventoryMovement.createdByUser ?? null,
   };
 }
 
@@ -46,6 +54,10 @@ export const resolvers = {
     /**
      * Get warehouses with optional filtering and pagination
      */
+    skuIntegrityCheck: async (_: unknown, { skuId }: { skuId: string }, context: GraphQLContext) => {
+      return inventoryMovementRepository.checkSkuIntegrity(skuId);
+    },
+
     inventoryMovements: async (
       _: unknown,
       args: {
@@ -59,6 +71,8 @@ export const resolvers = {
           movementTypes?: InventoryMovementType[];
           referenceNo?: string;
           reason?: string;
+          dateFrom?: string;
+          dateTo?: string;
         };
         pageSize?: number;
         pageNumber?: number;
@@ -81,9 +95,11 @@ export const resolvers = {
           filter.regionId = args.filter.regionId;
         }
 
-        if (args.filter.movementType) {
+        if (args.filter.movementTypes) {
+          filter.movementType = args.filter.movementTypes;
+        } else if (args.filter.movementType) {
           filter.movementType = args.filter.movementType;
-        } 
+        }
 
         if (args.filter.referenceNo) {
           filter.referenceNo = args.filter.referenceNo;
@@ -91,6 +107,14 @@ export const resolvers = {
 
         if (args.filter.reason) {
           filter.reason = args.filter.reason;
+        }
+
+        if (args.filter.dateFrom) {
+          filter.dateFrom = args.filter.dateFrom;
+        }
+
+        if (args.filter.dateTo) {
+          filter.dateTo = args.filter.dateTo;
         }
       }
 
@@ -158,5 +182,35 @@ export const resolvers = {
           : undefined,
       });
     },
+  },
+
+  Mutation: {
+    backfillSkuMovements: withAudit(
+      {
+        entity: 'InventoryBalance',
+        action: 'UPDATE',
+        getEntityId: (result: any) => result?.skuId ?? null,
+      },
+      async (_: unknown, { skuId }: { skuId: string }, context: GraphQLContext) => {
+        const tx = context.tx!;
+        const organizationId = context.organizationId!;
+        const userId = context.user?.id ?? 'system';
+        return inventoryMovementRepository.backfillSkuMovements(skuId, organizationId, userId, tx);
+      },
+    ),
+
+    reconcileSkuBalance: withAudit(
+      {
+        entity: 'InventoryBalance',
+        action: 'UPDATE',
+        getEntityId: (result: any) => result?.skuId ?? null,
+      },
+      async (_: unknown, { skuId }: { skuId: string }, context: GraphQLContext) => {
+        const tx = context.tx!;
+        const organizationId = context.organizationId!;
+        const result = await inventoryMovementRepository.reconcileSkuBalance(skuId, organizationId, tx);
+        return { skuId, ...result };
+      },
+    ),
   },
 };
