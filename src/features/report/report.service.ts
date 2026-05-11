@@ -538,16 +538,12 @@ export async function renderDoPickingListHtml(
   const flattenedRows: {
     skuCode: string;
     skuDescription: string;
-    doBreakdownHtml: string;
     qtyRequired: number;
     rackLabel: string;
     completedPicking: boolean;
   }[] = [];
 
   for (const g of skuGroups) {
-    const doBreakdownHtml = g.doBreakdown
-      .map((d) => `<span>${escapeHtml(d.doNo)}&thinsp;&times;&thinsp;${formatQtyNum(d.qtyRequired)}</span>`)
-      .join('&ensp;');
     const completedPicking = g.totalQtyPicked >= g.totalQtyRequired;
 
     const rackQtyMap = new Map<string, number>();
@@ -561,7 +557,6 @@ export async function renderDoPickingListHtml(
       flattenedRows.push({
         skuCode: g.skuCode,
         skuDescription: g.skuDescription,
-        doBreakdownHtml,
         qtyRequired: g.totalQtyRequired,
         rackLabel: 'Rack —',
         completedPicking,
@@ -576,7 +571,6 @@ export async function renderDoPickingListHtml(
       flattenedRows.push({
         skuCode: g.skuCode,
         skuDescription: g.skuDescription,
-        doBreakdownHtml,
         qtyRequired,
         rackLabel,
         completedPicking,
@@ -592,10 +586,7 @@ export async function renderDoPickingListHtml(
       return `<tr class="tr-data${rowAlt}">
         <td class="col-no">${i + 1}</td>
         <td class="col-sku">${escapeHtml(row.skuCode)}</td>
-        <td class="col-desc">
-          ${escapeHtml(row.skuDescription)}
-          <div class="do-breakdown">${row.doBreakdownHtml}</div>
-        </td>
+        <td class="col-desc">${escapeHtml(row.skuDescription)}</td>
         <td class="col-qty col-qty-total">${formatQtyNum(row.qtyRequired)}</td>
         <td class="col-rack">${escapeHtml(row.rackLabel)}</td>
         <td class="col-mark${markClass}">${markHtml}</td>
