@@ -52,6 +52,31 @@ export interface InvoiceSummaryRow {
 
 export type DeliveryDateSortOrder = 'ASC' | 'DESC';
 
+const DUPLICATE_OUTLET_SUFFIX = ' *';
+
+/**
+ * When more than one row shares the same invoice date and outlet, append an
+ * asterisk after the outlet name (e.g. for Excel / PDF Proforma Invoice Summary).
+ */
+export function markDuplicateInvoiceDateOutletRows(
+  rows: InvoiceSummaryRow[]
+): InvoiceSummaryRow[] {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const key = `${r.invoiceDate}\0${r.outlet}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return rows.map((r) => {
+    const key = `${r.invoiceDate}\0${r.outlet}`;
+    if ((counts.get(key) ?? 0) < 2) return r;
+    const outlet =
+      r.outlet.endsWith(DUPLICATE_OUTLET_SUFFIX) ?
+        r.outlet
+      : `${r.outlet}${DUPLICATE_OUTLET_SUFFIX}`;
+    return { ...r, outlet };
+  });
+}
+
 /**
  * Fetch movement report data. Replace with DB query when ready.
  */
@@ -212,7 +237,7 @@ export async function getInvoiceSummaryData(
       asc(InvoicesTable.invoiceNo)
     );
 
-  return rows.map((r) => {
+  const mapped = rows.map((r) => {
     const issued = r.dateIssued instanceof Date ? r.dateIssued : r.dateIssued ? new Date(r.dateIssued as unknown as string) : undefined;
     const invoiceDate =
       issued && !Number.isNaN(issued.getTime())
@@ -239,6 +264,8 @@ export async function getInvoiceSummaryData(
       amount: Number(r.amount ?? 0),
     };
   });
+
+  return markDuplicateInvoiceDateOutletRows(mapped);
 }
 
 // Number of columns that precede the two numeric summary columns (Ctn, Amount).
@@ -272,7 +299,7 @@ function buildInvoiceDataRow(r: InvoiceSummaryRow, isAlt: boolean): string {
     <td class="px-4 py-3 whitespace-nowrap col-meta">${escapeHtml(r.invoiceDate)}</td>
     <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.poNumber)}</td>
     <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.doNumber)}</td>
-    <td class="px-4 py-3 whitespace-nowrap col-desc">${escapeHtml(r.outlet)}</td>
+    <td class="px-4 py-3 col-desc">${escapeHtml(r.outlet)}</td>
     <td class="px-4 py-3 whitespace-nowrap col-meta">${escapeHtml(r.region)}</td>
     <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">${r.ctn}</td>
     <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">${formatAmount(r.amount)}</td>
