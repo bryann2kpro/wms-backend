@@ -615,6 +615,7 @@ export async function generateDoPickingListPdf(
   _orgId: string,
   filter?: {
     regionId?: string;
+    search?: string;
     scheduledDeliveryDateFrom?: string;
     scheduledDeliveryDateTo?: string;
   },
@@ -624,11 +625,12 @@ export async function generateDoPickingListPdf(
   const itemsResult = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(
     {
       doStatus: ACTIVE_DO_STATUSES,
+      search: filter?.search,
       regionId: filter?.regionId,
       scheduledDeliveryDateFrom: filter?.scheduledDeliveryDateFrom,
       scheduledDeliveryDateTo: filter?.scheduledDeliveryDateTo,
     },
-    { pageSize: 9999, pageNumber: 1 },
+    { pageSize: 200, pageNumber: 1 },
   );
 
   // Fetch allocations for all items
