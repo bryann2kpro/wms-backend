@@ -116,6 +116,7 @@ export const resolvers = {
       args: {
         filter?: {
           regionId?: string;
+          regionIds?: string[];
           search?: string;
           scheduledDeliveryDateFrom?: string;
           scheduledDeliveryDateTo?: string;

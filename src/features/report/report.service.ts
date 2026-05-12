@@ -511,6 +511,9 @@ export async function generateStockCountChecklistPdf(
 
 const ACTIVE_DO_STATUSES = ['CREATED', 'NEW', 'PICKING', 'PACKING'];
 
+/** Upper bound on DO line rows loaded for picking list PDF (must cover all lines or SKU totals truncate). Keep in sync with `ES_DO_WORK_QUEUE_PAGE_SIZE` in `smee-frontend/.../es-do.tsx`. */
+const DO_PICKING_LIST_LINE_FETCH_CAP = 100_000;
+
 interface DoPickingListSkuGroup {
   skuCode: string;
   skuDescription: string;
@@ -619,6 +622,7 @@ export async function generateDoPickingListPdf(
   _orgId: string,
   filter?: {
     regionId?: string;
+    regionIds?: string[];
     search?: string;
     scheduledDeliveryDateFrom?: string;
     scheduledDeliveryDateTo?: string;
@@ -626,15 +630,22 @@ export async function generateDoPickingListPdf(
 ): Promise<{ pdfBase64: string; filename: string }> {
   const { deliveryOrdersRepository } = await import('@/composition-root');
 
+  const regionFilter =
+    filter?.regionIds && filter.regionIds.length > 0
+      ? { regionIds: filter.regionIds }
+      : filter?.regionId
+        ? { regionId: filter.regionId }
+        : {};
+
   const itemsResult = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(
     {
       doStatus: ACTIVE_DO_STATUSES,
       search: filter?.search,
-      regionId: filter?.regionId,
+      ...regionFilter,
       scheduledDeliveryDateFrom: filter?.scheduledDeliveryDateFrom,
       scheduledDeliveryDateTo: filter?.scheduledDeliveryDateTo,
     },
-    { pageSize: 200, pageNumber: 1 },
+    { pageSize: DO_PICKING_LIST_LINE_FETCH_CAP, pageNumber: 1 },
   );
 
   // Fetch allocations for all items
@@ -690,7 +701,15 @@ export async function generateDoPickingListPdf(
   );
 
   let regionLabel = 'All regions';
-  if (filter?.regionId) {
+  if (filter?.regionIds && filter.regionIds.length > 0) {
+    const rows = await Promise.all(
+      filter.regionIds.map((id) => regionRepository.getRegionById(id)),
+    );
+    const parts = rows
+      .map((r) => r?.regionName?.trim())
+      .filter((n): n is string => Boolean(n && n.length > 0));
+    regionLabel = parts.length > 0 ? parts.join(', ') : 'Unknown regions';
+  } else if (filter?.regionId) {
     const region = await regionRepository.getRegionById(filter.regionId);
     const name = region?.regionName?.trim();
     regionLabel = name && name.length > 0 ? name : 'Unknown region';

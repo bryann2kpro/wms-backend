@@ -417,7 +417,9 @@ export class DeliveryOrdersRepositoryClass {
         );
       }
 
-      if (filter.regionId) {
+      if (filter.regionIds && filter.regionIds.length > 0) {
+        whereConditions.push(inArray(OutletsTable.regionId, filter.regionIds));
+      } else if (filter.regionId) {
         whereConditions.push(eq(OutletsTable.regionId, filter.regionId));
       }
 
