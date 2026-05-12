@@ -13,6 +13,9 @@ import {
   generateInvoiceSummaryPdf,
   generateStockCountChecklistPdf,
   generateDoPickingListPdf,
+  getInventoryBalanceReportData,
+  generateStockBalancePdf,
+  type InventoryBalanceReportType,
 } from './report.service';
 
 type DeliveryDateSortOrder = 'ASC' | 'DESC';
@@ -39,6 +42,14 @@ export const resolvers = {
         args.regionId,
         args.deliveryDateSortOrder
       );
+    },
+
+    inventoryBalanceReportData: async (
+      _: unknown,
+      args: { type: InventoryBalanceReportType },
+      context: { organizationId: string }
+    ) => {
+      return getInventoryBalanceReportData(args.type, context.organizationId);
     },
   },
   Mutation: {
@@ -124,6 +135,16 @@ export const resolvers = {
     ) => {
       logger.info('ℹ️ [report.resolvers.generateDoPickingList] Generating DO picking list PDF...');
       return generateDoPickingListPdf(context.organizationId, args.filter);
+    },
+
+    generateStockBalanceReport: async (
+      _: unknown,
+      args: { type: InventoryBalanceReportType },
+      context: { organizationId: string }
+    ) => {
+      logger.info('ℹ️ [report.resolvers.generateStockBalanceReport] Generating stock balance PDF...');
+      const rows = await getInventoryBalanceReportData(args.type, context.organizationId);
+      return generateStockBalancePdf(rows, args.type);
     },
   },
 };
