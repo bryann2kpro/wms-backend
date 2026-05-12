@@ -514,6 +514,27 @@ const ACTIVE_DO_STATUSES = ['CREATED', 'NEW', 'PICKING', 'PACKING'];
 /** Upper bound on DO line rows loaded for picking list PDF (must cover all lines or SKU totals truncate). Keep in sync with `ES_DO_WORK_QUEUE_PAGE_SIZE` in `smee-frontend/.../es-do.tsx`. */
 const DO_PICKING_LIST_LINE_FETCH_CAP = 100_000;
 
+/** ISO YYYY-MM-DD → en-MY display string for picking list header (calendar date in UTC). */
+function formatDoPickingListScheduleDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const d = new Date(`${iso}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-MY', { day: 'numeric', month: 'numeric', year: 'numeric' });
+}
+
+/** Human-readable scheduled delivery filter for PDF header; null if neither bound sent. */
+function formatScheduledDeliveryRangeForPdf(from?: string | null, to?: string | null): string | null {
+  const f = from?.trim();
+  const t = to?.trim();
+  if (!f && !t) return null;
+  if (f && t) {
+    if (f === t) return formatDoPickingListScheduleDate(f);
+    return `${formatDoPickingListScheduleDate(f)} – ${formatDoPickingListScheduleDate(t)}`;
+  }
+  if (f) return `From ${formatDoPickingListScheduleDate(f)}`;
+  return `Until ${formatDoPickingListScheduleDate(t!)}`;
+}
+
 interface DoPickingListSkuGroup {
   skuCode: string;
   skuDescription: string;
@@ -528,7 +549,7 @@ interface DoPickingListSkuGroup {
  */
 export async function renderDoPickingListHtml(
   skuGroups: DoPickingListSkuGroup[],
-  options?: { regionLabel?: string },
+  options?: { regionLabel?: string; scheduledDeliveryRange?: string | null },
 ): Promise<string> {
   const template = await readFile(DO_PICKING_LIST_HTML_PATH, 'utf-8');
   const logoImgHtml = await getSmeLogoImgHtml();
@@ -599,6 +620,10 @@ export async function renderDoPickingListHtml(
     .join('\n');
 
   const regionLabel = (options?.regionLabel ?? 'All regions').trim() || 'All regions';
+  const scheduledDeliveryRange =
+    options?.scheduledDeliveryRange != null && String(options.scheduledDeliveryRange).trim() !== ''
+      ? String(options.scheduledDeliveryRange).trim()
+      : 'Not filtered';
 
   return template
     .replace(/\{\{logoImgHtml\}\}/g, logoImgHtml)
@@ -607,6 +632,7 @@ export async function renderDoPickingListHtml(
     .replace(/\{\{totalSKUs\}\}/g, String(skuGroups.length))
     .replace(/\{\{totalUnits\}\}/g, formatQtyNum(totalUnits))
     .replace(/\{\{regionLabel\}\}/g, escapeHtml(regionLabel))
+    .replace(/\{\{scheduledDeliveryRange\}\}/g, escapeHtml(scheduledDeliveryRange))
     .replace(/\{\{tableRows\}\}/, tableRows);
 }
 
@@ -715,7 +741,15 @@ export async function generateDoPickingListPdf(
     regionLabel = name && name.length > 0 ? name : 'Unknown region';
   }
 
-  const html = await renderDoPickingListHtml(skuGroups, { regionLabel });
+  const scheduledDeliveryRange = formatScheduledDeliveryRangeForPdf(
+    filter?.scheduledDeliveryDateFrom,
+    filter?.scheduledDeliveryDateTo,
+  );
+
+  const html = await renderDoPickingListHtml(skuGroups, {
+    regionLabel,
+    scheduledDeliveryRange,
+  });
   const pdfBuffer = await htmlToPdf(html);
 
   const dateStr = new Date().toISOString().split('T')[0];

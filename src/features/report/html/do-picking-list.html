@@ -108,6 +108,10 @@
             color: var(--text-primary);
         }
 
+        .brand-text > .region-filter-line + .region-filter-line {
+            margin-top: 0.35rem;
+        }
+
         /* Title side */
         .doc-title-block {
             text-align: right;
@@ -408,6 +412,10 @@
                     <div class="region-filter-line">
                         <span class="region-filter-prefix">Region</span>:
                         <strong>{{regionLabel}}</strong>
+                    </div>
+                    <div class="region-filter-line">
+                        <span class="region-filter-prefix">Scheduled delivery Date</span>:
+                        <strong>{{scheduledDeliveryRange}}</strong>
                     </div>
                 </div>
             </div>
