@@ -88,6 +88,26 @@
             color: var(--text-muted);
         }
 
+        .region-filter-line {
+            margin-top: 0.65rem;
+            font-size: 0.72rem;
+            line-height: 1.45;
+            color: var(--text-secondary);
+        }
+
+        .region-filter-line .region-filter-prefix {
+            font-size: 0.6rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+        }
+
+        .region-filter-line strong {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
         /* Title side */
         .doc-title-block {
             text-align: right;
@@ -384,6 +404,10 @@
                         NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
                         SUNGAI BULOH, 47000 SELANGOR.<br/>
                         TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
+                    </div>
+                    <div class="region-filter-line">
+                        <span class="region-filter-prefix">Region</span>:
+                        <strong>{{regionLabel}}</strong>
                     </div>
                 </div>
             </div>

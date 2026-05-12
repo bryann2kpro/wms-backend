@@ -525,6 +525,7 @@ interface DoPickingListSkuGroup {
  */
 export async function renderDoPickingListHtml(
   skuGroups: DoPickingListSkuGroup[],
+  options?: { regionLabel?: string },
 ): Promise<string> {
   const template = await readFile(DO_PICKING_LIST_HTML_PATH, 'utf-8');
   const logoImgHtml = await getSmeLogoImgHtml();
@@ -594,12 +595,15 @@ export async function renderDoPickingListHtml(
     })
     .join('\n');
 
+  const regionLabel = (options?.regionLabel ?? 'All regions').trim() || 'All regions';
+
   return template
     .replace(/\{\{logoImgHtml\}\}/g, logoImgHtml)
     .replace(/\{\{generatedAt\}\}/g, generatedAt)
     .replace(/\{\{totalDOs\}\}/g, String(doNos.size))
     .replace(/\{\{totalSKUs\}\}/g, String(skuGroups.length))
     .replace(/\{\{totalUnits\}\}/g, formatQtyNum(totalUnits))
+    .replace(/\{\{regionLabel\}\}/g, escapeHtml(regionLabel))
     .replace(/\{\{tableRows\}\}/, tableRows);
 }
 
@@ -685,7 +689,14 @@ export async function generateDoPickingListPdf(
     a.skuCode.localeCompare(b.skuCode),
   );
 
-  const html = await renderDoPickingListHtml(skuGroups);
+  let regionLabel = 'All regions';
+  if (filter?.regionId) {
+    const region = await regionRepository.getRegionById(filter.regionId);
+    const name = region?.regionName?.trim();
+    regionLabel = name && name.length > 0 ? name : 'Unknown region';
+  }
+
+  const html = await renderDoPickingListHtml(skuGroups, { regionLabel });
   const pdfBuffer = await htmlToPdf(html);
 
   const dateStr = new Date().toISOString().split('T')[0];
