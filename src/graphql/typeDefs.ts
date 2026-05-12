@@ -19,6 +19,7 @@ import { typeDefs as inventoryBalanceTypeDefs } from '@/features/inventory/inven
 import { typeDefs as stockCountTypeDefs } from '@/features/inventory/stock-count.typeDefs';
 import { typeDefs as stockCountSessionTypeDefs } from '@/features/inventory/stock-count-session.typeDefs';
 import { typeDefs as stockAdjustmentTypeDefs } from '@/features/inventory/stock-adjustment/stock-adjustment.typeDefs';
+import { typeDefs as stockQuantTypeDefs } from '@/features/stock-quant/stock-quant.typeDefs';
 // Master Data typeDefs
 import { typeDefs as organizationTypeDefs } from '@/features/master-data/organization.typeDefs';
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
@@ -110,6 +111,7 @@ export const typeDefs = [
   stockCountTypeDefs,
   stockCountSessionTypeDefs,
   stockAdjustmentTypeDefs,
+  stockQuantTypeDefs,
   // Master Data
   organizationTypeDefs,
   regionTypeDefs,
