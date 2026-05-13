@@ -403,6 +403,7 @@ export const resolvers = {
           doStatuses?: string[];
           search?: string;
           regionId?: string;
+          regionIds?: string[];
           scheduledDeliveryDateFrom?: string;
           scheduledDeliveryDateTo?: string;
         };
@@ -429,7 +430,11 @@ export const resolvers = {
             filter.doStatus = args.filter.doStatus;
           }
           if (args.filter.search) filter.search = args.filter.search;
-          if (args.filter.regionId) filter.regionId = args.filter.regionId;
+          if (args.filter.regionIds?.length) {
+            filter.regionIds = args.filter.regionIds;
+          } else if (args.filter.regionId) {
+            filter.regionId = args.filter.regionId;
+          }
           if (args.filter.scheduledDeliveryDateFrom) filter.scheduledDeliveryDateFrom = args.filter.scheduledDeliveryDateFrom;
           if (args.filter.scheduledDeliveryDateTo) filter.scheduledDeliveryDateTo = args.filter.scheduledDeliveryDateTo;
         }

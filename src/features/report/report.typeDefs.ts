@@ -67,6 +67,10 @@ export const typeDefs = `#graphql
   input DoPickingListFilterInput {
     "Filter by outlet region ID (uuid)"
     regionId: ID
+    "Filter by any of these outlet region IDs (when non-empty, used instead of regionId)"
+    regionIds: [ID!]
+    "Filter by item search text (SKU, description, DO, or PO)"
+    search: String
     "Filter by expected delivery date range start (ISO date string, inclusive)"
     scheduledDeliveryDateFrom: String
     "Filter by expected delivery date range end (ISO date string, inclusive)"
