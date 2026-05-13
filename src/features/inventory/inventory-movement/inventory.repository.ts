@@ -220,6 +220,9 @@ export class InventoryMovementRepositoryClass {
             onHand -= quantity;
             loss += quantity;
             break;
+          case InventoryMovementType.LOSS_ADJUSTMENT:
+            loss += quantity; // quantity can be negative
+            break;
         }
 
         balanceMap.set(skuId, { onHand, loss, reserved });
@@ -506,6 +509,9 @@ export class InventoryMovementRepositoryClass {
           break;
         case InventoryMovementType.RESERVED:
           reserved += qty;
+          break;
+        case InventoryMovementType.LOSS_ADJUSTMENT:
+          loss += qty; // quantity can be negative
           break;
       }
 
