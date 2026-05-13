@@ -561,6 +561,20 @@
       "when": 1778572543534,
       "tag": "0079_eager_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1778636868359,
+      "tag": "0080_fearless_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1778637170913,
+      "tag": "0081_rich_junta",
+      "breakpoints": true
     }
   ]
 }

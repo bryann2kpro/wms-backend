@@ -1,0 +1,20 @@
+import { MainSchema } from "@/db/db.schema";
+import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
+import { SkuTable } from "@/features/master-data/sku.model";
+import { RacksTable } from "@/features/master-data/racks.model";
+import { OrganizationsTable } from "@/features/master-data/organization.model";
+
+export const StockQuantTransactionTable = MainSchema.table('stock_quant_transaction', {
+    id: uuid('id').defaultRandom().notNull().primaryKey(),
+    skuId: uuid('sku_id').notNull().references(() => SkuTable.skuId),
+    description: text('description'),
+    quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull().default('0'),
+    sourceRackId: uuid('source_rack_id').notNull().references(() => RacksTable.rackId),
+    destinationRackId: uuid('destination_rack_id').references(() => RacksTable.rackId),
+    type: text('type'),
+    organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid('created_by').notNull(),
+    updatedBy: uuid('updated_by'),
+});
