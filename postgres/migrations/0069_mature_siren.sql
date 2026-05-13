@@ -1,8 +1,3 @@
-CREATE TABLE "main"."email_settings" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"setting_key" text NOT NULL,
-	"to_emails" text[] DEFAULT '{}' NOT NULL,
-	"cc_emails" text[] DEFAULT '{}' NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "email_settings_setting_key_unique" UNIQUE("setting_key")
-);
+-- No-op: `email_settings` is created in `0068_email_notification_settings.sql`.
+-- This migration was a duplicate CREATE; kept so existing `__drizzle_migrations` rows stay valid.
+SELECT 1;
