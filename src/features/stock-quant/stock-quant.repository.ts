@@ -107,9 +107,14 @@ export class StockQuantRepositoryClass {
     }
   }
 
-  async getStockQuantById(organizationId: string, id: string): Promise<StockQuantType | null> {
+  async getStockQuantById(
+    organizationId: string,
+    id: string,
+    tx?: DbTransaction,
+  ): Promise<StockQuantType | null> {
     try {
-      const rows = await db
+      const client = tx ?? db;
+      const rows = await client
         .select()
         .from(StockQuantTable)
         .where(and(eq(StockQuantTable.organizationId, organizationId), eq(StockQuantTable.id, id)))
@@ -125,9 +130,11 @@ export class StockQuantRepositoryClass {
     organizationId: string,
     skuId: string,
     rackId: string,
+    tx?: DbTransaction,
   ): Promise<StockQuantType | null> {
     try {
-      const rows = await db
+      const client = tx ?? db;
+      const rows = await client
         .select()
         .from(StockQuantTable)
         .where(
