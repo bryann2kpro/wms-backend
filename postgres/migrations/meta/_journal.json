@@ -568,6 +568,34 @@
       "when": 1778567711673,
       "tag": "0080_add_loss_adjustment_enum",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1778572543534,
+      "tag": "0081_eager_venus",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1778636868359,
+      "tag": "0082_fearless_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1778637170913,
+      "tag": "0083_rich_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1778653813313,
+      "tag": "0084_tricky_fat_cobra",
+      "breakpoints": true
     }
   ]
 }
