@@ -21,6 +21,7 @@ import { typeDefs as stockCountSessionTypeDefs } from '@/features/inventory/stoc
 import { typeDefs as stockAdjustmentTypeDefs } from '@/features/inventory/stock-adjustment/stock-adjustment.typeDefs';
 import { typeDefs as stockQuantTypeDefs } from '@/features/stock-quant/stock-quant.typeDefs';
 import { typeDefs as stockQuantTransactionTypeDefs } from '@/features/stock-quant/stock-quant-transaction/stock-quant-transaction.typeDefs';
+import { typeDefs as putawayTypeDefs } from '@/features/stock-quant/putaway/putaway.typeDefs';
 // Master Data typeDefs
 import { typeDefs as organizationTypeDefs } from '@/features/master-data/organization.typeDefs';
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
@@ -114,6 +115,7 @@ export const typeDefs = [
   stockAdjustmentTypeDefs,
   stockQuantTypeDefs,
   stockQuantTransactionTypeDefs,
+  putawayTypeDefs,
   // Master Data
   organizationTypeDefs,
   regionTypeDefs,

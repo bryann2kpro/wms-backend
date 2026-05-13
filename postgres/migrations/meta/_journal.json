@@ -575,6 +575,13 @@
       "when": 1778637170913,
       "tag": "0081_rich_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1778653813313,
+      "tag": "0082_tricky_fat_cobra",
+      "breakpoints": true
     }
   ]
 }

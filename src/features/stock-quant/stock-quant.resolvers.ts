@@ -1,35 +1,12 @@
 import { GraphQLError } from "graphql";
 import type { GraphQLContext } from "@/graphql/context";
-import { racksRepository } from "@/composition-root";
-import { db } from "@/db";
 import { logger } from "@/util/logger";
 import {
   StockQuantFilter,
   StockQuantRepositoryClass,
 } from "./stock-quant.repository";
-import { StockQuantTransactionRepositoryClass } from "./stock-quant-transaction/stock-quant-transaction.repository";
 
 const stockQuantRepository = new StockQuantRepositoryClass();
-const stockQuantTransactionRepository = new StockQuantTransactionRepositoryClass();
-
-function roundQty2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-function qtyToDbString(n: number): string {
-  return roundQty2(n).toFixed(2);
-}
-
-function parseTransferQty(
-  raw: string,
-): { ok: true; value: number } | { ok: false; message: string } {
-  const s = String(raw ?? "").trim();
-  const n = Number(s);
-  if (!Number.isFinite(n) || n <= 0) {
-    return { ok: false, message: "Quantity must be a positive number." };
-  }
-  return { ok: true, value: roundQty2(n) };
-}
 
 function toIso(value: Date | string | null | undefined): string | null {
   if (value == null) return null;
@@ -211,152 +188,6 @@ export const resolvers = {
       } catch (error) {
         logger.error("[deleteStockQuant resolver]", error);
         throw error;
-      }
-    },
-
-    putawayTransferStock: async (
-      _: unknown,
-      args: {
-        input: {
-          sourceStockQuantId: string;
-          destinationRackId: string;
-          quantity: string;
-        };
-      },
-      context: GraphQLContext,
-    ) => {
-      const organizationId = context.organizationId;
-      const userId = context.user?.id;
-      if (!organizationId || !userId) {
-        throw new GraphQLError("Not authenticated");
-      }
-
-      const destRack = await racksRepository.getRackById(
-        args.input.destinationRackId,
-        organizationId,
-      );
-      if (!destRack) {
-        return {
-          success: false,
-          message: "Destination rack was not found.",
-        };
-      }
-
-      try {
-        const result = await db.transaction(async (tx) => {
-          const source = await stockQuantRepository.getStockQuantById(
-            organizationId,
-            args.input.sourceStockQuantId,
-            tx,
-          );
-          if (!source) {
-            return {
-              success: false,
-              message:
-                "No stock quant found for the source. It may have been removed or transferred already.",
-            };
-          }
-
-          const parsed = parseTransferQty(args.input.quantity);
-          if (!parsed.ok) {
-            return { success: false, message: parsed.message };
-          }
-
-          const available = roundQty2(Number(source.quantity));
-          if (!Number.isFinite(available)) {
-            return {
-              success: false,
-              message: "Invalid on-hand quantity on the source stock quant.",
-            };
-          }
-
-          if (parsed.value > available) {
-            return {
-              success: false,
-              message: `Quantity exceeds available stock (${qtyToDbString(available)} on hand).`,
-            };
-          }
-
-          if (args.input.destinationRackId === source.rackId) {
-            return {
-              success: false,
-              message: "Destination rack must be different from the source rack.",
-            };
-          }
-
-          const remaining = roundQty2(available - parsed.value);
-          if (remaining <= 0) {
-            await stockQuantRepository.deleteStockQuant(organizationId, source.id, tx);
-          } else {
-            await stockQuantRepository.updateStockQuant(
-              organizationId,
-              source.id,
-              { quantity: qtyToDbString(remaining), updatedBy: userId },
-              tx,
-            );
-          }
-
-          const destRow = await stockQuantRepository.getStockQuantBySkuAndRack(
-            organizationId,
-            source.skuId,
-            args.input.destinationRackId,
-            tx,
-          );
-
-          if (destRow) {
-            const newDestQty = roundQty2(Number(destRow.quantity) + parsed.value);
-            await stockQuantRepository.updateStockQuant(
-              organizationId,
-              destRow.id,
-              {
-                quantity: qtyToDbString(newDestQty),
-                description: destRow.description ?? source.description,
-                updatedBy: userId,
-              },
-              tx,
-            );
-          } else {
-            await stockQuantRepository.createStockQuant(
-              {
-                skuId: source.skuId,
-                description: source.description ?? null,
-                quantity: qtyToDbString(parsed.value),
-                rackId: args.input.destinationRackId,
-                organizationId,
-                createdBy: userId,
-                updatedBy: userId,
-              },
-              tx,
-            );
-          }
-
-          await stockQuantTransactionRepository.createStockQuantTransaction(
-            {
-              skuId: source.skuId,
-              description: source.description ?? null,
-              quantity: qtyToDbString(parsed.value),
-              sourceRackId: source.rackId,
-              destinationRackId: args.input.destinationRackId,
-              type: "PUTAWAY",
-              organizationId,
-              createdBy: userId,
-              updatedBy: userId,
-            },
-            tx,
-          );
-
-          return {
-            success: true,
-            message: `Transferred ${qtyToDbString(parsed.value)} units to the destination rack.`,
-          };
-        });
-
-        return result;
-      } catch (error) {
-        logger.error("[putawayTransferStock resolver]", error);
-        const msg =
-          error instanceof Error ? error.message : "Transfer failed due to a server error.";
-        return { success: false, message: msg };
       }
     },
   },

@@ -62,21 +62,6 @@ export const typeDefs = `#graphql
     rackId: ID
   }
 
-  """
-  Result of a putaway (rack-to-rack) stock quant move.
-  """
-  type PutawayTransferStockResult {
-    success: Boolean!
-    message: String!
-  }
-
-  input PutawayTransferStockInput {
-    """Stock quant row on the source rack (identifies SKU + source rack + available qty)."""
-    sourceStockQuantId: ID!
-    destinationRackId: ID!
-    quantity: String!
-  }
-
   extend type Query {
     """
     Get stock quants with optional filtering and pagination.
@@ -108,11 +93,5 @@ export const typeDefs = `#graphql
     Delete a stock quant row.
     """
     deleteStockQuant(id: ID!): Boolean!
-
-    """
-    Move quantity from a source stock quant row to the destination rack (same SKU).
-    Validates source row exists and quantity; updates or creates destination stock quant.
-    """
-    putawayTransferStock(input: PutawayTransferStockInput!): PutawayTransferStockResult!
   }
 `;
