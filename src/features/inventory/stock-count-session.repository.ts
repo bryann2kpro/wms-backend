@@ -1,4 +1,4 @@
-import { and, eq, sql, desc } from "drizzle-orm";
+import { and, eq, sql, desc, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { logger } from "@/util/logger";
 import { pagination, PgQueryType } from "@/util/pagination";
@@ -11,6 +11,10 @@ import {
 } from "./stock-count-session.model";
 import { SkuTable } from "../master-data/sku.model";
 import { InventoryBalancesTable } from "./inventory-balance/inventory.model";
+import { InventoryMovementRepositoryClass } from "./inventory-movement/inventory.repository";
+import { InventoryMovementType } from "./inventory-movement/inventory.model";
+import { DailyOpeningStockRepositoryClass } from "./daily-opening-stock/daily-opening-stock.repository";
+import type { DbTransaction } from "@/types/db-transaction";
 
 export type StockCountItemUpdateInput = {
   action?: string | null;
@@ -24,6 +28,11 @@ export type StockCountItemUpdateInput = {
 };
 
 export class StockCountSessionRepositoryClass {
+  constructor(
+    private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
+    private readonly dailyOpeningStockRepository: DailyOpeningStockRepositoryClass
+  ) {}
+
   // ─────────────────────────────────────────────
   // LIST SESSIONS
   // ─────────────────────────────────────────────
@@ -171,8 +180,6 @@ export class StockCountSessionRepositoryClass {
             skuId: SkuTable.skuId,
             skuCode: SkuTable.skuCode,
             skuDescription: SkuTable.skuDescription,
-            openingQty: SkuTable.cartonQuantity,
-            openingLossQty: SkuTable.lossQuantity,
             onHandQty: InventoryBalancesTable.onHandQty,
             onHandLossQty: InventoryBalancesTable.lossQty,
             reservedQty: InventoryBalancesTable.reservedQty,
@@ -185,16 +192,32 @@ export class StockCountSessionRepositoryClass {
           .where(eq(SkuTable.organizationId, organizationId));
 
         if (snapshot.length > 0) {
+          // 3. Look up today's opening stock from daily_opening_stock
+          const today = new Date();
+          const openingMap = await this.dailyOpeningStockRepository.getOpeningForSession(
+            organizationId,
+            today
+          );
+
           const items = snapshot.map((row) => {
-            const openingQty = Number(row.openingQty ?? 0);
-            const openingLossQty = Number(row.openingLossQty ?? 0);
             const onHandQty = Number(row.onHandQty ?? 0);
             const onHandLossQty = Number(row.onHandLossQty ?? 0);
             const reservedQty = Number(row.reservedQty ?? 0);
+            const skuId = row.skuId as string;
+
+            // Use daily_opening_stock if available; fall back to inventory_balances
+            const dailyOpening = openingMap.get(skuId);
+            const openingQty = dailyOpening
+              ? Number(dailyOpening.openingQty)
+              : onHandQty;
+            const openingLossQty = dailyOpening
+              ? Number(dailyOpening.openingLossQty)
+              : onHandLossQty;
+
             return {
               sessionId: session.id,
               organizationId,
-              skuId: row.skuId,
+              skuId,
               skuCode: row.skuCode,
               skuDescription: row.skuDescription,
               openingQty: String(openingQty),
@@ -219,25 +242,177 @@ export class StockCountSessionRepositoryClass {
   }
 
   // ─────────────────────────────────────────────
+  // PRIVATE: Approval flow
+  // ─────────────────────────────────────────────
+
+  /**
+   * Compute target qty/loss from item action, write 0–2 inventory movements,
+   * then update the item row to isApproved = true.
+   *
+   * Called from both updateItem (single approve) and bulkApproveReadyItems.
+   */
+  private async _runApprovalFlow(
+    item: StockCountItemType,
+    sessionName: string,
+    userId: string,
+    organizationId: string,
+    tx: DbTransaction
+  ): Promise<void> {
+    const onHandQty = Number(item.onHandQty ?? 0);
+    const onHandLossQty = Number(item.onHandLossQty ?? 0);
+    const openingQty = Number(item.openingQty ?? 0);
+    const openingLossQty = Number(item.openingLossQty ?? 0);
+    const countedQty = item.countedQty != null ? Number(item.countedQty) : null;
+    const countedLossQty =
+      item.countedLossQty != null ? Number(item.countedLossQty) : null;
+
+    // Action → target logic
+    let targetQty: number;
+    let targetLossQty: number;
+
+    switch (item.action) {
+      case "tally_to_opening":
+        targetQty = openingQty;
+        targetLossQty = openingLossQty;
+        break;
+      case "tally_to_stock_count":
+      case "manual_key_in":
+        targetQty = countedQty ?? onHandQty;
+        targetLossQty = countedLossQty ?? onHandLossQty;
+        break;
+      default:
+        // null / zero-diff case — no movement needed
+        targetQty = onHandQty;
+        targetLossQty = onHandLossQty;
+        break;
+    }
+
+    const qtyDelta = targetQty - onHandQty;
+    const lossDelta = targetLossQty - onHandLossQty;
+    const reason = `Stock Count - ${item.action ?? "zero_diff"}`;
+
+    // Write ADJUSTMENT movement if qty changed
+    if (qtyDelta !== 0) {
+      await this.inventoryMovementRepository.createInventoryMovement(
+        {
+          skuId: item.skuId as string,
+          movementType: InventoryMovementType.ADJUSTMENT,
+          quantity: String(qtyDelta),
+          referenceNo: sessionName,
+          reason,
+          createdBy: userId,
+        },
+        userId,
+        organizationId,
+        tx
+      );
+    }
+
+    // Write LOSS_ADJUSTMENT movement if loss changed
+    if (lossDelta !== 0) {
+      await this.inventoryMovementRepository.createInventoryMovement(
+        {
+          skuId: item.skuId as string,
+          movementType: InventoryMovementType.LOSS_ADJUSTMENT,
+          quantity: String(lossDelta),
+          referenceNo: sessionName,
+          reason,
+          createdBy: userId,
+        },
+        userId,
+        organizationId,
+        tx
+      );
+    }
+
+    // Mark item approved
+    const now = new Date();
+    await tx
+      .update(StockCountItemsTable)
+      .set({
+        isApproved: true,
+        approvedBy: userId,
+        approvedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(StockCountItemsTable.id, item.id));
+  }
+
+  // ─────────────────────────────────────────────
   // UPDATE ITEM
   // ─────────────────────────────────────────────
 
   async updateItem(
     organizationId: string,
     itemId: string,
-    patch: StockCountItemUpdateInput
+    patch: StockCountItemUpdateInput,
+    userId?: string
   ): Promise<StockCountItemType | null> {
     try {
+      // If this is an approval request, run the full approval flow
+      if (patch.isApproved === true && userId) {
+        return await db.transaction(async (tx) => {
+          // Fetch current item
+          const [currentItem] = await tx
+            .select()
+            .from(StockCountItemsTable)
+            .where(
+              and(
+                eq(StockCountItemsTable.id, itemId),
+                eq(StockCountItemsTable.organizationId, organizationId)
+              )
+            )
+            .limit(1);
+
+          if (!currentItem) return null;
+
+          // Idempotent: skip if already approved
+          if (currentItem.isApproved) {
+            return currentItem;
+          }
+
+          // Fetch session name
+          const [session] = await tx
+            .select({ name: StockCountSessionsTable.name })
+            .from(StockCountSessionsTable)
+            .where(eq(StockCountSessionsTable.id, currentItem.sessionId))
+            .limit(1);
+
+          const sessionName = session?.name ?? "Stock Count";
+
+          await this._runApprovalFlow(
+            currentItem,
+            sessionName,
+            userId,
+            organizationId,
+            tx
+          );
+
+          // Return updated item
+          const [updated] = await tx
+            .select()
+            .from(StockCountItemsTable)
+            .where(eq(StockCountItemsTable.id, itemId))
+            .limit(1);
+
+          return updated ?? null;
+        });
+      }
+
+      // Non-approval patch — simple update
       const updateData: Record<string, unknown> = {
         updatedAt: new Date(),
       };
 
       if ("action" in patch) updateData.action = patch.action;
-      if ("countedQty" in patch) updateData.countedQty = patch.countedQty != null ? String(patch.countedQty) : null;
-      if ("countedLossQty" in patch) updateData.countedLossQty = patch.countedLossQty != null ? String(patch.countedLossQty) : null;
+      if ("countedQty" in patch)
+        updateData.countedQty =
+          patch.countedQty != null ? String(patch.countedQty) : null;
+      if ("countedLossQty" in patch)
+        updateData.countedLossQty =
+          patch.countedLossQty != null ? String(patch.countedLossQty) : null;
       if ("notes" in patch) updateData.notes = patch.notes;
       if ("imageUrl" in patch) updateData.imageUrl = patch.imageUrl;
-      if ("isApproved" in patch) updateData.isApproved = patch.isApproved;
       if ("approvedBy" in patch) updateData.approvedBy = patch.approvedBy;
       if ("approvedAt" in patch) updateData.approvedAt = patch.approvedAt;
 
@@ -260,10 +435,6 @@ export class StockCountSessionRepositoryClass {
   }
 
   // ─────────────────────────────────────────────
-  // CLOSE SESSION
-  // ─────────────────────────────────────────────
-
-  // ─────────────────────────────────────────────
   // BULK APPROVE READY ITEMS
   // ─────────────────────────────────────────────
 
@@ -273,15 +444,19 @@ export class StockCountSessionRepositoryClass {
     userId: string
   ): Promise<number> {
     try {
-      const now = new Date();
-      const result = await db
-        .update(StockCountItemsTable)
-        .set({
-          isApproved: true,
-          approvedBy: userId,
-          approvedAt: now,
-          updatedAt: now,
-        })
+      // Fetch session name first
+      const [session] = await db
+        .select({ name: StockCountSessionsTable.name })
+        .from(StockCountSessionsTable)
+        .where(eq(StockCountSessionsTable.id, sessionId))
+        .limit(1);
+
+      const sessionName = session?.name ?? "Stock Count";
+
+      // Fetch all eligible items: not yet approved, and either has an action set OR zero diff
+      const eligibleItems = await db
+        .select()
+        .from(StockCountItemsTable)
         .where(
           and(
             eq(StockCountItemsTable.sessionId, sessionId),
@@ -295,12 +470,34 @@ export class StockCountSessionRepositoryClass {
               )
             )`
           )
-        )
-        .returning({ id: StockCountItemsTable.id });
+        );
 
-      return result.length;
+      if (eligibleItems.length === 0) return 0;
+
+      let approvedCount = 0;
+
+      await db.transaction(async (tx) => {
+        for (const item of eligibleItems) {
+          // Safety guard: skip if already approved (race condition)
+          if (item.isApproved) continue;
+
+          await this._runApprovalFlow(
+            item,
+            sessionName,
+            userId,
+            organizationId,
+            tx
+          );
+          approvedCount++;
+        }
+      });
+
+      return approvedCount;
     } catch (error) {
-      logger.error("[StockCountSessionRepository.bulkApproveReadyItems]", error);
+      logger.error(
+        "[StockCountSessionRepository.bulkApproveReadyItems]",
+        error
+      );
       throw error;
     }
   }

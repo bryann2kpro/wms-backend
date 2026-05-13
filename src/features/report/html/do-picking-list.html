@@ -88,6 +88,30 @@
             color: var(--text-muted);
         }
 
+        .region-filter-line {
+            margin-top: 0.65rem;
+            font-size: 0.72rem;
+            line-height: 1.45;
+            color: var(--text-secondary);
+        }
+
+        .region-filter-line .region-filter-prefix {
+            font-size: 0.6rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+        }
+
+        .region-filter-line strong {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .brand-text > .region-filter-line + .region-filter-line {
+            margin-top: 0.35rem;
+        }
+
         /* Title side */
         .doc-title-block {
             text-align: right;
@@ -228,14 +252,6 @@
         .col-desc {
             color: var(--text-secondary);
             font-size: 0.78rem;
-        }
-
-        .col-desc .do-breakdown {
-            margin-top: 0.25rem;
-            font-size: 0.68rem;
-            color: var(--text-muted);
-            font-family: 'IBM Plex Mono', monospace;
-            line-height: 1.6;
         }
 
         .col-dos {
@@ -393,6 +409,14 @@
                         SUNGAI BULOH, 47000 SELANGOR.<br/>
                         TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
                     </div>
+                    <div class="region-filter-line">
+                        <span class="region-filter-prefix">Region</span>:
+                        <strong>{{regionLabel}}</strong>
+                    </div>
+                    <div class="region-filter-line">
+                        <span class="region-filter-prefix">Scheduled delivery Date</span>:
+                        <strong>{{scheduledDeliveryRange}}</strong>
+                    </div>
                 </div>
             </div>
             <div class="doc-title-block">
@@ -421,7 +445,7 @@
                     <tr>
                         <th style="text-align:center; width:40px">#</th>
                         <th style="text-align:left; width:100px">SKU Code</th>
-                        <th style="text-align:left">Description &amp; DO Breakdown</th>
+                        <th style="text-align:left">Description</th>
                         <th style="text-align:center; width:72px">Total Req</th>
                         <th style="text-align:left; width:190px">Rack(s)</th>
                         <th style="text-align:center; width:96px">Completed Picking</th>

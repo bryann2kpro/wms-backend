@@ -106,6 +106,8 @@ export type DeliveryOrderItemFilter = {
   doId?: string | string[];
   skuId?: string | string[];
   regionId?: string;
+  /** When non-empty, outlet region must be one of these (takes precedence over regionId). */
+  regionIds?: string[];
   scheduledDeliveryDateFrom?: string;
   scheduledDeliveryDateTo?: string;
 };

@@ -101,6 +101,8 @@ export const typeDefs = `#graphql
         search: String
         "Filter by outlet region ID (uuid)"
         regionId: ID
+        "Filter by any of these outlet region IDs (when non-empty, used instead of regionId)"
+        regionIds: [ID!]
         "Filter by DO expected delivery date range (inclusive, ISO date string)"
         scheduledDeliveryDateFrom: String
         scheduledDeliveryDateTo: String
