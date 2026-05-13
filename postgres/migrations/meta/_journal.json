@@ -554,6 +554,20 @@
       "when": 1776323848383,
       "tag": "0078_flawless_reavers",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1778567560983,
+      "tag": "0079_lucky_masked_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1778567711673,
+      "tag": "0080_add_loss_adjustment_enum",
+      "breakpoints": true
     }
   ]
 }

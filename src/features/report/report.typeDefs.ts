@@ -94,6 +94,26 @@ export const typeDefs = `#graphql
     amount: Float!
   }
 
+  """
+  Variant for Stock Balance report — without or with rack locations.
+  """
+  enum InventoryBalanceReportType {
+    WITHOUT_RACK
+    WITH_RACK
+  }
+
+  """
+  A single row in the Stock Balance report.
+  rackLocations is empty for WITHOUT_RACK variant.
+  """
+  type InventoryBalanceReportRow {
+    skuCode: String!
+    skuDescription: String!
+    unitCode: String!
+    onHandQty: Float!
+    rackLocations: [String!]!
+  }
+
   extend type Query {
     """
     Fetch Proforma Invoice Summary rows for Excel export.
@@ -104,6 +124,13 @@ export const typeDefs = `#graphql
       regionId: ID!
       deliveryDateSortOrder: DeliveryDateSortOrder
     ): [InvoiceSummaryReportRow!]! @auth
+
+    """
+    Fetch Stock Balance rows for Excel export.
+    WITHOUT_RACK: SKU Code, Description, UOM, On-Hand Qty.
+    WITH_RACK: same plus rack location labels.
+    """
+    inventoryBalanceReportData(type: InventoryBalanceReportType!): [InventoryBalanceReportRow!]! @auth
   }
 
   extend type Mutation {
@@ -125,5 +152,11 @@ export const typeDefs = `#graphql
     Returns a printable picking reference for the storekeeper.
     """
     generateDoPickingList(filter: DoPickingListFilterInput): GenerateChecklistPayload! @auth
+
+    """
+    Generate a Stock Balance PDF. Returns base64-encoded PDF and suggested filename.
+    WITHOUT_RACK: principal-facing summary. WITH_RACK: includes rack location labels.
+    """
+    generateStockBalanceReport(type: InventoryBalanceReportType!): GenerateReportPayload! @auth
   }
 `;

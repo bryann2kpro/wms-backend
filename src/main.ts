@@ -27,6 +27,7 @@ import { spawn } from "child_process";
 import { initAccounts } from "./scripts/init-accounts";
 import { initMasterData } from "./scripts/init-master-data";
 import { startInvoicesCron } from "./features/invoicing/invoices.cron";
+import { startDailyOpeningStockCron } from "./features/inventory/daily-opening-stock/daily-opening-stock.cron";
 import { startEmailNotificationWorker } from "./features/notifications/email-notification.job";
 import { startWhatsAppNotificationWorker } from "./features/whatsapp/whatsapp.job";
 import { whatsAppClient } from "./composition-root";
@@ -297,6 +298,7 @@ server.listen(Number(PORT), async () => {
 
 
     startInvoicesCron();
+    startDailyOpeningStockCron();
     startEmailNotificationWorker();
     if (env.WHATSAPP_ENABLED) {
       whatsAppClient.init();

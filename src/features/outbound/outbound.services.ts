@@ -398,6 +398,7 @@ export class OutboundServices {
                     regionId: outlet?.regionId ?? undefined,
                     quantity: item.qtyRequired ?? item.qtyPicked,
                     movementType: InventoryMovementType.SHIPMENT,
+                    referenceNo: existing.poNo,
                     createdBy: data.userId,
                 }));
             }

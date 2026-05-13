@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Balance Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:            #F3F2ED;
+            --surface:       #FFFFFF;
+            --border:        #D4D1C9;
+            --border-strong: #8C8880;
+            --text-primary:  #1C1917;
+            --text-secondary:#57534E;
+            --text-muted:    #A8A29E;
+            --th-bg:         #1C1917;
+            --th-text:       #F3F2ED;
+            --row-alt:       #ECEAE3;
+            --row-hover:     #E2DFD8;
+            --accent:        #92400E;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            font-family: 'IBM Plex Sans', system-ui, sans-serif;
+            color: var(--text-primary);
+            padding: 2.5rem 2rem;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .report-wrap {
+            max-width: 860px;
+            margin: 0 auto;
+        }
+
+        .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 2rem;
+            padding-bottom: 1.25rem;
+            border-bottom: 2px solid var(--text-primary);
+            gap: 1.5rem 2rem;
+        }
+
+        .brand-wrap {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .doc-header .logo {
+            width: 56px;
+            height: auto;
+            object-fit: contain;
+            margin-top: 0.125rem;
+            flex: 0 0 auto;
+        }
+
+        .brand-text { min-width: 0; }
+
+        .brand {
+            font-weight: 700;
+            font-size: 0.925rem;
+            letter-spacing: 0.02em;
+            line-height: 1.25;
+            color: var(--text-primary);
+        }
+
+        .reg-no {
+            font-weight: 500;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        .brand-sub {
+            margin-top: 0.35rem;
+            font-size: 0.65rem;
+            line-height: 1.45;
+            color: var(--text-muted);
+        }
+
+        .doc-title-block {
+            text-align: right;
+            flex-shrink: 0;
+            min-width: 12rem;
+        }
+
+        .doc-eyebrow {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.625rem;
+            font-weight: 500;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.4rem;
+        }
+
+        .doc-heading {
+            font-size: 1.625rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.1;
+            color: var(--text-primary);
+        }
+
+        .doc-sub {
+            margin-top: 0.35rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .doc-meta {
+            margin-top: 0.65rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .table-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead th {
+            background: var(--th-bg);
+            color: var(--th-text);
+            padding: 0.7rem 1rem;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            border: none;
+        }
+
+        thead th + th {
+            border-left: 1px solid rgba(255, 255, 255, 0.07);
+        }
+
+        .tr-data td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            font-size: 0.825rem;
+            vertical-align: middle;
+        }
+
+        .tr-data:last-of-type td { border-bottom: none; }
+
+        .tr-data.tr-alt td { background: var(--row-alt); }
+
+        .tr-data:hover td { background: var(--row-hover) !important; }
+
+        .col-code {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.775rem;
+            font-weight: 500;
+        }
+
+        .col-desc {
+            color: var(--text-secondary);
+        }
+
+        .col-uom {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .col-num {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.775rem;
+            font-weight: 500;
+        }
+
+        .col-rack {
+            font-size: 0.775rem;
+            color: var(--text-secondary);
+        }
+
+        .doc-footer {
+            margin-top: 1.25rem;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-align: right;
+        }
+
+        @media print {
+            @page { size: A4; margin: 14mm 16mm; }
+
+            :root {
+                --bg:            #FFFFFF;
+                --surface:       #FFFFFF;
+                --border:        #CCCCCC;
+                --text-primary:  #000000;
+                --text-secondary:#333333;
+                --text-muted:    #777777;
+                --th-bg:         #000000;
+                --th-text:       #FFFFFF;
+                --row-alt:       #F2F2F2;
+                --accent:        #7C3513;
+            }
+
+            body {
+                background: white;
+                padding: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .tr-data:hover td { background: inherit !important; }
+
+            tr { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-wrap">
+        <header class="doc-header">
+            <div class="brand-wrap">
+                <img class="logo" alt="SME logo" src="https://smee-bucket-348170387599-ap-southeast-5-an.s3.ap-southeast-5.amazonaws.com/sme-edaran/sme-logo.jpg">
+                <div class="brand-text">
+                    <div class="brand">SME EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
+                    <div class="brand-sub">
+                        NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
+                        SUNGAI BULOH, 47000 SELANGOR.<br/>
+                        TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803<br/>
+                        Service Tax: B16-2402-32000121
+                    </div>
+                </div>
+            </div>
+            <div class="doc-title-block">
+                <div class="doc-eyebrow">Inventory Report</div>
+                <div class="doc-heading">Stock Balance</div>
+                <div class="doc-sub">{{reportVariant}}</div>
+            </div>
+        </header>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="text-align:right; width:3rem">No.</th>
+                        <th style="text-align:left">SKU Code</th>
+                        <th style="text-align:left">Description</th>
+                        <th style="text-align:left">UOM</th>
+                        <th style="text-align:right">On-Hand Qty</th>
+                        {{rackHeader}}
+                    </tr>
+                </thead>
+                <tbody>
+                    {{tableRows}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="doc-footer">Generated: {{generatedDate}}</div>
+    </div>
+</body>
+</html>
