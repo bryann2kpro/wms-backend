@@ -1,6 +1,6 @@
 {
-  "id": "a8ef145c-e841-4346-be88-e5960f0919aa",
-  "prevId": "da052c47-30d2-4420-996b-d79a01cb2224",
+  "id": "68edca57-b14e-4f84-a723-9f85e59d4349",
+  "prevId": "1aba15c8-fb0d-4275-9f8f-a102e58d41fb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -329,6 +329,104 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "main.daily_opening_stock": {
+      "name": "daily_opening_stock",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "record_date": {
+          "name": "record_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sku_id": {
+          "name": "sku_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "opening_qty": {
+          "name": "opening_qty",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "opening_loss_qty": {
+          "name": "opening_loss_qty",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "daily_opening_stock_organization_id_m_organizations_organization_id_fk": {
+          "name": "daily_opening_stock_organization_id_m_organizations_organization_id_fk",
+          "tableFrom": "daily_opening_stock",
+          "tableTo": "m_organizations",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "organization_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "daily_opening_stock_sku_id_m_skus_sku_id_fk": {
+          "name": "daily_opening_stock_sku_id_m_skus_sku_id_fk",
+          "tableFrom": "daily_opening_stock",
+          "tableTo": "m_skus",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "sku_id"
+          ],
+          "columnsTo": [
+            "sku_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "daily_opening_stock_org_date_sku_unique": {
+          "name": "daily_opening_stock_org_date_sku_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organization_id",
+            "record_date",
+            "sku_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -1481,104 +1579,6 @@
           "nullsNotDistinct": false,
           "columns": [
             "source"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "main.daily_opening_stock": {
-      "name": "daily_opening_stock",
-      "schema": "main",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "record_date": {
-          "name": "record_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sku_id": {
-          "name": "sku_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "opening_qty": {
-          "name": "opening_qty",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "opening_loss_qty": {
-          "name": "opening_loss_qty",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "daily_opening_stock_organization_id_m_organizations_organization_id_fk": {
-          "name": "daily_opening_stock_organization_id_m_organizations_organization_id_fk",
-          "tableFrom": "daily_opening_stock",
-          "tableTo": "m_organizations",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "organization_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "daily_opening_stock_sku_id_m_skus_sku_id_fk": {
-          "name": "daily_opening_stock_sku_id_m_skus_sku_id_fk",
-          "tableFrom": "daily_opening_stock",
-          "tableTo": "m_skus",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "sku_id"
-          ],
-          "columnsTo": [
-            "sku_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "daily_opening_stock_org_date_sku_unique": {
-          "name": "daily_opening_stock_org_date_sku_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "organization_id",
-            "record_date",
-            "sku_id"
           ]
         }
       },
@@ -5029,6 +5029,152 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "main.stock_quant_transaction": {
+      "name": "stock_quant_transaction",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "sku_id": {
+          "name": "sku_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "source_rack_id": {
+          "name": "source_rack_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destination_rack_id": {
+          "name": "destination_rack_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "stock_quant_transaction_sku_id_m_skus_sku_id_fk": {
+          "name": "stock_quant_transaction_sku_id_m_skus_sku_id_fk",
+          "tableFrom": "stock_quant_transaction",
+          "tableTo": "m_skus",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "sku_id"
+          ],
+          "columnsTo": [
+            "sku_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_quant_transaction_source_rack_id_m_racks_rack_id_fk": {
+          "name": "stock_quant_transaction_source_rack_id_m_racks_rack_id_fk",
+          "tableFrom": "stock_quant_transaction",
+          "tableTo": "m_racks",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "source_rack_id"
+          ],
+          "columnsTo": [
+            "rack_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_quant_transaction_destination_rack_id_m_racks_rack_id_fk": {
+          "name": "stock_quant_transaction_destination_rack_id_m_racks_rack_id_fk",
+          "tableFrom": "stock_quant_transaction",
+          "tableTo": "m_racks",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "destination_rack_id"
+          ],
+          "columnsTo": [
+            "rack_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_quant_transaction_organization_id_m_organizations_organization_id_fk": {
+          "name": "stock_quant_transaction_organization_id_m_organizations_organization_id_fk",
+          "tableFrom": "stock_quant_transaction",
+          "tableTo": "m_organizations",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "organization_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
