@@ -156,10 +156,9 @@ export async function createContext({ req }: { req: Request }): Promise<GraphQLC
     // Extract organizationId from JWT token
     try {
       const jwtPayload = jwtController.verifyToken(token) as any;
-      context.organizationId = jwtPayload?.organizationId || user.primaryOrganizationId || '00000000-0000-0000-0000-000000000001';
+      context.organizationId = jwtPayload?.organizationId ?? user.primaryOrganizationId ?? undefined;
     } catch {
-      // Fall back to user's primary organization if token verification fails
-      context.organizationId = user.primaryOrganizationId || '00000000-0000-0000-0000-000000000001';
+      context.organizationId = user.primaryOrganizationId ?? undefined;
     }
 
     const userRoles = await authRepository.getUserRoles(user.id);

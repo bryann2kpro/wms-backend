@@ -9,6 +9,40 @@ import { racksRepository } from '@/composition-root';
 import { RackFilter } from './racks.repository';
 import { withAudit } from '../audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
+import { prettifyError, z } from 'zod';
+import { GraphQLError } from 'graphql';
+
+const rackFilterSchema = z.object({
+  rackId: z.string().uuid().optional(),
+  rackIds: z.array(z.string().uuid()).optional(),
+  rackRow: z.string().optional(),
+  rackRows: z.array(z.string()).optional(),
+  rackColumn: z.string().optional(),
+  rackColumns: z.array(z.string()).optional(),
+  rackLevel: z.string().optional(),
+  rackLevels: z.array(z.string()).optional(),
+}).transform((data) => ({
+  ...data,
+  rackIds: data.rackId ? [data.rackId] : data.rackIds,
+  rackRows: data.rackRow ? [data.rackRow] : data.rackRows,
+  rackColumns: data.rackColumn ? [data.rackColumn] : data.rackColumns,
+  rackLevels: data.rackLevel ? [data.rackLevel] : data.rackLevels,
+}));
+
+const createRackSchema = z.object({
+  rackRow: z.string().min(1, 'Rack row is required'),
+  rackColumn: z.string().min(1, 'Rack column is required'),
+  rackLevel: z.string().min(1, 'Rack level is required'),
+  createdBy: z.string().min(1),
+  updatedBy: z.string().min(1),
+});
+
+const updateRackSchema = z.object({
+  rackRow: z.string().min(1).optional(),
+  rackColumn: z.string().min(1).optional(),
+  rackLevel: z.string().min(1).optional(),
+  updatedBy: z.string().min(1),
+});
 
 // ============================================ 
 // HELPER FUNCTIONS
@@ -62,29 +96,14 @@ export const resolvers = {
       const filter: RackFilter = {};
 
       if (args.filter) {
-        if (args.filter.rackIds) {
-          filter.rackId = args.filter.rackIds;
-        } else if (args.filter.rackId) {
-          filter.rackId = args.filter.rackId;
+        const { success, data, error } = rackFilterSchema.safeParse(args.filter);
+        if (!success) {
+          throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
         }
-
-        if (args.filter.rackRows) {
-          filter.rackRow = args.filter.rackRows;
-        } else if (args.filter.rackRow) {
-          filter.rackRow = args.filter.rackRow;
-        }
-
-        if (args.filter.rackColumns) {
-          filter.rackColumn = args.filter.rackColumns;
-        } else if (args.filter.rackColumn) {
-          filter.rackColumn = args.filter.rackColumn;
-        }
-
-        if (args.filter.rackLevels) {
-          filter.rackLevel = args.filter.rackLevels;
-        } else if (args.filter.rackLevel) {
-          filter.rackLevel = args.filter.rackLevel;
-        }
+        if (data.rackIds) filter.rackId = data.rackIds;
+        if (data.rackRows) filter.rackRow = data.rackRows;
+        if (data.rackColumns) filter.rackColumn = data.rackColumns;
+        if (data.rackLevels) filter.rackLevel = data.rackLevels;
       }
 
       const result = await racksRepository.getRack(filter, {
@@ -125,14 +144,23 @@ export const resolvers = {
         createdBy: string;
         updatedBy: string;
       }}, context: GraphQLContext) => {
+        if (!context.organizationId) {
+          throw new GraphQLError('Organization context is required', {
+            extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+          });
+        }
+        const { success, data, error } = createRackSchema.safeParse(input);
+        if (!success) {
+          throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+        }
         const rack = await racksRepository.createRack({
-          organizationId: context.organizationId || '00000000-0000-0000-0000-000000000001',
-          rackRow: input.rackRow,
-          rackColumn: input.rackColumn,
-          rackLevel: input.rackLevel,
-          createdBy: input.createdBy,
-          updatedBy: input.updatedBy,
-        }, context.organizationId || undefined, context.tx);
+          organizationId: context.organizationId,
+          rackRow: data.rackRow,
+          rackColumn: data.rackColumn,
+          rackLevel: data.rackLevel,
+          createdBy: data.createdBy,
+          updatedBy: data.updatedBy,
+        }, context.organizationId, context.tx);
         return rack ? transformRack(rack) : null;
       },
     ),
@@ -155,11 +183,15 @@ export const resolvers = {
         rackLevel?: string;
         updatedBy: string;
       }}, context: GraphQLContext) => {
+        const { success: uSuccess, data: uData, error: uError } = updateRackSchema.safeParse(input);
+        if (!uSuccess) {
+          throw new GraphQLError(prettifyError(uError), { extensions: { code: 'BAD_USER_INPUT' } });
+        }
         const rack = await racksRepository.updateRack({
-          rackRow: input.rackRow || undefined,
-          rackColumn: input.rackColumn || undefined,
-          rackLevel: input.rackLevel || undefined,
-          updatedBy: input.updatedBy,
+          rackRow: uData.rackRow,
+          rackColumn: uData.rackColumn,
+          rackLevel: uData.rackLevel,
+          updatedBy: uData.updatedBy,
         }, id, context.organizationId || undefined, context.tx);
         if (!rack) return null;
         return transformRack(rack);
