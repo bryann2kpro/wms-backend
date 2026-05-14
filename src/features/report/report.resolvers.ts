@@ -17,6 +17,7 @@ import {
   generateStockBalancePdf,
   type InventoryBalanceReportType,
 } from './report.service';
+import z from 'zod';
 
 type DeliveryDateSortOrder = 'ASC' | 'DESC';
 
@@ -136,7 +137,27 @@ export const resolvers = {
       context: { organizationId: string }
     ) => {
       logger.info('ℹ️ [report.resolvers.generateDoPickingList] Generating DO picking list PDF...');
-      return generateDoPickingListPdf(context.organizationId, args.filter);
+
+      const pickingListFilterSchema = z.object({
+        regionId: z.uuid().optional(),
+        regionIds: z.array(z.uuid()).optional(),
+        search: z.string().optional(),
+        scheduledDeliveryDateFrom: z.string().optional(),
+        scheduledDeliveryDateTo: z.string().optional(),
+      }).transform((data) => {
+        return {
+          ...data,
+          regionIds: data.regionId ? [data.regionId] : data.regionIds, // Assuming either regionId or regionIds is provided
+        }
+      });
+
+      const { success, data: filter, error } = pickingListFilterSchema.safeParse(args.filter);
+
+      if (!success) {
+        throw new Error(`Invalid filter: ${z.prettifyError(error)}`);
+      }
+
+      return generateDoPickingListPdf(context.organizationId, filter);
     },
 
     generateStockBalanceReport: async (

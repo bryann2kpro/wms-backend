@@ -96,6 +96,20 @@ export class RegionRepositoryClass {
     }
   }
 
+  async getRegionsByIds(ids: string[]): Promise<RegionType[]> {
+    logger.info('ℹ️ [RegionRepository.getRegionsByIds] Getting regions by IDs...');
+    if (ids.length === 0) return [];
+    try {
+      return await db
+        .select()
+        .from(RegionTable)
+        .where(inArray(RegionTable.regionId, ids));
+    } catch (error) {
+      logger.error('❌ [RegionRepository.getRegionsByIds] Error:', error);
+      throw error;
+    }
+  }
+
   /**
    * Get region by code
    */
