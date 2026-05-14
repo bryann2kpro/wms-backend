@@ -678,7 +678,6 @@ function formatQtyNum(n: number): string {
 export async function generateDoPickingListPdf(
   _orgId: string,
   filter?: {
-    regionId?: string;
     regionIds?: string[];
     search?: string;
     scheduledDeliveryDateFrom?: string;
@@ -687,20 +686,11 @@ export async function generateDoPickingListPdf(
 ): Promise<{ pdfBase64: string; filename: string }> {
   const { deliveryOrdersRepository } = await import('@/composition-root');
 
-  const regionFilter =
-    filter?.regionIds && filter.regionIds.length > 0
-      ? { regionIds: filter.regionIds }
-      : filter?.regionId
-        ? { regionId: filter.regionId }
-        : {};
 
   const itemsResult = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(
     {
+      ...filter,
       doStatus: ACTIVE_DO_STATUSES,
-      search: filter?.search,
-      ...regionFilter,
-      scheduledDeliveryDateFrom: filter?.scheduledDeliveryDateFrom,
-      scheduledDeliveryDateTo: filter?.scheduledDeliveryDateTo,
     },
     { pageSize: DO_PICKING_LIST_LINE_FETCH_CAP, pageNumber: 1 },
   );
@@ -758,19 +748,23 @@ export async function generateDoPickingListPdf(
   );
 
   let regionLabel = 'All regions';
-  if (filter?.regionIds && filter.regionIds.length > 0) {
-    const rows = await Promise.all(
-      filter.regionIds.map((id) => regionRepository.getRegionById(id)),
-    );
-    const parts = rows
-      .map((r) => r?.regionName?.trim())
-      .filter((n): n is string => Boolean(n && n.length > 0));
-    regionLabel = parts.length > 0 ? parts.join(', ') : 'Unknown regions';
-  } else if (filter?.regionId) {
-    const region = await regionRepository.getRegionById(filter.regionId);
-    const name = region?.regionName?.trim();
-    regionLabel = name && name.length > 0 ? name : 'Unknown region';
-  }
+  // if (filter?.regionIds && filter.regionIds.length > 0) {
+  //   const rows = await Promise.all(
+  //     filter.regionIds.map((id) => regionRepository.getRegionById(id)),
+  //   );
+  //   const parts = rows
+  //     .map((r) => r?.regionName?.trim())
+  //     .filter((n): n is string => Boolean(n && n.length > 0));
+  //   regionLabel = parts.length > 0 ? parts.join(', ') : 'Unknown regions';
+  // } else if (filter?.regionId) {
+  //   const region = await regionRepository.getRegionById(filter.regionId);
+  //   const name = region?.regionName?.trim();
+  //   regionLabel = name && name.length > 0 ? name : 'Unknown region';
+  // }
+
+  const regions = await regionRepository.getRegionsByIds(filter?.regionIds ?? []);
+  regionLabel = regions.map((r) => r.regionName).join(', ') || 'Unknown region';
+
 
   const scheduledDeliveryRange = formatScheduledDeliveryRangeForPdf(
     filter?.scheduledDeliveryDateFrom,
