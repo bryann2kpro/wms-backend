@@ -603,6 +603,13 @@
       "when": 1779082793614,
       "tag": "0085_bright_maximus",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1779088921585,
+      "tag": "0086_soft_clea",
+      "breakpoints": true
     }
   ]
 }
