@@ -13,6 +13,7 @@ import { DeliveryOrderType } from "./delivery-orders.model";
 import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
 import { PurchaseOrderType, PurchaseOrderItemsTable } from "./purchase-orders.model";
 import { DocumentsRepository } from "../documents/documents.repository";
+import { PickFaceStrategyRepositoryClass } from "../master-data/pick-face-strategy.repository";
 
 import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
@@ -57,6 +58,7 @@ export class OutboundServices {
         private readonly purchaseOrdersRepository: PurchaseOrdersRepositoryClass,
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
         private readonly documentsRepository: DocumentsRepository,
+        private readonly pickFaceStrategyRepository?: PickFaceStrategyRepositoryClass,
     ) {}
 
     /**
@@ -1046,6 +1048,14 @@ export class OutboundServices {
                     const sku = skuResult?.query?.[0];
                     const strategy: string = (sku as (typeof sku & { pickingStrategy?: string }))?.pickingStrategy ?? 'FIFO';
 
+                    // Look up pick face strategy for this SKU — FIXED_BIN overrides batch rack
+                    const pickFaceStrategy = this.pickFaceStrategyRepository
+                        ? await this.pickFaceStrategyRepository.getActiveBySkuId(doItem.skuId, doRow.organizationId, tx)
+                        : null;
+                    const pickFaceRackId = pickFaceStrategy?.binType === 'FIXED_BIN'
+                        ? pickFaceStrategy.storageBinId
+                        : null;
+
                     // Get GRN batches for this SKU with available qty
                     const grnBatches = await this.deliveryOrderRepository.getGrnItemsWithAvailableQty(
                         doItem.skuId,
@@ -1096,7 +1106,7 @@ export class OutboundServices {
                         allInserts.push({
                             doItemId: doItem.id,
                             grnItemId: batch.id,
-                            rackId: batch.rackId ?? undefined,
+                            rackId: pickFaceRackId ?? batch.rackId ?? undefined,
                             qtyAllocated: String(take),
                         });
                         remaining -= take;

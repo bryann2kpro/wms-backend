@@ -554,6 +554,27 @@
       "when": 1776323848383,
       "tag": "0078_flawless_reavers",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1779088541376,
+      "tag": "0079_salty_the_hand",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1779089270235,
+      "tag": "0080_chief_power_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1779089530646,
+      "tag": "0081_free_shocker",
+      "breakpoints": true
     }
   ]
 }
