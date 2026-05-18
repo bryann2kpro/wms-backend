@@ -48,6 +48,18 @@ function transformWarehouse(warehouse: WarehouseWithAuditUsers) {
 // RESOLVERS
 // ============================================
 
+const warehouseFilterSchema = z.object({
+  warehouseId: z.string().uuid().optional(),
+  warehouseIds: z.array(z.string().uuid()).optional(),
+  warehouseCode: z.string().optional(),
+  warehouseCodes: z.array(z.string()).optional(),
+  warehouseName: z.string().optional(),
+}).transform((data) => ({
+  ...data,
+  warehouseIds: data.warehouseId ? [data.warehouseId] : data.warehouseIds,
+  warehouseCodes: data.warehouseCode ? [data.warehouseCode] : data.warehouseCodes,
+}));
+
 export const resolvers = {
   Query: {
     /**
@@ -71,21 +83,13 @@ export const resolvers = {
       const filter: WarehouseFilter = {};
 
       if (args.filter) {
-        if (args.filter.warehouseIds) {
-          filter.warehouseId = args.filter.warehouseIds;
-        } else if (args.filter.warehouseId) {
-          filter.warehouseId = args.filter.warehouseId;
+        const { success, data, error } = warehouseFilterSchema.safeParse(args.filter);
+        if (!success) {
+          throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
         }
-
-        if (args.filter.warehouseCodes) {
-          filter.warehouseCode = args.filter.warehouseCodes;
-        } else if (args.filter.warehouseCode) {
-          filter.warehouseCode = args.filter.warehouseCode;
-        }
-
-        if (args.filter.warehouseName) {
-          filter.warehouseName = args.filter.warehouseName;
-        }
+        if (data.warehouseIds) filter.warehouseId = data.warehouseIds;
+        if (data.warehouseCodes) filter.warehouseCode = data.warehouseCodes;
+        if (data.warehouseName) filter.warehouseName = data.warehouseName;
       }
 
       const result = await warehousesRepository.getWarehouse(filter, {
@@ -202,8 +206,13 @@ export const resolvers = {
         const userId = context.user?.id ?? "system";
 
         logger.info("ℹ️ [WarehousesResolvers.createWarehouse] Creating warehouse...");
+        if (!context.organizationId) {
+          throw new GraphQLError('Organization context is required', {
+            extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+          });
+        }
         const warehouse = await warehousesRepository.createWarehouse({
-          organizationId: context.organizationId || '00000000-0000-0000-0000-000000000001',
+          organizationId: context.organizationId,
           warehouseName: data.warehouseName,
           warehouseCode: data.warehouseCode ?? null,
           warehouseAddress: data.warehouseAddress ?? null,

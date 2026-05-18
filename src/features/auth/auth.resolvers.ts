@@ -12,6 +12,29 @@ import type { GraphQLContext } from '@/graphql/context';
 import { comparePassword, hashPassword } from '@/util/password';
 import { GraphQLError } from 'graphql';
 import { logger } from '@/util/logger';
+import { prettifyError, z } from 'zod';
+
+const loginSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+const createUserSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  displayName: z.string().min(1, 'Display name is required'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  roleId: z.string().uuid('Invalid role ID'),
+  organizationId: z.string().uuid('Invalid organization ID'),
+  contactNo: z.string().optional().nullable(),
+});
+
+const updateUserSchema = z.object({
+  displayName: z.string().min(1).optional().nullable(),
+  contactNo: z.string().optional().nullable(),
+  isActive: z.boolean().optional().nullable(),
+  roleId: z.string().uuid().optional().nullable(),
+  password: z.string().min(6).optional().nullable(),
+});
 
 // ============================================
 // TYPES (match GraphQL schema)
@@ -157,7 +180,11 @@ export const resolvers = {
      * Returns JWT tokens on success
      */
     login: async (_: unknown, { input }: { input: { email: string; password: string } }) => {
-      const { email, password } = input;
+      const { success, data, error } = loginSchema.safeParse(input);
+      if (!success) {
+        throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+      }
+      const { email, password } = data;
       
       logger.info('ℹ️ [GraphQL.login] Processing login request...');
       logger.debug('🔍 [GraphQL.login] Attempting login for:', email);
@@ -191,10 +218,16 @@ export const resolvers = {
       }
 
       // Generate tokens
+      if (!user.primaryOrganizationId) {
+        throw new GraphQLError('User has no organization assigned. Contact your administrator.', {
+          extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+        });
+      }
+
       const tokenPayload = {
         username: email,
         loginType: 'EMAIL' as const,
-        organizationId: user.primaryOrganizationId || '00000000-0000-0000-0000-000000000001', // Default org if not assigned
+        organizationId: user.primaryOrganizationId,
       };
       const accessToken = jwtController.generateAccessToken(tokenPayload);
       const refreshToken = jwtController.generateRefreshToken(tokenPayload);
@@ -218,8 +251,12 @@ export const resolvers = {
     /**
      * Create a new user and assign role. Uses transaction for user + UserRole.
      */
-    createUser: async (_: unknown, { input }: { input: { email: string; displayName: string; password: string; roleId: string; contactNo?: string | null } }) => {
-      const { email, displayName, password, roleId, contactNo } = input;
+    createUser: async (_: unknown, { input }: { input: { email: string; displayName: string; password: string; roleId: string; organizationId: string; contactNo?: string | null } }) => {
+      const { success, data, error } = createUserSchema.safeParse(input);
+      if (!success) {
+        throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+      }
+      const { email, displayName, password, roleId, organizationId, contactNo } = data;
       logger.info('ℹ️ [GraphQL.createUser] Creating user...', email);
 
       const existing = await authRepository.getUserByEmail(email);
@@ -246,6 +283,7 @@ export const resolvers = {
         passwordHash,
         contactNo: contactNo ?? null,
         isActive: true,
+        primaryOrganizationId: organizationId,
         createdBy: 'system',
         updatedBy: 'system',
       };
@@ -260,6 +298,10 @@ export const resolvers = {
      * Update user. Optionally update password (hashed) and/or role (replaces current role assignment).
      */
     updateUser: async (_: unknown, { id, input }: { id: string; input: { displayName?: string | null; contactNo?: string | null; isActive?: boolean | null; roleId?: string | null; password?: string | null } }) => {
+      const { success, data, error } = updateUserSchema.safeParse(input);
+      if (!success) {
+        throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+      }
       logger.info('ℹ️ [GraphQL.updateUser] Updating user:', id);
 
       const user = await authRepository.getUserById(id);
@@ -270,26 +312,26 @@ export const resolvers = {
         });
       }
 
-      if (input.roleId != null && input.roleId !== '') {
-        const role = await authRepository.getRoleById(input.roleId);
+      if (data.roleId != null && data.roleId !== '') {
+        const role = await authRepository.getRoleById(data.roleId);
         if (!role) {
-          logger.warn('⚠️ [GraphQL.updateUser] Invalid role ID:', input.roleId);
+          logger.warn('⚠️ [GraphQL.updateUser] Invalid role ID:', data.roleId);
           throw new GraphQLError('Invalid role ID', { extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } } });
         }
       }
 
       const updateData: Record<string, unknown> = { updatedBy: 'system' };
-      if (input.displayName !== undefined) updateData.displayName = input.displayName;
-      if (input.contactNo !== undefined) updateData.contactNo = input.contactNo;
-      if (input.isActive !== undefined) updateData.isActive = input.isActive;
-      if (input.password != null && input.password !== '') {
-        updateData.passwordHash = await hashPassword(input.password);
+      if (data.displayName !== undefined) updateData.displayName = data.displayName;
+      if (data.contactNo !== undefined) updateData.contactNo = data.contactNo;
+      if (data.isActive !== undefined) updateData.isActive = data.isActive;
+      if (data.password != null && data.password !== '') {
+        updateData.passwordHash = await hashPassword(data.password);
       }
 
       const updated = await authRepository.updateUserWithRole(
         id,
         updateData as Parameters<typeof authRepository.updateUser>[1],
-        { roleId: input.roleId }
+        { roleId: data.roleId }
       );
       const roles = updated ? await authRepository.getUserRoles(id) : [];
       logger.info('✅ [GraphQL.updateUser] User updated:', id);
