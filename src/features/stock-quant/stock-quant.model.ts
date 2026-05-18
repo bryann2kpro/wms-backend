@@ -15,6 +15,6 @@ export const StockQuantTable = MainSchema.table('stock_quant', {
     organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid('created_by').notNull(),
-    updatedBy: uuid('updated_by'),
+    createdBy: text('created_by').notNull(),
+    updatedBy: text('updated_by'),
 });
