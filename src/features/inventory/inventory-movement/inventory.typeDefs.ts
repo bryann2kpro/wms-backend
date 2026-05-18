@@ -18,8 +18,6 @@ export const typeDefs = `#graphql
     balanceAfter: String!
     referenceNo: String
     reason: String
-    lotNo: String
-    rackId: ID
     createdAt: String!
     createdBy: String!
     createdByUser: InventoryMovementAuditUser
@@ -62,10 +60,40 @@ export const typeDefs = `#graphql
     reason: String
     regionId: ID
     regionIds: [ID!]
-    dateFrom: String
-    dateTo: String
   }
 
+  """
+  Per-batch, per-location stock breakdown for a SKU.
+  Derived by aggregating inventory movements grouped by lot, expiry, and rack.
+  """
+  type SkuStockDetail {
+    lotNo: String
+    expiryDate: String
+    rackId: ID
+    rackRow: String
+    rackColumn: String
+    rackLevel: String
+    """Net on-hand quantity at this batch/location (INBOUND+ADJUSTMENT minus SHIPMENT+DAMAGED)"""
+    onHandQty: String!
+    """Accumulated damaged/loss quantity recorded at this batch/location"""
+    lossQty: String!
+    """Currently reserved quantity at this batch/location"""
+    reservedQty: String!
+    """Earliest inbound date — used for FIFO/LIFO sort on the frontend"""
+    firstInboundAt: String
+  }
+
+  """
+  Response for skuStockDetails query.
+  """
+  type SkuStockDetailResponse {
+    skuId: ID!
+    details: [SkuStockDetail!]!
+  }
+
+  """
+  Approved GRN line that has no matching INBOUND inventory_movement for this SKU.
+  """
   type MissingGrnMovement {
     grnNo: String!
     grnItemId: ID!
@@ -73,6 +101,9 @@ export const typeDefs = `#graphql
     receivedAt: String
   }
 
+  """
+  Shipped DO line that has no attributable SHIPMENT movement for this SKU.
+  """
   type MissingDoMovement {
     poNo: String!
     doNo: String!
@@ -80,6 +111,9 @@ export const typeDefs = `#graphql
     qtyRequired: String!
   }
 
+  """
+  Stock adjustment line with no matching ADJUSTMENT/DAMAGED movement for this SKU.
+  """
   type MissingAdjustmentMovement {
     adjustmentNo: String!
     stockAdjustmentId: ID!
@@ -88,6 +122,9 @@ export const typeDefs = `#graphql
     movementType: InventoryMovementType!
   }
 
+  """
+  Result of comparing GRNs, shipped DOs, and adjustments against inventory_movements.
+  """
   type SkuIntegrityCheckResult {
     skuId: ID!
     missingGrnMovements: [MissingGrnMovement!]!
@@ -96,14 +133,18 @@ export const typeDefs = `#graphql
     totalMissing: Int!
   }
 
-  type BackfillSkuMovementsResult {
-    skuId: ID!
-    backfilledCount: Int!
-    reconcileResult: ReconcileSkuBalanceResult!
+  """
+  Reconcile stats returned inside backfill (no skuId — parent carries skuId).
+  """
+  type SkuReconcileSnapshot {
+    movementsFixed: Int!
+    finalOnHandQty: String!
+    finalLossQty: String!
+    finalReservedQty: String!
   }
 
   """
-  Result of a SKU balance reconciliation.
+  Result of reconcileSkuBalance mutation.
   """
   type ReconcileSkuBalanceResult {
     skuId: ID!
@@ -113,26 +154,13 @@ export const typeDefs = `#graphql
     finalReservedQty: String!
   }
 
-  extend type Mutation {
-    """
-    Replay all movements for a SKU from zero and recompute every balanceAfter.
-    Also corrects inventory_balances to match. Runs in a single transaction.
-    """
-    reconcileSkuBalance(skuId: ID!): ReconcileSkuBalanceResult! @auth
-
-    """
-    Create missing inventory_movements for any approved GRNs, shipped DOs, and
-    stock adjustments that were processed without a movement record, then reconcile.
-    """
-    backfillSkuMovements(skuId: ID!): BackfillSkuMovementsResult! @auth
-  }
-
-  extend type Query {
-    """
-    Check which approved GRNs, shipped DOs, and stock adjustments for a SKU
-    are missing their corresponding inventory_movements records.
-    """
-    skuIntegrityCheck(skuId: ID!): SkuIntegrityCheckResult! @auth
+  """
+  Result of backfillSkuMovements mutation.
+  """
+  type BackfillSkuMovementsResult {
+    skuId: ID!
+    backfilledCount: Int!
+    reconcileResult: SkuReconcileSnapshot!
   }
 
   extend type Query {
@@ -151,5 +179,28 @@ export const typeDefs = `#graphql
     Get a single inventory movement by ID.
     """
     inventoryMovement(id: ID!): InventoryMovement
+
+    """
+    Get per-batch, per-location stock details for a specific SKU.
+    Aggregates all inventory movements to show current stock by lot/expiry/rack.
+    """
+    skuStockDetails(skuId: ID!): SkuStockDetailResponse @auth
+
+    """
+    Compare approved GRNs, shipped DOs, and stock adjustments to inventory_movements for a SKU.
+    """
+    skuIntegrityCheck(skuId: ID!): SkuIntegrityCheckResult! @auth
+  }
+
+  extend type Mutation {
+    """
+    Create missing inventory_movements for a SKU from integrity gaps, then reconcile balances.
+    """
+    backfillSkuMovements(skuId: ID!): BackfillSkuMovementsResult! @auth
+
+    """
+    Replay movements from zero, fix balanceAfter rows, and upsert inventory_balances for a SKU.
+    """
+    reconcileSkuBalance(skuId: ID!): ReconcileSkuBalanceResult! @auth
   }
 `;

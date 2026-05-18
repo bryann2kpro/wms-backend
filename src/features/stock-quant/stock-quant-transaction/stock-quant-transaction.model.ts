@@ -7,6 +7,7 @@ import { OrganizationsTable } from "@/features/master-data/organization.model";
 export const StockQuantTransactionTable = MainSchema.table('stock_quant_transaction', {
     id: uuid('id').defaultRandom().notNull().primaryKey(),
     skuId: uuid('sku_id').notNull().references(() => SkuTable.skuId),
+    lotNo: text('lot_no'),
     description: text('description'),
     quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull().default('0'),
     sourceRackId: uuid('source_rack_id').notNull().references(() => RacksTable.rackId),
@@ -15,6 +16,6 @@ export const StockQuantTransactionTable = MainSchema.table('stock_quant_transact
     organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid('created_by').notNull(),
-    updatedBy: uuid('updated_by'),
+    createdBy: text('created_by').notNull(),
+    updatedBy: text('updated_by'),
 });

@@ -127,6 +127,108 @@ export class InventoryMovementRepositoryClass {
   }
 
   /**
+   * Get per-batch, per-location stock details for a SKU.
+   *
+   * Rack resolution strategy:
+   * - For INBOUND movements (originating from GRNs), the rack is looked up via
+   *   grn_items (matched on sku_id + lot_no + expiry_date) → grn_item_racks → m_racks.
+   *   A GRN item may span multiple racks, so each rack gets its own row.
+   * - For all other movement types (ADJUSTMENT, DAMAGED, etc.) that carry a direct
+   *   rack_id on the movement row, that rack_id is used as a fallback.
+   * - Movements with no resolvable rack are grouped under a NULL rack.
+   *
+   * Results are grouped by (lotNo, expiryDate, resolved_rack_id) and only rows
+   * with a positive on-hand quantity are returned.
+   */
+  async getSkuStockDetails(skuId: string): Promise<Array<{
+    lotNo: string | null;
+    expiryDate: Date | null;
+    rackId: string | null;
+    rackRow: string | null;
+    rackColumn: string | null;
+    rackLevel: string | null;
+    onHandQty: string;
+    lossQty: string;
+    reservedQty: string;
+    firstInboundAt: Date | null;
+  }>> {
+    try {
+      logger.info("ℹ️ [InventoryMovementsRepository.getSkuStockDetails] Getting SKU stock details...");
+
+      const result = await db.execute(sql`
+        WITH resolved AS (
+          SELECT
+            im.id,
+            im.lot_no,
+            im.expiry_date,
+            im.movement_type,
+            im.quantity,
+            im.created_at,
+            -- For INBOUND movements, expand across all racks recorded in grn_item_racks.
+            -- For other movements, use the rack_id stored directly on the movement row.
+            COALESCE(gir.rack_id, im.rack_id) AS resolved_rack_id
+          FROM main.inventory_movements im
+          LEFT JOIN main.grn_items gi
+            ON gi.sku_id = im.sku_id
+            AND (gi.lot_no IS NOT DISTINCT FROM im.lot_no)
+            AND (gi.expiry_date IS NOT DISTINCT FROM im.expiry_date)
+            AND im.movement_type = 'INBOUND'
+          LEFT JOIN main.grn_item_racks gir
+            ON gir.grn_item_id = gi.id
+          WHERE im.sku_id = ${skuId}
+        )
+        SELECT
+          r.lot_no AS "lotNo",
+          r.expiry_date AS "expiryDate",
+          r.resolved_rack_id AS "rackId",
+          rack.rack_row AS "rackRow",
+          rack.rack_column AS "rackColumn",
+          rack.rack_level AS "rackLevel",
+          SUM(
+            CASE
+              WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT') THEN r.quantity
+              WHEN r.movement_type IN ('SHIPMENT', 'DAMAGED') THEN -r.quantity
+              ELSE 0
+            END
+          )::text AS "onHandQty",
+          SUM(
+            CASE
+              WHEN r.movement_type = 'DAMAGED' THEN r.quantity
+              ELSE 0
+            END
+          )::text AS "lossQty",
+          SUM(
+            CASE
+              WHEN r.movement_type = 'RESERVED' THEN r.quantity
+              WHEN r.movement_type = 'SHIPMENT' THEN -r.quantity
+              ELSE 0
+            END
+          )::text AS "reservedQty",
+          MIN(
+            CASE WHEN r.movement_type = 'INBOUND' THEN r.created_at END
+          ) AS "firstInboundAt"
+        FROM resolved r
+        LEFT JOIN main.m_racks rack ON rack.rack_id = r.resolved_rack_id
+        GROUP BY r.lot_no, r.expiry_date, r.resolved_rack_id, rack.rack_row, rack.rack_column, rack.rack_level
+        HAVING SUM(
+          CASE
+            WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT') THEN r.quantity
+            WHEN r.movement_type IN ('SHIPMENT', 'DAMAGED') THEN -r.quantity
+            ELSE 0
+          END
+        ) > 0
+        ORDER BY "firstInboundAt" ASC NULLS LAST
+      `);
+
+      logger.info("✅ [InventoryMovementsRepository.getSkuStockDetails] SKU stock details fetched successfully");
+      return result.rows as any[];
+    } catch (error) {
+      logger.error("❌ [InventoryMovementsRepository.getSkuStockDetails] Error:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Get Inventory Movement by ID
    */
   async getInventoryMovementById(id: string): Promise<InventoryMovementsType | null> {

@@ -7,12 +7,14 @@ import { OrganizationsTable } from "../master-data/organization.model";
 export const StockQuantTable = MainSchema.table('stock_quant', {
     id: uuid('id').defaultRandom().notNull().primaryKey(),
     skuId: uuid('sku_id').notNull().references(() => SkuTable.skuId),
+    lotNo: text('lot_no'),
+    expiryDate: timestamp('expiry_date'),
     description: text('description'),
     quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull().default('0'),
     rackId: uuid('rack_id').notNull().references(() => RacksTable.rackId),
     organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid('created_by').notNull(),
-    updatedBy: uuid('updated_by'),
+    createdBy: text('created_by').notNull(),
+    updatedBy: text('updated_by'),
 });
