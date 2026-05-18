@@ -18,6 +18,14 @@ export function qtyPutawayToDbString(n: number): string {
   return roundQtyPutaway(n).toFixed(2);
 }
 
+/** Returns trimmed lot number, or null when source has no lot recorded. */
+export function normalizedPutawayLotNo(
+  lot: string | null | undefined,
+): string | null {
+  const trimmed = (lot ?? "").trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 export function parsePutawayTransferQty(
   raw: string,
 ): { ok: true; value: number } | { ok: false; message: string } {
@@ -95,10 +103,13 @@ export async function executePutawayStockQuantTransfer(
     );
   }
 
-  const destRow = await stockQuantRepository.getStockQuantBySkuAndRack(
+  const sourceLotNo = normalizedPutawayLotNo(source.lotNo);
+
+  const destRow = await stockQuantRepository.getStockQuantBySkuRackAndLot(
     organizationId,
     source.skuId,
     destinationRackId,
+    sourceLotNo,
     tx,
   );
 
@@ -118,6 +129,8 @@ export async function executePutawayStockQuantTransfer(
     await stockQuantRepository.createStockQuant(
       {
         skuId: source.skuId,
+        lotNo: sourceLotNo,
+        expiryDate: source.expiryDate ?? null,
         description: source.description ?? null,
         quantity: qtyPutawayToDbString(parsed.value),
         rackId: destinationRackId,
@@ -132,6 +145,7 @@ export async function executePutawayStockQuantTransfer(
   await stockQuantTransactionRepository.createStockQuantTransaction(
     {
       skuId: source.skuId,
+      lotNo: sourceLotNo,
       description: source.description ?? null,
       quantity: qtyPutawayToDbString(parsed.value),
       sourceRackId: source.rackId,

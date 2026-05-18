@@ -6,6 +6,7 @@ import { logger } from "@/util/logger";
 import { StockQuantRepositoryClass } from "../stock-quant.repository";
 import {
   executePutawayStockQuantTransfer,
+  normalizedPutawayLotNo,
   parsePutawayTransferQty,
   qtyPutawayToDbString,
   roundQtyPutaway,
@@ -36,6 +37,7 @@ function graphPutawayLine(row: PutawayListRow) {
     destinationRackId: row.destinationRackId,
     destinationRackLabel: row.destinationRackLabel ?? null,
     sourceStockQuantId: row.sourceStockQuantId,
+    sourceLotNo: row.lotNo ?? row.sourceLotNo ?? null,
     quantity: row.quantity?.toString?.() ?? "0",
     failureMessage: row.failureMessage ?? null,
     createdAt: toIso(row.createdAt) ?? "",
@@ -71,6 +73,7 @@ export const resolvers = {
           sourceStockQuantId: string;
           destinationRackId: string;
           quantity: string;
+          sourceLotNo?: string | null;
         };
       },
       context: GraphQLContext,
@@ -114,9 +117,15 @@ export const resolvers = {
         throw new GraphQLError("Destination rack must be different from the source rack.");
       }
 
+      const draftLotNo =
+        args.input.sourceLotNo !== undefined
+          ? normalizedPutawayLotNo(args.input.sourceLotNo)
+          : normalizedPutawayLotNo(source.lotNo);
+
       const created = await putawayRepository.insert({
         organizationId,
         skuId: source.skuId,
+        lotNo: draftLotNo,
         description: source.description ?? null,
         sourceRackId: source.rackId,
         destinationRackId: args.input.destinationRackId,

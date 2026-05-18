@@ -9,6 +9,7 @@ import { logger } from "@/util/logger";
 import type { DbTransaction } from "@/types/db-transaction";
 import { SkuTable } from "@/features/master-data/sku.model";
 import { RacksTable } from "@/features/master-data/racks.model";
+import { StockQuantTable } from "../stock-quant.model";
 import {
   PUTAWAY_STATUS,
   PutawayTable,
@@ -23,6 +24,7 @@ export type PutawayListRow = PutawayType & {
   skuCode: string | null;
   sourceRackLabel: string | null;
   destinationRackLabel: string | null;
+  sourceLotNo: string | null;
 };
 
 export type PutawayUpdatePatch = {
@@ -52,6 +54,7 @@ export class PutawayRepositoryClass {
           id: PutawayTable.id,
           organizationId: PutawayTable.organizationId,
           skuId: PutawayTable.skuId,
+          lotNo: PutawayTable.lotNo,
           description: PutawayTable.description,
           sourceRackId: PutawayTable.sourceRackId,
           destinationRackId: PutawayTable.destinationRackId,
@@ -66,9 +69,14 @@ export class PutawayRepositoryClass {
           skuCode: SkuTable.skuCode,
           sourceRackLabel: sql<string | null>`concat_ws('-', ${PutawaySrcRack.rackRow}, ${PutawaySrcRack.rackLevel}, ${PutawaySrcRack.rackColumn})`,
           destinationRackLabel: sql<string | null>`concat_ws('-', ${PutawayDstRack.rackRow}, ${PutawayDstRack.rackLevel}, ${PutawayDstRack.rackColumn})`,
+          sourceLotNo: sql<string | null>`coalesce(${PutawayTable.lotNo}, ${StockQuantTable.lotNo})`,
         })
         .from(PutawayTable)
         .leftJoin(SkuTable, eq(SkuTable.skuId, PutawayTable.skuId))
+        .leftJoin(
+          StockQuantTable,
+          eq(StockQuantTable.id, PutawayTable.sourceStockQuantId),
+        )
         .leftJoin(PutawaySrcRack, eq(PutawaySrcRack.rackId, PutawayTable.sourceRackId))
         .leftJoin(PutawayDstRack, eq(PutawayDstRack.rackId, PutawayTable.destinationRackId))
         .where(and(eq(PutawayTable.organizationId, organizationId), eq(PutawayTable.id, id)))
@@ -161,6 +169,7 @@ export class PutawayRepositoryClass {
           id: PutawayTable.id,
           organizationId: PutawayTable.organizationId,
           skuId: PutawayTable.skuId,
+          lotNo: PutawayTable.lotNo,
           description: PutawayTable.description,
           sourceRackId: PutawayTable.sourceRackId,
           destinationRackId: PutawayTable.destinationRackId,
@@ -175,9 +184,14 @@ export class PutawayRepositoryClass {
           skuCode: SkuTable.skuCode,
           sourceRackLabel: sql<string | null>`concat_ws('-', ${PutawaySrcRack.rackRow}, ${PutawaySrcRack.rackLevel}, ${PutawaySrcRack.rackColumn})`,
           destinationRackLabel: sql<string | null>`concat_ws('-', ${PutawayDstRack.rackRow}, ${PutawayDstRack.rackLevel}, ${PutawayDstRack.rackColumn})`,
+          sourceLotNo: sql<string | null>`coalesce(${PutawayTable.lotNo}, ${StockQuantTable.lotNo})`,
         })
         .from(PutawayTable)
         .leftJoin(SkuTable, eq(SkuTable.skuId, PutawayTable.skuId))
+        .leftJoin(
+          StockQuantTable,
+          eq(StockQuantTable.id, PutawayTable.sourceStockQuantId),
+        )
         .leftJoin(PutawaySrcRack, eq(PutawaySrcRack.rackId, PutawayTable.sourceRackId))
         .leftJoin(PutawayDstRack, eq(PutawayDstRack.rackId, PutawayTable.destinationRackId))
         .where(and(...conditions))
