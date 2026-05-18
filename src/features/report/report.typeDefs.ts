@@ -67,6 +67,10 @@ export const typeDefs = `#graphql
   input DoPickingListFilterInput {
     "Filter by outlet region ID (uuid)"
     regionId: ID
+    "Filter by any of these outlet region IDs (when non-empty, used instead of regionId)"
+    regionIds: [ID!]
+    "Filter by item search text (SKU, description, DO, or PO)"
+    search: String
     "Filter by expected delivery date range start (ISO date string, inclusive)"
     scheduledDeliveryDateFrom: String
     "Filter by expected delivery date range end (ISO date string, inclusive)"
@@ -90,6 +94,26 @@ export const typeDefs = `#graphql
     amount: Float!
   }
 
+  """
+  Variant for Stock Balance report — without or with rack locations.
+  """
+  enum InventoryBalanceReportType {
+    WITHOUT_RACK
+    WITH_RACK
+  }
+
+  """
+  A single row in the Stock Balance report.
+  rackLocations is empty for WITHOUT_RACK variant.
+  """
+  type InventoryBalanceReportRow {
+    skuCode: String!
+    skuDescription: String!
+    unitCode: String!
+    onHandQty: Float!
+    rackLocations: [String!]!
+  }
+
   extend type Query {
     """
     Fetch Proforma Invoice Summary rows for Excel export.
@@ -100,6 +124,13 @@ export const typeDefs = `#graphql
       regionId: ID!
       deliveryDateSortOrder: DeliveryDateSortOrder
     ): [InvoiceSummaryReportRow!]! @auth
+
+    """
+    Fetch Stock Balance rows for Excel export.
+    WITHOUT_RACK: SKU Code, Description, UOM, On-Hand Qty.
+    WITH_RACK: same plus rack location labels.
+    """
+    inventoryBalanceReportData(type: InventoryBalanceReportType!): [InventoryBalanceReportRow!]! @auth
   }
 
   extend type Mutation {
@@ -121,5 +152,11 @@ export const typeDefs = `#graphql
     Returns a printable picking reference for the storekeeper.
     """
     generateDoPickingList(filter: DoPickingListFilterInput): GenerateChecklistPayload! @auth
+
+    """
+    Generate a Stock Balance PDF. Returns base64-encoded PDF and suggested filename.
+    WITHOUT_RACK: principal-facing summary. WITH_RACK: includes rack location labels.
+    """
+    generateStockBalanceReport(type: InventoryBalanceReportType!): GenerateReportPayload! @auth
   }
 `;

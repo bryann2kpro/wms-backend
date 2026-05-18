@@ -16,6 +16,60 @@ import {
     SupplierDeliveryItemInsertType
 } from './supplier-deliveries.model';
 import { logger } from '@/util/logger';
+import { prettifyError, z } from 'zod';
+import { GraphQLError } from 'graphql';
+
+const createSupplierDeliverySchema = z.object({
+  supplierId: z.string().uuid('Invalid supplier ID'),
+  supplierDeliveryNo: z.string().min(1, 'Supplier delivery number is required'),
+  deliveryDate: z.string().min(1, 'Delivery date is required'),
+  transporter: z.string().optional().nullable(),
+  lorryPlate: z.string().optional().nullable(),
+  invoiceToAddressId: z.string().uuid().optional().nullable(),
+  deliverToAddressId: z.string().uuid().optional().nullable(),
+  account: z.string().optional().nullable(),
+  poNo: z.string().optional().nullable(),
+  jtNo: z.string().optional().nullable(),
+  orderDate: z.string().optional().nullable(),
+  status: z.string().min(1, 'Status is required'),
+  createdBy: z.string().min(1),
+  updatedBy: z.string().optional().nullable(),
+  items: z.array(z.object({
+    skuId: z.string().uuid('Invalid SKU ID'),
+    itemId: z.string().optional().nullable(),
+    itemName: z.string().optional().nullable(),
+    qtyDelivered: z.number().nonnegative(),
+    qtyOrdered: z.number().nonnegative().optional().nullable(),
+    qtyToFollow: z.number().nonnegative().optional().nullable(),
+    remarks: z.string().optional().nullable(),
+    createdBy: z.string().min(1),
+    updatedBy: z.string().optional().nullable(),
+  })).optional().nullable(),
+});
+
+const updateSupplierDeliverySchema = z.object({
+  deliveryDate: z.string().optional().nullable(),
+  transporter: z.string().optional().nullable(),
+  lorryPlate: z.string().optional().nullable(),
+  account: z.string().optional().nullable(),
+  poNo: z.string().optional().nullable(),
+  jtNo: z.string().optional().nullable(),
+  orderDate: z.string().optional().nullable(),
+  status: z.string().optional().nullable(),
+  updatedBy: z.string().optional().nullable(),
+  items: z.array(z.object({
+    id: z.string().uuid('Invalid item ID'),
+    skuId: z.string().uuid().optional().nullable(),
+    itemId: z.string().optional().nullable(),
+    itemName: z.string().optional().nullable(),
+    qtyDelivered: z.number().nonnegative().optional().nullable(),
+    lossQty: z.number().nonnegative().optional().nullable(),
+    qtyOrdered: z.number().nonnegative().optional().nullable(),
+    qtyToFollow: z.number().nonnegative().optional().nullable(),
+    remarks: z.string().optional().nullable(),
+    updatedBy: z.string().optional().nullable(),
+  })).optional().nullable(),
+});
 
 // ============================================
 // HELPER FUNCTIONS
@@ -199,14 +253,23 @@ export const resolvers = {
                     }[] | null;
                 } }, context: GraphQLContext) => {
                 try {
+                    if (!context.organizationId) {
+                      throw new GraphQLError('Organization context is required', {
+                        extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                      });
+                    }
+                    const { success, data, error } = createSupplierDeliverySchema.safeParse(input);
+                    if (!success) {
+                      throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+                    }
                     const payload = {
-                        ...input,
+                        ...data,
                         // supplierId: input.supplierId,
                         // TODO: Replace this after testing
                         supplierId: '53233271-d78a-451c-a676-132982542883',
-                        organizationId: context.organizationId ?? '00000000-0000-0000-0000-000000000001',
-                        deliveryDate: new Date(input.deliveryDate),
-                        orderDate: input.orderDate != null ? new Date(input.orderDate) : undefined,
+                        organizationId: context.organizationId,
+                        deliveryDate: new Date(data.deliveryDate),
+                        orderDate: data.orderDate != null ? new Date(data.orderDate) : undefined,
                     };
                     const result = await supplierDeliveriesRepository.createSupplierDelivery(payload, context.tx);
                     logger.info('[supplier-deliveries.resolvers] createSupplierDelivery Success:', result);
@@ -269,25 +332,29 @@ export const resolvers = {
                 context: GraphQLContext
             ) => {
                 const { id, input } = args;
-                const updatedBy = input.updatedBy ?? context.user?.id ?? null;
+                const { success: uSuccess, data: uData, error: uError } = updateSupplierDeliverySchema.safeParse(input);
+                if (!uSuccess) {
+                  throw new GraphQLError(prettifyError(uError), { extensions: { code: 'BAD_USER_INPUT' } });
+                }
+                const updatedBy = uData.updatedBy ?? context.user?.id ?? null;
                 const updateData: Partial<SupplierDeliveriesInsertType> = {
                     updatedBy: updatedBy ?? undefined,
                     updatedAt: new Date(),
                 };
-                if (input.deliveryDate != null) updateData.deliveryDate = new Date(input.deliveryDate);
-                if (input.transporter !== undefined) updateData.transporter = input.transporter;
-                if (input.lorryPlate !== undefined) updateData.lorryPlate = input.lorryPlate;
-                if (input.account !== undefined) updateData.account = input.account;
-                if (input.poNo !== undefined) updateData.poNo = input.poNo;
-                if (input.jtNo !== undefined) updateData.jtNo = input.jtNo;
-                if (input.orderDate !== undefined) updateData.orderDate = input.orderDate != null ? new Date(input.orderDate) : null;
-                if (input.status !== undefined) updateData.status = input.status ?? undefined;
+                if (uData.deliveryDate != null) updateData.deliveryDate = new Date(uData.deliveryDate);
+                if (uData.transporter !== undefined) updateData.transporter = uData.transporter;
+                if (uData.lorryPlate !== undefined) updateData.lorryPlate = uData.lorryPlate;
+                if (uData.account !== undefined) updateData.account = uData.account;
+                if (uData.poNo !== undefined) updateData.poNo = uData.poNo;
+                if (uData.jtNo !== undefined) updateData.jtNo = uData.jtNo;
+                if (uData.orderDate !== undefined) updateData.orderDate = uData.orderDate != null ? new Date(uData.orderDate) : null;
+                if (uData.status !== undefined) updateData.status = uData.status ?? undefined;
                 const updated = await supplierDeliveriesRepository.updateSupplierDelivery(id, updateData, context.tx);
                 if (!updated) throw new Error(`Failed to update supplier delivery: ${id}`);
 
-                if (input.items?.length) {
+                if (uData.items?.length) {
                     const itemUpdatedBy = updatedBy ?? context.user?.id ?? undefined;
-                    for (const item of input.items) {
+                    for (const item of uData.items) {
                         const itemUpdateData: Partial<SupplierDeliveryItemInsertType> = {
                             updatedBy: (item.updatedBy ?? itemUpdatedBy) ?? undefined,
                             updatedAt: new Date(),

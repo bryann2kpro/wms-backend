@@ -43,8 +43,10 @@ export const env = createEnv({
     COMPANY_ADDRESS: z.string().optional(),
     // Email notification recipient
     ADMIN_EMAIL: z.string().email().optional(),
-    // Invoice cron toggle (when not \"true\", cron does not start)
+    // Invoice cron toggle (when not "true", cron does not start)
     INVOICES_CRON_ENABLED: z.string().optional(),
+    // Daily opening stock cron toggle
+    DAILY_OPENING_STOCK_CRON_ENABLED: z.string().optional(),
     WHATSAPP_ENABLED: z.string().optional(),
     SYSTEM_USER_UUID: z.uuid(),
     INVOICE_ADDRESS_SNAPSHOT_ID: z.uuid(),

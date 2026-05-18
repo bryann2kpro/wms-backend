@@ -558,22 +558,50 @@
     {
       "idx": 79,
       "version": "7",
-      "when": 1779088541376,
-      "tag": "0079_salty_the_hand",
+      "when": 1778567560983,
+      "tag": "0079_lucky_masked_marvel",
       "breakpoints": true
     },
     {
       "idx": 80,
       "version": "7",
-      "when": 1779089270235,
-      "tag": "0080_chief_power_man",
+      "when": 1778567711673,
+      "tag": "0080_add_loss_adjustment_enum",
       "breakpoints": true
     },
     {
       "idx": 81,
       "version": "7",
-      "when": 1779089530646,
-      "tag": "0081_free_shocker",
+      "when": 1778572543534,
+      "tag": "0081_eager_venus",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1778636868359,
+      "tag": "0082_fearless_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1778637170913,
+      "tag": "0083_rich_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1778653813313,
+      "tag": "0084_tricky_fat_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1779082793614,
+      "tag": "0085_bright_maximus",
       "breakpoints": true
     }
   ]

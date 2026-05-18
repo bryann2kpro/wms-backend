@@ -1,6 +1,6 @@
 {
-  "id": "f4eede5a-1f1c-4f3b-8d5d-5a264353c281",
-  "prevId": "e7320bb2-7e6c-473b-a30e-867dcc205d20",
+  "id": "da052c47-30d2-4420-996b-d79a01cb2224",
+  "prevId": "89c65486-b0f3-401d-9906-bf1bb7aa8135",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1488,6 +1488,104 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "main.daily_opening_stock": {
+      "name": "daily_opening_stock",
+      "schema": "main",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "record_date": {
+          "name": "record_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sku_id": {
+          "name": "sku_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "opening_qty": {
+          "name": "opening_qty",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "opening_loss_qty": {
+          "name": "opening_loss_qty",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "daily_opening_stock_organization_id_m_organizations_organization_id_fk": {
+          "name": "daily_opening_stock_organization_id_m_organizations_organization_id_fk",
+          "tableFrom": "daily_opening_stock",
+          "tableTo": "m_organizations",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "organization_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "daily_opening_stock_sku_id_m_skus_sku_id_fk": {
+          "name": "daily_opening_stock_sku_id_m_skus_sku_id_fk",
+          "tableFrom": "daily_opening_stock",
+          "tableTo": "m_skus",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "sku_id"
+          ],
+          "columnsTo": [
+            "sku_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "daily_opening_stock_org_date_sku_unique": {
+          "name": "daily_opening_stock_org_date_sku_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organization_id",
+            "record_date",
+            "sku_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "main.inventory_balances": {
       "name": "inventory_balances",
       "schema": "main",
@@ -2587,111 +2685,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "main.m_areas": {
-      "name": "m_areas",
-      "schema": "main",
-      "columns": {
-        "area_id": {
-          "name": "area_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "map_id": {
-          "name": "map_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "area_code": {
-          "name": "area_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "area_name": {
-          "name": "area_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "area_description": {
-          "name": "area_description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "m_areas_organization_id_m_organizations_organization_id_fk": {
-          "name": "m_areas_organization_id_m_organizations_organization_id_fk",
-          "tableFrom": "m_areas",
-          "tableTo": "m_organizations",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "organization_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "m_areas_map_id_m_maps_map_id_fk": {
-          "name": "m_areas_map_id_m_maps_map_id_fk",
-          "tableFrom": "m_areas",
-          "tableTo": "m_maps",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "map_id"
-          ],
-          "columnsTo": [
-            "map_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "main.region_delivery_schedules": {
       "name": "region_delivery_schedules",
       "schema": "main",
@@ -2811,91 +2804,6 @@
           ]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "main.m_maps": {
-      "name": "m_maps",
-      "schema": "main",
-      "columns": {
-        "map_id": {
-          "name": "map_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "map_code": {
-          "name": "map_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "map_name": {
-          "name": "map_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "map_description": {
-          "name": "map_description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "m_maps_organization_id_m_organizations_organization_id_fk": {
-          "name": "m_maps_organization_id_m_organizations_organization_id_fk",
-          "tableFrom": "m_maps",
-          "tableTo": "m_organizations",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "organization_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -3121,32 +3029,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "area_id": {
-          "name": "area_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "bin_type": {
-          "name": "bin_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'FIXED'"
-        },
-        "bin_code": {
-          "name": "bin_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3186,20 +3068,6 @@
           ],
           "columnsTo": [
             "organization_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "m_racks_area_id_m_areas_area_id_fk": {
-          "name": "m_racks_area_id_m_areas_area_id_fk",
-          "tableFrom": "m_racks",
-          "tableTo": "m_areas",
-          "schemaTo": "main",
-          "columnsFrom": [
-            "area_id"
-          ],
-          "columnsTo": [
-            "area_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"

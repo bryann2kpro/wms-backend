@@ -12,6 +12,45 @@ import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { logger } from '@/util/logger';
 import { SkuType } from './sku.repository';
+import { prettifyError, z } from 'zod';
+import { GraphQLError } from 'graphql';
+
+const createSkuSchema = z.object({
+  skuCode: z.string().min(1, 'SKU code is required'),
+  skuDescription: z.string().min(1, 'SKU description is required'),
+  skuUom: z.string().min(1, 'Unit of measure is required'),
+  isActive: z.boolean(),
+  skuPrice: z.number().nonnegative().optional(),
+  skuQuantity: z.number().nonnegative().optional(),
+  cartonQuantity: z.number().nonnegative().optional(),
+  lossQuantity: z.number().nonnegative().optional().nullable(),
+  skuExpiryDate: z.string().optional().nullable(),
+  skuSuppliers: z.array(z.object({
+    supplierId: z.string().uuid('Invalid supplier ID'),
+    originalSkuCode: z.string().optional().nullable(),
+  })).optional(),
+  pickingStrategy: z.enum(['FIFO', 'LIFO', 'FEFO']).optional().nullable(),
+  initialOnHandQty: z.number().nonnegative().optional().nullable(),
+  createdBy: z.string().optional().nullable(),
+  updatedBy: z.string().optional().nullable(),
+});
+
+const updateSkuSchema = z.object({
+  skuCode: z.string().min(1).optional(),
+  skuDescription: z.string().min(1).optional(),
+  skuUom: z.string().min(1).optional(),
+  isActive: z.boolean().optional(),
+  skuPrice: z.number().nonnegative().optional(),
+  skuQuantity: z.number().nonnegative().optional(),
+  lossQuantity: z.number().nonnegative().optional().nullable(),
+  skuExpiryDate: z.string().optional().nullable(),
+  skuSuppliers: z.array(z.object({
+    supplierId: z.string().uuid('Invalid supplier ID'),
+    originalSkuCode: z.string().optional().nullable(),
+  })).optional().nullable(),
+  pickingStrategy: z.enum(['FIFO', 'LIFO', 'FEFO']).optional().nullable(),
+  updatedBy: z.string().optional().nullable(),
+});
 
 // ============================================
 // HELPER FUNCTIONS
@@ -238,34 +277,43 @@ export const resolvers = {
       updatedBy?: string | null;
     }}, context: GraphQLContext) => {
       try {
-        const createdBy = input.createdBy ?? context.user?.id ?? 'system';
-        const updatedBy = input.updatedBy ?? context.user?.id ?? 'system';
-        // GraphQL schema uses skuQuantity; map to cartonQuantity for DB
-        const cartonQty = input.skuQuantity ?? input.cartonQuantity ?? 0;
-        let expiryDate: Date | null = null;
-        if (input.skuExpiryDate != null && input.skuExpiryDate !== '') {
-          expiryDate = typeof input.skuExpiryDate === 'string' ? new Date(input.skuExpiryDate) : input.skuExpiryDate;
+        const { success, data, error } = createSkuSchema.safeParse(input);
+        if (!success) {
+          throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
         }
-        const skuSuppliersData = input.skuSuppliers?.map((s) => ({
+        const createdBy = data.createdBy ?? context.user?.id ?? 'system';
+        const updatedBy = data.updatedBy ?? context.user?.id ?? 'system';
+        // GraphQL schema uses skuQuantity; map to cartonQuantity for DB
+        const cartonQty = data.skuQuantity ?? data.cartonQuantity ?? 0;
+        let expiryDate: Date | null = null;
+        if (data.skuExpiryDate != null && data.skuExpiryDate !== '') {
+          expiryDate = new Date(data.skuExpiryDate);
+        }
+        const skuSuppliersData = data.skuSuppliers?.map((s) => ({
           supplierId: s.supplierId,
           originalSkuCode: s.originalSkuCode ?? null,
         }));
 
+        if (!context.organizationId) {
+          throw new GraphQLError('Organization context is required', {
+            extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+          });
+        }
         const sku = await skuRepository.createSku({
-          organizationId: context.organizationId || '00000000-0000-0000-0000-000000000001',
-          skuCode: input.skuCode,
-          skuDescription: input.skuDescription,
-          skuPrice: input.skuPrice?.toString(),
+          organizationId: context.organizationId,
+          skuCode: data.skuCode,
+          skuDescription: data.skuDescription,
+          skuPrice: data.skuPrice?.toString(),
           cartonQuantity: String(cartonQty),
-          lossQuantity: (input.lossQuantity != null ? input.lossQuantity : 0).toString(),
+          lossQuantity: (data.lossQuantity != null ? data.lossQuantity : 0).toString(),
           skuExpiryDate: expiryDate,
           skuSuppliers: skuSuppliersData ?? null,
-          skuUom: input.skuUom,
-          pickingStrategy: input.pickingStrategy ?? 'FIFO',
-          isActive: input.isActive,
+          skuUom: data.skuUom,
+          pickingStrategy: data.pickingStrategy ?? 'FIFO',
+          isActive: data.isActive,
           createdBy,
           updatedBy,
-          initialOnHandQty: input.initialOnHandQty ?? undefined,
+          initialOnHandQty: data.initialOnHandQty ?? undefined,
         });
 
         return transformSku(sku);
@@ -301,40 +349,44 @@ export const resolvers = {
       updatedBy?: string | null;
     }}, context: GraphQLContext) => {
       try {
-        const updatedBy = input.updatedBy ?? context.user?.id ?? 'system';
+        const { success: uSuccess, data: uData, error: uError } = updateSkuSchema.safeParse(input);
+        if (!uSuccess) {
+          throw new GraphQLError(prettifyError(uError), { extensions: { code: 'BAD_USER_INPUT' } });
+        }
+        const updatedBy = uData.updatedBy ?? context.user?.id ?? 'system';
         const updateData: Record<string, unknown> = {
           updatedBy,
         };
 
-        if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
-        if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
-        if (input.skuPrice !== undefined) {
-          updateData.skuPrice = input.skuPrice == null ? null : String(input.skuPrice);
+        if (uData.skuCode !== undefined) updateData.skuCode = uData.skuCode;
+        if (uData.skuDescription !== undefined) updateData.skuDescription = uData.skuDescription;
+        if (uData.skuPrice !== undefined) {
+          updateData.skuPrice = uData.skuPrice == null ? null : String(uData.skuPrice);
         }
-        if (input.skuQuantity !== undefined) {
-          updateData.cartonQuantity = String(input.skuQuantity);
+        if (uData.skuQuantity !== undefined) {
+          updateData.cartonQuantity = String(uData.skuQuantity);
         }
-        if (input.lossQuantity !== undefined) {
-          updateData.lossQuantity = String(input.lossQuantity);
+        if (uData.lossQuantity !== undefined) {
+          updateData.lossQuantity = String(uData.lossQuantity);
         }
-        if (input.skuExpiryDate !== undefined) {
-          const raw = input.skuExpiryDate;
+        if (uData.skuExpiryDate !== undefined) {
+          const raw = uData.skuExpiryDate;
           if (raw === null || raw === '') {
             updateData.skuExpiryDate = null;
           } else {
-            updateData.skuExpiryDate = typeof raw === 'string' ? new Date(raw) : raw;
+            updateData.skuExpiryDate = new Date(raw);
           }
         }
-        if (input.skuSuppliers !== undefined) {
-          updateData.skuSuppliers = input.skuSuppliers?.map((s) => ({
+        if (uData.skuSuppliers !== undefined) {
+          updateData.skuSuppliers = uData.skuSuppliers?.map((s) => ({
             supplierId: s.supplierId,
             originalSkuCode: s.originalSkuCode ?? null,
           })) ?? null;
         }
-        if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
-        if (input.isActive !== undefined) updateData.isActive = input.isActive;
-        if (input.pickingStrategy !== undefined && input.pickingStrategy !== null) {
-          updateData.pickingStrategy = input.pickingStrategy;
+        if (uData.skuUom !== undefined) updateData.skuUom = uData.skuUom;
+        if (uData.isActive !== undefined) updateData.isActive = uData.isActive;
+        if (uData.pickingStrategy !== undefined && uData.pickingStrategy !== null) {
+          updateData.pickingStrategy = uData.pickingStrategy;
         }
 
         const sku = await skuRepository.updateSku(id, updateData);
