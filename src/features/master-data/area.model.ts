@@ -2,6 +2,7 @@ import { MainSchema } from "@/db/db.schema";
 import { uuid, text, timestamp } from "drizzle-orm/pg-core";
 import { OrganizationsTable } from "@/features/master-data/organization.model";
 import { MapTable } from "./map.model";
+import { WarehousesTable } from "./warehouses.model";
 
 /**
  * Areas Table
@@ -16,9 +17,10 @@ import { MapTable } from "./map.model";
  * @field areaName - Display name of the area
  * @field areaDescription - Optional description of the area
  */
-export const AreaTable = MainSchema.table('m_areas', {
+export const AreaTable = MainSchema.table('m_warehouse_areas', {
   areaId: uuid('area_id').defaultRandom().notNull().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
+  warehouseId: uuid('warehouse_id').notNull().references(() => WarehousesTable.warehouseId),
   mapId: uuid('map_id').references(() => MapTable.mapId),
   areaCode: text('area_code').notNull(),
   areaName: text('area_name').notNull(),

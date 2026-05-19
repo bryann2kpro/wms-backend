@@ -10,6 +10,7 @@ export const PickFaceStrategyTable = MainSchema.table('m_pick_face_strategies', 
   skuId: uuid('sku_id').notNull().references(() => SkuTable.skuId),
   storageBinId: uuid('storage_bin_id').notNull().references(() => RacksTable.rackId),
   binType: text('bin_type').notNull().default('FIXED_BIN'),  // FIXED_BIN | DYNAMIC_BIN
+  itemCode: text('item_code').notNull(),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

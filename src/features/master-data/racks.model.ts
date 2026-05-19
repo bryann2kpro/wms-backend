@@ -28,6 +28,7 @@ export const RacksTable = MainSchema.table('m_racks', {
   areaId: uuid('area_id').references(() => AreaTable.areaId),
   binType: text('bin_type').notNull().default('FIXED'),
   binCode: text('bin_code'),
+  barCode: text('bar_code'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
