@@ -9,7 +9,7 @@ import { racksRepository } from '@/composition-root';
 import { RackFilter } from './racks.repository';
 import { withAudit } from '../audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
-import { prettifyError, z } from 'zod';
+import { z } from 'zod';
 import { GraphQLError } from 'graphql';
 
 const rackFilterSchema = z.object({
@@ -98,7 +98,7 @@ export const resolvers = {
       if (args.filter) {
         const { success, data, error } = rackFilterSchema.safeParse(args.filter);
         if (!success) {
-          throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
         }
         if (data.rackIds) filter.rackId = data.rackIds;
         if (data.rackRows) filter.rackRow = data.rackRows;
@@ -151,7 +151,7 @@ export const resolvers = {
         }
         const { success, data, error } = createRackSchema.safeParse(input);
         if (!success) {
-          throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
         }
         const rack = await racksRepository.createRack({
           organizationId: context.organizationId,
@@ -185,7 +185,7 @@ export const resolvers = {
       }}, context: GraphQLContext) => {
         const { success: uSuccess, data: uData, error: uError } = updateRackSchema.safeParse(input);
         if (!uSuccess) {
-          throw new GraphQLError(prettifyError(uError), { extensions: { code: 'BAD_USER_INPUT' } });
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: uError.flatten().fieldErrors } });
         }
         const rack = await racksRepository.updateRack({
           rackRow: uData.rackRow,

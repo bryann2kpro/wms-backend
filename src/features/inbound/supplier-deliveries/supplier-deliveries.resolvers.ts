@@ -16,8 +16,33 @@ import {
     SupplierDeliveryItemInsertType
 } from './supplier-deliveries.model';
 import { logger } from '@/util/logger';
-import { prettifyError, z } from 'zod';
+import { z } from 'zod';
 import { GraphQLError } from 'graphql';
+
+const supplierDeliveryItemSchema = z.object({
+  skuId: z.string().uuid('Invalid SKU ID'),
+  itemId: z.string().optional().nullable(),
+  itemName: z.string().optional().nullable(),
+  qtyDelivered: z.number().nonnegative(),
+  qtyOrdered: z.number().nonnegative().optional().nullable(),
+  qtyToFollow: z.number().nonnegative().optional().nullable(),
+  remarks: z.string().optional().nullable(),
+  createdBy: z.string().min(1),
+  updatedBy: z.string().optional().nullable(),
+});
+
+const updateSupplierDeliveryItemSchema = z.object({
+  id: z.string().uuid('Invalid item ID'),
+  skuId: z.string().uuid().optional().nullable(),
+  itemId: z.string().optional().nullable(),
+  itemName: z.string().optional().nullable(),
+  qtyDelivered: z.number().nonnegative().optional().nullable(),
+  lossQty: z.number().nonnegative().optional().nullable(),
+  qtyOrdered: z.number().nonnegative().optional().nullable(),
+  qtyToFollow: z.number().nonnegative().optional().nullable(),
+  remarks: z.string().optional().nullable(),
+  updatedBy: z.string().optional().nullable(),
+});
 
 const createSupplierDeliverySchema = z.object({
   supplierId: z.string().uuid('Invalid supplier ID'),
@@ -34,17 +59,7 @@ const createSupplierDeliverySchema = z.object({
   status: z.string().min(1, 'Status is required'),
   createdBy: z.string().min(1),
   updatedBy: z.string().optional().nullable(),
-  items: z.array(z.object({
-    skuId: z.string().uuid('Invalid SKU ID'),
-    itemId: z.string().optional().nullable(),
-    itemName: z.string().optional().nullable(),
-    qtyDelivered: z.number().nonnegative(),
-    qtyOrdered: z.number().nonnegative().optional().nullable(),
-    qtyToFollow: z.number().nonnegative().optional().nullable(),
-    remarks: z.string().optional().nullable(),
-    createdBy: z.string().min(1),
-    updatedBy: z.string().optional().nullable(),
-  })).optional().nullable(),
+  items: z.array(supplierDeliveryItemSchema).optional().nullable(),
 });
 
 const updateSupplierDeliverySchema = z.object({
@@ -57,18 +72,7 @@ const updateSupplierDeliverySchema = z.object({
   orderDate: z.string().optional().nullable(),
   status: z.string().optional().nullable(),
   updatedBy: z.string().optional().nullable(),
-  items: z.array(z.object({
-    id: z.string().uuid('Invalid item ID'),
-    skuId: z.string().uuid().optional().nullable(),
-    itemId: z.string().optional().nullable(),
-    itemName: z.string().optional().nullable(),
-    qtyDelivered: z.number().nonnegative().optional().nullable(),
-    lossQty: z.number().nonnegative().optional().nullable(),
-    qtyOrdered: z.number().nonnegative().optional().nullable(),
-    qtyToFollow: z.number().nonnegative().optional().nullable(),
-    remarks: z.string().optional().nullable(),
-    updatedBy: z.string().optional().nullable(),
-  })).optional().nullable(),
+  items: z.array(updateSupplierDeliveryItemSchema).optional().nullable(),
 });
 
 // ============================================
@@ -260,13 +264,11 @@ export const resolvers = {
                     }
                     const { success, data, error } = createSupplierDeliverySchema.safeParse(input);
                     if (!success) {
-                      throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+                      throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
                     }
                     const payload = {
                         ...data,
-                        // supplierId: input.supplierId,
-                        // TODO: Replace this after testing
-                        supplierId: '53233271-d78a-451c-a676-132982542883',
+                        supplierId: data.supplierId,
                         organizationId: context.organizationId,
                         deliveryDate: new Date(data.deliveryDate),
                         orderDate: data.orderDate != null ? new Date(data.orderDate) : undefined,
@@ -334,7 +336,7 @@ export const resolvers = {
                 const { id, input } = args;
                 const { success: uSuccess, data: uData, error: uError } = updateSupplierDeliverySchema.safeParse(input);
                 if (!uSuccess) {
-                  throw new GraphQLError(prettifyError(uError), { extensions: { code: 'BAD_USER_INPUT' } });
+                  throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: uError.flatten().fieldErrors } });
                 }
                 const updatedBy = uData.updatedBy ?? context.user?.id ?? null;
                 const updateData: Partial<SupplierDeliveriesInsertType> = {
