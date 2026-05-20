@@ -631,6 +631,13 @@
       "when": 1779266804320,
       "tag": "0089_white_karma",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1779267527106,
+      "tag": "0090_faulty_hydra",
+      "breakpoints": true
     }
   ]
 }
