@@ -34,6 +34,12 @@ import { resolvers as suppliersResolvers } from '@/features/master-data/supplier
 import { resolvers as stockUnitResolvers } from '@/features/master-data/stock-unit.resolvers';
 import { resolvers as racksResolvers } from '@/features/master-data/racks.resolvers';
 import { resolvers as warehousesResolvers } from '@/features/master-data/warehouses.resolvers';
+import { resolvers as mapResolvers } from '@/features/master-data/map.resolvers';
+import { resolvers as areaResolvers } from '@/features/master-data/area.resolvers';
+import { resolvers as pickFaceStrategyResolvers } from '@/features/master-data/pick-face-strategy.resolvers';
+import { resolvers as pickupCriteriaResolvers } from '@/features/master-data/pickup-criteria.resolvers';
+import { resolvers as palletLabelResolvers } from '@/features/master-data/pallet-label.resolvers';
+import { resolvers as transportResolvers } from '@/features/master-data/transport.resolvers';
 import { resolvers as reportResolvers } from '@/features/report/report.resolvers';
 import { resolvers as documentsResolvers } from '@/features/documents/documents.resolvers';
 import { resolvers as dashboardResolvers } from '@/features/dashboard/dashboard.resolver';
@@ -130,6 +136,12 @@ export const resolvers = mergeResolvers([
   stockUnitResolvers,
   racksResolvers,
   warehousesResolvers,
+  mapResolvers,
+  areaResolvers,
+  pickFaceStrategyResolvers,
+  pickupCriteriaResolvers,
+  palletLabelResolvers,
+  transportResolvers,
   reportResolvers,
   documentsResolvers,
   dashboardResolvers,

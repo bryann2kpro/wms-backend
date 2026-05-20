@@ -1,8 +1,9 @@
 import { MainSchema } from "@/db/db.schema";
-import { uuid, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { uuid, text, timestamp, varchar, boolean } from "drizzle-orm/pg-core";
 import { RegionTable } from "./region.model";
 import { OrganizationsTable } from "@/features/master-data/organization.model";
 import { ZonesTable } from "@/features/master-data/zone.model";
+import { AreaTable } from "@/features/master-data/area.model";
 
 /**
  * Racks Table
@@ -24,6 +25,11 @@ export const RacksTable = MainSchema.table('m_racks', {
   rackRow: varchar('rack_row').notNull(),
   rackColumn: varchar('rack_column').notNull(),
   rackLevel: varchar('rack_level').notNull(),
+  areaId: uuid('area_id').references(() => AreaTable.areaId),
+  binType: text('bin_type').notNull().default('FIXED'),
+  binCode: text('bin_code'),
+  barCode: text('bar_code'),
+  isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   createdBy: text('created_by').notNull(),

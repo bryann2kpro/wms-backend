@@ -247,5 +247,12 @@ export const typeDefs = `#graphql
         Requires authentication.
         """
         deleteGrn(id: ID!): Boolean! @auth
+
+        """
+        Manually trigger putaway bin assignment for all items in a GRN.
+        Looks up each SKU's FIXED_BIN pick face strategy and sets grn_items.rackId.
+        Returns count of items updated.
+        """
+        assignPutawayBins(grnId: ID!): Int! @auth
     }
 `

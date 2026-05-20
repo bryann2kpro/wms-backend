@@ -139,3 +139,4 @@ pnpm-lock.yaml
 bun.lockb
 
 .wwebjs*
+.claude

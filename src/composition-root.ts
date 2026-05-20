@@ -32,6 +32,12 @@ import { SuppliersRepositoryClass } from '@/features/master-data/suppliers.repos
 import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repository.js';
 import { RacksRepositoryClass } from '@/features/master-data/racks.repository.js';
 import { WarehousesRepositoryClass } from '@/features/master-data/warehouses.repository.js';
+import { MapRepositoryClass } from '@/features/master-data/map.repository.js';
+import { AreaRepositoryClass } from '@/features/master-data/area.repository.js';
+import { PickFaceStrategyRepositoryClass } from '@/features/master-data/pick-face-strategy.repository.js';
+import { PickupCriteriaRepositoryClass } from '@/features/master-data/pickup-criteria.repository.js';
+import { PalletLabelRepositoryClass } from '@/features/master-data/pallet-label.repository.js';
+import { TransportRepositoryClass } from '@/features/master-data/transport.repository.js';
 import { AuditLogRepositoryClass } from './features/audit-log/audit.repository';
 import { ReportControllerClass } from './features/report/report.controller';
 // Inbound Repositories
@@ -40,6 +46,7 @@ import { GrnItemsRepositoryClass } from './features/inbound/grns-items.repositor
 import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplier-deliveries/supplier-delivery-item.repository';
 import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
 import { InboundServices } from './features/inbound/inbound.services';
+import { GrnPutawayService } from './features/inbound/grn-putaway.service';
 // Outbound Repositories & Services
 import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
@@ -101,6 +108,12 @@ export const suppliersRepository = new SuppliersRepositoryClass();
 export const stockUnitRepository = new StockUnitRepositoryClass();
 export const racksRepository = new RacksRepositoryClass();
 export const warehousesRepository = new WarehousesRepositoryClass();
+export const mapsRepository = new MapRepositoryClass();
+export const areasRepository = new AreaRepositoryClass();
+export const pickFaceStrategiesRepository = new PickFaceStrategyRepositoryClass();
+export const pickupCriteriasRepository = new PickupCriteriaRepositoryClass();
+export const palletLabelsRepository = new PalletLabelRepositoryClass();
+export const transportsRepository = new TransportRepositoryClass();
 
 // Inbound Repositories
 export const grnsRepository = new GrnsRepositoryClass(runningNoRepository);
@@ -140,6 +153,7 @@ export const outboundServices = new OutboundServices(
   purchaseOrdersRepository,
   inventoryMovementRepository,
   documentsRepository,
+  pickFaceStrategiesRepository,
 );
 
 // ============================================
@@ -177,6 +191,8 @@ export const inboundServices = new InboundServices(
 // API Keys
 export const apiKeysRepository = new ApiKeysRepositoryClass();
 export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
+
+export const grnPutawayService = new GrnPutawayService(grnItemsRepository, pickFaceStrategiesRepository);
 
 export const netSuiteService = new NetSuiteService();
 export const esItemReceiptService = new EsItemReceiptServiceClass(
