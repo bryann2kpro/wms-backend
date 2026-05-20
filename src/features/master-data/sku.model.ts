@@ -13,10 +13,17 @@ export const SkuTable = MainSchema.table('m_skus', {
   organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   skuCode: text('sku_code').notNull(),
   skuDescription: text('sku_description').notNull(),
-  skuPrice: numeric('sku_price', { precision: 6, scale: 2 }),
-  cartonQuantity: numeric('carton_quantity', { precision: 6, scale: 2 }).notNull().default('0'),
-  lossQuantity: numeric('loss_quantity', { precision: 6, scale: 2 }).notNull().default('0'),
-
+  barcode: text('barcode'),
+  brand: text('brand'),
+  category: text('category'),
+  manufacturer: text('manufacturer'),
+  caseRate: numeric('case_rate', { precision: 12, scale: 2 }),
+  caseExtLengthMm: numeric('case_ext_length_mm', { precision: 12, scale: 3 }),
+  caseExtWidthMm: numeric('case_ext_width_mm', { precision: 12, scale: 3 }),
+  caseExtHeightMm: numeric('case_ext_height_mm', { precision: 12, scale: 3 }),
+  caseGrossWeightKg: numeric('case_gross_weight_kg', { precision: 12, scale: 3 }),
+  casesPerLayer: numeric('cases_per_layer', { precision: 12, scale: 3 }),
+  noOfLayers: numeric('no_of_layers', { precision: 12, scale: 3 }),
   skuExpiryDate: timestamp('sku_expiry_date', { withTimezone: true }),
   /**
    * SKU Suppliers - Array of supplier references with original SKU codes

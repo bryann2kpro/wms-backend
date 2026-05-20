@@ -20,10 +20,17 @@ const createSkuSchema = z.object({
   skuDescription: z.string().min(1, 'SKU description is required'),
   skuUom: z.string().min(1, 'Unit of measure is required'),
   isActive: z.boolean(),
-  skuPrice: z.number().nonnegative().optional(),
-  skuQuantity: z.number().nonnegative().optional(),
-  cartonQuantity: z.number().nonnegative().optional(),
-  lossQuantity: z.number().nonnegative().optional().nullable(),
+  barcode: z.string().optional().nullable(),
+  brand: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  manufacturer: z.string().optional().nullable(),
+  caseRate: z.number().nonnegative().optional().nullable(),
+  caseExtLengthMm: z.number().nonnegative().optional().nullable(),
+  caseExtWidthMm: z.number().nonnegative().optional().nullable(),
+  caseExtHeightMm: z.number().nonnegative().optional().nullable(),
+  caseGrossWeightKg: z.number().nonnegative().optional().nullable(),
+  casesPerLayer: z.number().nonnegative().optional().nullable(),
+  noOfLayers: z.number().nonnegative().optional().nullable(),
   skuExpiryDate: z.string().optional().nullable(),
   skuSuppliers: z.array(z.object({
     supplierId: z.string().uuid('Invalid supplier ID'),
@@ -40,9 +47,17 @@ const updateSkuSchema = z.object({
   skuDescription: z.string().min(1).optional(),
   skuUom: z.string().min(1).optional(),
   isActive: z.boolean().optional(),
-  skuPrice: z.number().nonnegative().optional(),
-  skuQuantity: z.number().nonnegative().optional(),
-  lossQuantity: z.number().nonnegative().optional().nullable(),
+  barcode: z.string().optional().nullable(),
+  brand: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  manufacturer: z.string().optional().nullable(),
+  caseRate: z.number().nonnegative().optional().nullable(),
+  caseExtLengthMm: z.number().nonnegative().optional().nullable(),
+  caseExtWidthMm: z.number().nonnegative().optional().nullable(),
+  caseExtHeightMm: z.number().nonnegative().optional().nullable(),
+  caseGrossWeightKg: z.number().nonnegative().optional().nullable(),
+  casesPerLayer: z.number().nonnegative().optional().nullable(),
+  noOfLayers: z.number().nonnegative().optional().nullable(),
   skuExpiryDate: z.string().optional().nullable(),
   skuSuppliers: z.array(z.object({
     supplierId: z.string().uuid('Invalid supplier ID'),
@@ -80,15 +95,23 @@ function transformSupplier(supplier: {
 }
 
 /**
- * Transform SKU for GraphQL response (model has carton_Quantity -> skuQuantity, loss_Quantity -> lossQuantity)
+ * Transform SKU for GraphQL response
  */
 function transformSku(sku: {
   skuId: string;
   skuCode: string;
   skuDescription: string;
-  skuPrice: string | null;
-  cartonQuantity: string;
-  lossQuantity: string;
+  barcode: string | null;
+  brand: string | null;
+  category: string | null;
+  manufacturer: string | null;
+  caseRate: string | null;
+  caseExtLengthMm: string | null;
+  caseExtWidthMm: string | null;
+  caseExtHeightMm: string | null;
+  caseGrossWeightKg: string | null;
+  casesPerLayer: string | null;
+  noOfLayers: string | null;
   skuExpiryDate: Date | null;
   skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }> | null;
   skuUom: string;
@@ -103,9 +126,17 @@ function transformSku(sku: {
     skuId: sku.skuId,
     skuCode: sku.skuCode,
     skuDescription: sku.skuDescription,
-    skuPrice: sku.skuPrice ? parseFloat(sku.skuPrice) : null,
-    skuQuantity: parseFloat(sku.cartonQuantity),
-    lossQuantity: parseFloat(sku.lossQuantity),
+    barcode: sku.barcode,
+    brand: sku.brand,
+    category: sku.category,
+    manufacturer: sku.manufacturer,
+    caseRate: sku.caseRate ? parseFloat(sku.caseRate) : null,
+    caseExtLengthMm: sku.caseExtLengthMm ? parseFloat(sku.caseExtLengthMm) : null,
+    caseExtWidthMm: sku.caseExtWidthMm ? parseFloat(sku.caseExtWidthMm) : null,
+    caseExtHeightMm: sku.caseExtHeightMm ? parseFloat(sku.caseExtHeightMm) : null,
+    caseGrossWeightKg: sku.caseGrossWeightKg ? parseFloat(sku.caseGrossWeightKg) : null,
+    casesPerLayer: sku.casesPerLayer ? parseFloat(sku.casesPerLayer) : null,
+    noOfLayers: sku.noOfLayers ? parseFloat(sku.noOfLayers) : null,
     skuExpiryDate: sku.skuExpiryDate ? sku.skuExpiryDate.toISOString() : null,
     skuUom: sku.skuUom,
     pickingStrategy: sku.pickingStrategy,
@@ -259,14 +290,21 @@ export const resolvers = {
         action: 'CREATE',
         getEntityId: (result): string | null =>
           result && typeof result === 'object' && 'skuId' in result ? result.skuId : null,
-      }, 
+    }, 
       async (_: unknown, { input }: { input: {
       skuCode: string;
       skuDescription: string;
-      skuPrice?: number;
-      skuQuantity?: number;
-      cartonQuantity?: number;
-      lossQuantity?: number | null;
+      barcode?: string | null;
+      brand?: string | null;
+      category?: string | null;
+      manufacturer?: string | null;
+      caseRate?: number | null;
+      caseExtLengthMm?: number | null;
+      caseExtWidthMm?: number | null;
+      caseExtHeightMm?: number | null;
+      caseGrossWeightKg?: number | null;
+      casesPerLayer?: number | null;
+      noOfLayers?: number | null;
       skuExpiryDate?: string | Date | null;
       skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }>;
       skuUom: string;
@@ -283,8 +321,6 @@ export const resolvers = {
         }
         const createdBy = data.createdBy ?? context.user?.id ?? 'system';
         const updatedBy = data.updatedBy ?? context.user?.id ?? 'system';
-        // GraphQL schema uses skuQuantity; map to cartonQuantity for DB
-        const cartonQty = data.skuQuantity ?? data.cartonQuantity ?? 0;
         let expiryDate: Date | null = null;
         if (data.skuExpiryDate != null && data.skuExpiryDate !== '') {
           expiryDate = new Date(data.skuExpiryDate);
@@ -303,9 +339,17 @@ export const resolvers = {
           organizationId: context.organizationId,
           skuCode: data.skuCode,
           skuDescription: data.skuDescription,
-          skuPrice: data.skuPrice?.toString(),
-          cartonQuantity: String(cartonQty),
-          lossQuantity: (data.lossQuantity != null ? data.lossQuantity : 0).toString(),
+          barcode: data.barcode ?? null,
+          brand: data.brand ?? null,
+          category: data.category ?? null,
+          manufacturer: data.manufacturer ?? null,
+          caseRate: data.caseRate != null ? String(data.caseRate) : null,
+          caseExtLengthMm: data.caseExtLengthMm != null ? String(data.caseExtLengthMm) : null,
+          caseExtWidthMm: data.caseExtWidthMm != null ? String(data.caseExtWidthMm) : null,
+          caseExtHeightMm: data.caseExtHeightMm != null ? String(data.caseExtHeightMm) : null,
+          caseGrossWeightKg: data.caseGrossWeightKg != null ? String(data.caseGrossWeightKg) : null,
+          casesPerLayer: data.casesPerLayer != null ? String(data.casesPerLayer) : null,
+          noOfLayers: data.noOfLayers != null ? String(data.noOfLayers) : null,
           skuExpiryDate: expiryDate,
           skuSuppliers: skuSuppliersData ?? null,
           skuUom: data.skuUom,
@@ -338,9 +382,17 @@ export const resolvers = {
       async (_: unknown, { id, input }: { id: string; input: {
       skuCode?: string;
       skuDescription?: string;
-      skuPrice?: number;
-      skuQuantity?: number;
-      lossQuantity?: number | null;
+      barcode?: string | null;
+      brand?: string | null;
+      category?: string | null;
+      manufacturer?: string | null;
+      caseRate?: number | null;
+      caseExtLengthMm?: number | null;
+      caseExtWidthMm?: number | null;
+      caseExtHeightMm?: number | null;
+      caseGrossWeightKg?: number | null;
+      casesPerLayer?: number | null;
+      noOfLayers?: number | null;
       skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }> | null;
       skuExpiryDate?: string | Date | null;
       skuUom?: string;
@@ -360,15 +412,17 @@ export const resolvers = {
 
         if (uData.skuCode !== undefined) updateData.skuCode = uData.skuCode;
         if (uData.skuDescription !== undefined) updateData.skuDescription = uData.skuDescription;
-        if (uData.skuPrice !== undefined) {
-          updateData.skuPrice = uData.skuPrice == null ? null : String(uData.skuPrice);
-        }
-        if (uData.skuQuantity !== undefined) {
-          updateData.cartonQuantity = String(uData.skuQuantity);
-        }
-        if (uData.lossQuantity !== undefined) {
-          updateData.lossQuantity = String(uData.lossQuantity);
-        }
+        if (uData.barcode !== undefined) updateData.barcode = uData.barcode;
+        if (uData.brand !== undefined) updateData.brand = uData.brand;
+        if (uData.category !== undefined) updateData.category = uData.category;
+        if (uData.manufacturer !== undefined) updateData.manufacturer = uData.manufacturer;
+        if (uData.caseRate !== undefined) updateData.caseRate = uData.caseRate == null ? null : String(uData.caseRate);
+        if (uData.caseExtLengthMm !== undefined) updateData.caseExtLengthMm = uData.caseExtLengthMm == null ? null : String(uData.caseExtLengthMm);
+        if (uData.caseExtWidthMm !== undefined) updateData.caseExtWidthMm = uData.caseExtWidthMm == null ? null : String(uData.caseExtWidthMm);
+        if (uData.caseExtHeightMm !== undefined) updateData.caseExtHeightMm = uData.caseExtHeightMm == null ? null : String(uData.caseExtHeightMm);
+        if (uData.caseGrossWeightKg !== undefined) updateData.caseGrossWeightKg = uData.caseGrossWeightKg == null ? null : String(uData.caseGrossWeightKg);
+        if (uData.casesPerLayer !== undefined) updateData.casesPerLayer = uData.casesPerLayer == null ? null : String(uData.casesPerLayer);
+        if (uData.noOfLayers !== undefined) updateData.noOfLayers = uData.noOfLayers == null ? null : String(uData.noOfLayers);
         if (uData.skuExpiryDate !== undefined) {
           const raw = uData.skuExpiryDate;
           if (raw === null || raw === '') {
