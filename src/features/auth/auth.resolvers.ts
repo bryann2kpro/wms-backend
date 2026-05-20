@@ -12,7 +12,7 @@ import type { GraphQLContext } from '@/graphql/context';
 import { comparePassword, hashPassword } from '@/util/password';
 import { GraphQLError } from 'graphql';
 import { logger } from '@/util/logger';
-import { prettifyError, z } from 'zod';
+import { z } from 'zod';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email format'),
@@ -182,7 +182,7 @@ export const resolvers = {
     login: async (_: unknown, { input }: { input: { email: string; password: string } }) => {
       const { success, data, error } = loginSchema.safeParse(input);
       if (!success) {
-        throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+        throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
       }
       const { email, password } = data;
       
@@ -254,7 +254,7 @@ export const resolvers = {
     createUser: async (_: unknown, { input }: { input: { email: string; displayName: string; password: string; roleId: string; organizationId: string; contactNo?: string | null } }) => {
       const { success, data, error } = createUserSchema.safeParse(input);
       if (!success) {
-        throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+        throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
       }
       const { email, displayName, password, roleId, organizationId, contactNo } = data;
       logger.info('ℹ️ [GraphQL.createUser] Creating user...', email);
@@ -300,7 +300,7 @@ export const resolvers = {
     updateUser: async (_: unknown, { id, input }: { id: string; input: { displayName?: string | null; contactNo?: string | null; isActive?: boolean | null; roleId?: string | null; password?: string | null } }) => {
       const { success, data, error } = updateUserSchema.safeParse(input);
       if (!success) {
-        throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+        throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
       }
       logger.info('ℹ️ [GraphQL.updateUser] Updating user:', id);
 

@@ -4,7 +4,7 @@
  * @description Resolver functions for Warehouse operations.
  */
 
-import { prettifyError, z } from "zod";
+import { z } from "zod";
 import { warehousesRepository, authRepository } from "@/composition-root";
 import { withAudit } from "@/features/audit-log/audit.wrapper";
 import { GraphQLError } from "graphql/error";
@@ -85,7 +85,7 @@ export const resolvers = {
       if (args.filter) {
         const { success, data, error } = warehouseFilterSchema.safeParse(args.filter);
         if (!success) {
-          throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
         }
         if (data.warehouseIds) filter.warehouseId = data.warehouseIds;
         if (data.warehouseCodes) filter.warehouseCode = data.warehouseCodes;
@@ -195,10 +195,8 @@ export const resolvers = {
         const { success, data, error } = createWarehouseSchema.safeParse(input);
 
         if (!success) {
-          logger.warn("⚠️ [WarehousesResolvers.createWarehouse] Invalid input:", prettifyError(error));
-          throw new GraphQLError("Invalid input", {
-            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
-          });
+          logger.warn("⚠️ [WarehousesResolvers.createWarehouse] Invalid input:", error.flatten().fieldErrors);
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
         }
         logger.info("ℹ️ [WarehousesResolvers.createWarehouse] Input validated successfully");
         logger.debug("🔍 [WarehousesResolvers.createWarehouse] Data:", data);
@@ -256,10 +254,8 @@ export const resolvers = {
         const { success, data, error } = updateWarehouseSchema.safeParse(input);
 
         if (!success) {
-          logger.warn("⚠️ [WarehousesResolvers.updateWarehouse] Invalid input:", prettifyError(error));
-          throw new GraphQLError("Invalid input", {
-            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
-          });
+          logger.warn("⚠️ [WarehousesResolvers.updateWarehouse] Invalid input:", error.flatten().fieldErrors);
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
         }
 
         logger.info("ℹ️ [WarehousesResolvers.updateWarehouse] Input validated successfully");

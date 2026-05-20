@@ -12,7 +12,7 @@ import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { logger } from '@/util/logger';
 import { SkuType } from './sku.repository';
-import { prettifyError, z } from 'zod';
+import { z } from 'zod';
 import { GraphQLError } from 'graphql';
 
 const createSkuSchema = z.object({
@@ -279,7 +279,7 @@ export const resolvers = {
       try {
         const { success, data, error } = createSkuSchema.safeParse(input);
         if (!success) {
-          throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
         }
         const createdBy = data.createdBy ?? context.user?.id ?? 'system';
         const updatedBy = data.updatedBy ?? context.user?.id ?? 'system';
@@ -351,7 +351,7 @@ export const resolvers = {
       try {
         const { success: uSuccess, data: uData, error: uError } = updateSkuSchema.safeParse(input);
         if (!uSuccess) {
-          throw new GraphQLError(prettifyError(uError), { extensions: { code: 'BAD_USER_INPUT' } });
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: uError.flatten().fieldErrors } });
         }
         const updatedBy = uData.updatedBy ?? context.user?.id ?? 'system';
         const updateData: Record<string, unknown> = {
