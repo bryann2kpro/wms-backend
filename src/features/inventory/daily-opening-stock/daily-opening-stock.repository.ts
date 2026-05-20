@@ -47,7 +47,7 @@ export class DailyOpeningStockRepositoryClass {
         s.sku_id,
         COALESCE(ib.on_hand_qty, 0),
         COALESCE(ib.loss_qty, 0)
-      FROM main.skus s
+      FROM main.m_skus s
       LEFT JOIN main.inventory_balances ib ON ib.sku_id = s.sku_id
       WHERE s.organization_id = ${organizationId}::uuid
       ON CONFLICT (organization_id, record_date, sku_id) DO NOTHING
