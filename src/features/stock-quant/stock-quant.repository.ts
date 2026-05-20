@@ -4,7 +4,7 @@
  * @description Data access for `stock_quant` rows (quantity per SKU and rack).
  */
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { logger } from "@/util/logger";
 import { pagination, PgQueryType } from "@/util/pagination";
@@ -69,6 +69,7 @@ export class StockQuantRepositoryClass {
         .select({
           id: StockQuantTable.id,
           skuId: StockQuantTable.skuId,
+          lotNo: StockQuantTable.lotNo,
           description: StockQuantTable.description,
           quantity: StockQuantTable.quantity,
           rackId: StockQuantTable.rackId,
@@ -132,22 +133,55 @@ export class StockQuantRepositoryClass {
     rackId: string,
     tx?: DbTransaction,
   ): Promise<StockQuantType | null> {
+    return this.getStockQuantBySkuRackAndLot(
+      organizationId,
+      skuId,
+      rackId,
+      null,
+      tx,
+    );
+  }
+
+  /**
+   * Find stock quant by SKU, rack, and lot. Empty/null lot matches rows without a lot number.
+   */
+  async getStockQuantBySkuRackAndLot(
+    organizationId: string,
+    skuId: string,
+    rackId: string,
+    lotNo: string | null | undefined,
+    tx?: DbTransaction,
+  ): Promise<StockQuantType | null> {
     try {
       const client = tx ?? db;
+      const lotTrimmed = (lotNo ?? "").trim();
+
+      const conditions = [
+        eq(StockQuantTable.organizationId, organizationId),
+        eq(StockQuantTable.skuId, skuId),
+        eq(StockQuantTable.rackId, rackId),
+      ];
+
+      if (lotTrimmed === "") {
+        conditions.push(
+          or(
+            isNull(StockQuantTable.lotNo),
+            eq(StockQuantTable.lotNo, ""),
+            sql`trim(coalesce(${StockQuantTable.lotNo}, '')) = ''`,
+          )!,
+        );
+      } else {
+        conditions.push(eq(StockQuantTable.lotNo, lotTrimmed));
+      }
+
       const rows = await client
         .select()
         .from(StockQuantTable)
-        .where(
-          and(
-            eq(StockQuantTable.organizationId, organizationId),
-            eq(StockQuantTable.skuId, skuId),
-            eq(StockQuantTable.rackId, rackId),
-          ),
-        )
+        .where(and(...conditions))
         .limit(1);
       return rows[0] ?? null;
     } catch (error) {
-      logger.error("❌ [StockQuantRepository.getStockQuantBySkuAndRack]", error);
+      logger.error("❌ [StockQuantRepository.getStockQuantBySkuRackAndLot]", error);
       throw error;
     }
   }
