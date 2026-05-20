@@ -77,10 +77,60 @@ function transformGrnItem(
 }
 
 type CreateInboundResolverItemInput = {
+    skuId?: string | null;
     skuCode?: string | null;
     lotNo?: string | null;
     expiryDate?: string | null;
 };
+
+async function assertSkuLotExpiryControls(
+    items: CreateInboundResolverItemInput[] | null | undefined,
+    organizationId?: string,
+) {
+    if (!items?.length) return;
+
+    for (const item of items) {
+        let sku: Awaited<ReturnType<typeof skuRepository.getSkuById>> | null = null;
+        if (item.skuId) {
+            sku = await skuRepository.getSkuById(item.skuId, undefined, organizationId);
+        } else if (item.skuCode?.trim()) {
+            const result = await skuRepository.getSku(
+                { skuCode: item.skuCode.trim() },
+                { pageSize: 1, pageNumber: 1 },
+                undefined,
+                organizationId,
+            );
+            sku = result.query[0] ?? null;
+        }
+        if (!sku) continue;
+
+        const label = sku.skuCode ?? item.skuCode ?? 'SKU';
+        if (sku.isLotControlled && !(item.lotNo ?? '').trim()) {
+            throw new GraphQLError(`${label} requires a lot number.`, {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+        if (sku.isExpiryControlled && !(item.expiryDate ?? '').trim()) {
+            throw new GraphQLError(`${label} requires an expiry date.`, {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+    }
+}
+
+type GrnItemRackInput = { rackId?: string | null; rackIds?: string[] | null };
+
+function assertSingleRackPerGrnItem(items: GrnItemRackInput[] | null | undefined) {
+    if (!items?.length) return;
+    for (const item of items) {
+        const rackIds = (item.rackIds ?? []).filter((id): id is string => Boolean(id?.trim()));
+        if (rackIds.length > 1) {
+            throw new GraphQLError('Each GRN line item may have only one rack.', {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+    }
+}
 
 async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
     advanceNoticeId?: string | null;
@@ -358,6 +408,8 @@ export const resolvers = {
                     advanceNoticeId: input.advanceNoticeId,
                     items: input.items,
                 });
+                assertSingleRackPerGrnItem(input.items);
+                await assertSkuLotExpiryControls(input.items, context.organizationId ?? undefined);
                 const result = await inboundServices.createInbound({
                     userId: input.userId,
                     organizationId: context.organizationId!,
@@ -429,6 +481,12 @@ export const resolvers = {
                             extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
                         });
                     }
+
+                    assertSingleRackPerGrnItem(input.items);
+                    await assertSkuLotExpiryControls(
+                        input.items,
+                        context.organizationId ?? undefined,
+                    );
 
                     if (input.supplierDeliveryNo) {
                         const existingDo = await supplierDeliveriesRepository.getSupplierDeliveries(
@@ -630,6 +688,14 @@ export const resolvers = {
                     if (!existingGrn) {
                         logger.error('[grns.resolvers]: GRN not found', { id });
                         return false;
+                    }
+
+                    if (input.items?.length) {
+                        assertSingleRackPerGrnItem(input.items);
+                        await assertSkuLotExpiryControls(
+                            input.items,
+                            context.organizationId ?? undefined,
+                        );
                     }
 
                     if (input.grnNo != null && input.grnNo !== existingGrn.grnNo) {

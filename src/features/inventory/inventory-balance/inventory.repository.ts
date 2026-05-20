@@ -68,6 +68,7 @@ export class InventoryBalanceRepositoryClass {
           skuCode: SkuTable.skuCode,
           skuDescription: SkuTable.skuDescription,
           pickingStrategy: SkuTable.pickingStrategy,
+          isExpiryControlled: SkuTable.isExpiryControlled,
           skuExpiryDate: SkuTable.skuExpiryDate,
           unitCode: StockUnitTable.unitCode,
           unitName: StockUnitTable.unitName,

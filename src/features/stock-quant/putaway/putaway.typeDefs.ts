@@ -21,6 +21,7 @@ export const typeDefs = `#graphql
     destinationRackId: ID!
     destinationRackLabel: String
     sourceStockQuantId: ID!
+    sourceLotNo: String
     quantity: String!
     failureMessage: String
     createdAt: String!
@@ -36,6 +37,8 @@ export const typeDefs = `#graphql
     sourceStockQuantId: ID!
     destinationRackId: ID!
     quantity: String!
+    """Lot snapshot at draft time; omit or null when stock has no lot."""
+    sourceLotNo: String
   }
 
   input PutawayLinesFilterInput {

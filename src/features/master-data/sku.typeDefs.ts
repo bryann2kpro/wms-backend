@@ -36,6 +36,10 @@ export const typeDefs = `#graphql
     skuExpiryDate: String
     """Stock picking strategy for outbound allocation: FIFO (default) | LIFO | FEFO"""
     pickingStrategy: String!
+    """When true, lot numbers are required/tracked for this SKU."""
+    isLotControlled: Boolean!
+    """When true, expiry dates are required/tracked; enables FEFO picking strategy."""
+    isExpiryControlled: Boolean!
     """
     Optional per-expiry / per-rack batch details for this SKU.
     Each entry represents a distinct expiry date and the rack IDs where that batch is stored.
@@ -112,6 +116,8 @@ export const typeDefs = `#graphql
     isActive: Boolean
     """Picking strategy: FIFO | LIFO | FEFO"""
     pickingStrategy: String
+    isLotControlled: Boolean
+    isExpiryControlled: Boolean
     updatedBy: String
   }
 

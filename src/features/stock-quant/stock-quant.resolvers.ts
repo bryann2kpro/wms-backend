@@ -21,6 +21,7 @@ function transformStockQuant(row: any) {
     quantity: row.quantity?.toString?.() ?? "0",
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
+    expiryDate: toIso(row.expiryDate),
   };
 }
 

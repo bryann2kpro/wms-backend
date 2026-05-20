@@ -42,6 +42,10 @@ export const SkuTable = MainSchema.table('m_skus', {
    * Admin can also flag specific grn_items.priority_flag = true as an overlay.
    */
   pickingStrategy: text('picking_strategy').notNull().default('FIFO'),
+  /** When true, lot numbers are required/tracked for this SKU. */
+  isLotControlled: boolean('is_lot_controlled').notNull().default(false),
+  /** When true, expiry dates are required/tracked; enables FEFO picking strategy. */
+  isExpiryControlled: boolean('is_expiry_controlled').notNull().default(false),
   skuUom: uuid('sku_unit_of_measurement').notNull().references(() => StockUnitTable.stockUnitId),
   isActive: boolean('is_active').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

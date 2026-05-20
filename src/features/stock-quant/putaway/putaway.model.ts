@@ -13,6 +13,7 @@ export const PutawayTable = MainSchema.table("putaway", {
   skuId: uuid("sku_id")
     .notNull()
     .references(() => SkuTable.skuId),
+  lotNo: text("lot_no"),
   description: text("description"),
   sourceRackId: uuid("source_rack_id")
     .notNull()
