@@ -138,6 +138,25 @@ function getDefaultWeekRangeInBusinessTZ(): [Date, Date] {
   return [start, end];
 }
 
+/** Build week entries in business TZ, newest day first; one slot per calendar day. */
+function buildPurchaseOrderWeekEntries(
+  fromDate: Date,
+  toDate: Date,
+  byDate: Map<string, PurchaseOrderType[]>
+): Array<{ date: string; orders: PurchaseOrderType[] }> {
+  const entries: Array<{ date: string; orders: PurchaseOrderType[] }> = [];
+  let dayStart = getDayBoundsInBusinessTZ(fromDate).start;
+  const lastDayStart = getDayBoundsInBusinessTZ(toDate).start;
+
+  while (dayStart.getTime() <= lastDayStart.getTime()) {
+    const key = formatDateKeyBusinessTZ(dayStart);
+    entries.unshift({ date: key, orders: byDate.get(key) ?? [] });
+    dayStart = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  }
+
+  return entries;
+}
+
 function transformDeliveryOrder(order: DeliveryOrderType) {
   return {
     id: order.id,
@@ -307,10 +326,8 @@ export const resolvers = {
         let fromDate: Date;
         let toDate: Date;
         if (filter.scheduledDeliveryDateFrom && filter.scheduledDeliveryDateTo) {
-          fromDate = new Date(filter.scheduledDeliveryDateFrom);
-          toDate = new Date(filter.scheduledDeliveryDateTo);
-          fromDate.setUTCHours(0, 0, 0, 0);
-          toDate.setUTCHours(23, 59, 59, 999);
+          fromDate = getDayBoundsInBusinessTZ(new Date(filter.scheduledDeliveryDateFrom)).start;
+          toDate = getDayBoundsInBusinessTZ(new Date(filter.scheduledDeliveryDateTo)).end;
         } else {
           [fromDate, toDate] = getDefaultWeekRangeInBusinessTZ();
         }
@@ -334,13 +351,7 @@ export const resolvers = {
           }
         }
 
-        const entries: Array<{ date: string; orders: PurchaseOrderType[] }> = [];
-        const cursor = new Date(toDate);
-        while (cursor >= fromDate) {
-          const key = formatDateKeyBusinessTZ(cursor);
-          entries.push({ date: key, orders: byDate.get(key) ?? [] });
-          cursor.setUTCDate(cursor.getUTCDate() - 1);
-        }
+        const entries = buildPurchaseOrderWeekEntries(fromDate, toDate, byDate);
 
         return entries.map((e) => ({
           date: e.date,
