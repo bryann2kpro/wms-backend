@@ -20,7 +20,7 @@ const createSkuSchema = z.object({
   skuDescription: z.string().min(1, 'SKU description is required'),
   skuUom: z.string().min(1, 'Unit of measure is required'),
   isActive: z.boolean(),
-  skuPrice: z.number().nonnegative().optional(),
+  skuPrice: z.number().nonnegative().optional().nullable(),
   skuQuantity: z.number().nonnegative().optional(),
   cartonQuantity: z.number().nonnegative().optional(),
   lossQuantity: z.number().nonnegative().optional().nullable(),
@@ -30,6 +30,8 @@ const createSkuSchema = z.object({
     originalSkuCode: z.string().optional().nullable(),
   })).optional(),
   pickingStrategy: z.enum(['FIFO', 'LIFO', 'FEFO']).optional().nullable(),
+  isLotControlled: z.boolean().optional(),
+  isExpiryControlled: z.boolean().optional(),
   initialOnHandQty: z.number().nonnegative().optional().nullable(),
   createdBy: z.string().optional().nullable(),
   updatedBy: z.string().optional().nullable(),
@@ -40,7 +42,7 @@ const updateSkuSchema = z.object({
   skuDescription: z.string().min(1).optional(),
   skuUom: z.string().min(1).optional(),
   isActive: z.boolean().optional(),
-  skuPrice: z.number().nonnegative().optional(),
+  skuPrice: z.number().nonnegative().optional().nullable(),
   skuQuantity: z.number().nonnegative().optional(),
   lossQuantity: z.number().nonnegative().optional().nullable(),
   skuExpiryDate: z.string().optional().nullable(),
@@ -49,8 +51,21 @@ const updateSkuSchema = z.object({
     originalSkuCode: z.string().optional().nullable(),
   })).optional().nullable(),
   pickingStrategy: z.enum(['FIFO', 'LIFO', 'FEFO']).optional().nullable(),
+  isLotControlled: z.boolean().optional(),
+  isExpiryControlled: z.boolean().optional(),
   updatedBy: z.string().optional().nullable(),
 });
+
+function resolvePickingStrategy(
+  pickingStrategy: string | null | undefined,
+  isExpiryControlled: boolean,
+): string {
+  const strategy = pickingStrategy ?? 'FIFO';
+  if (strategy === 'FEFO' && !isExpiryControlled) {
+    return 'FIFO';
+  }
+  return strategy;
+}
 
 // ============================================
 // HELPER FUNCTIONS
@@ -93,6 +108,8 @@ function transformSku(sku: {
   skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }> | null;
   skuUom: string;
   pickingStrategy: string;
+  isLotControlled: boolean;
+  isExpiryControlled: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -109,6 +126,8 @@ function transformSku(sku: {
     skuExpiryDate: sku.skuExpiryDate ? sku.skuExpiryDate.toISOString() : null,
     skuUom: sku.skuUom,
     pickingStrategy: sku.pickingStrategy,
+    isLotControlled: sku.isLotControlled,
+    isExpiryControlled: sku.isExpiryControlled,
     skuSuppliers: sku.skuSuppliers ?? [],
     isActive: sku.isActive,
     createdAt: sku.createdAt.toISOString(),
@@ -272,6 +291,8 @@ export const resolvers = {
       skuUom: string;
       isActive: boolean;
       pickingStrategy?: string | null;
+      isLotControlled?: boolean;
+      isExpiryControlled?: boolean;
       initialOnHandQty?: number | null;
       createdBy?: string | null;
       updatedBy?: string | null;
@@ -299,6 +320,8 @@ export const resolvers = {
             extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
           });
         }
+        const isExpiryControlled = data.isExpiryControlled ?? false;
+        const isLotControlled = data.isLotControlled ?? false;
         const sku = await skuRepository.createSku({
           organizationId: context.organizationId,
           skuCode: data.skuCode,
@@ -309,7 +332,9 @@ export const resolvers = {
           skuExpiryDate: expiryDate,
           skuSuppliers: skuSuppliersData ?? null,
           skuUom: data.skuUom,
-          pickingStrategy: data.pickingStrategy ?? 'FIFO',
+          pickingStrategy: resolvePickingStrategy(data.pickingStrategy, isExpiryControlled),
+          isLotControlled,
+          isExpiryControlled,
           isActive: data.isActive,
           createdBy,
           updatedBy,
@@ -346,6 +371,8 @@ export const resolvers = {
       skuUom?: string;
       isActive?: boolean;
       pickingStrategy?: string | null;
+      isLotControlled?: boolean;
+      isExpiryControlled?: boolean;
       updatedBy?: string | null;
     }}, context: GraphQLContext) => {
       try {
@@ -385,18 +412,46 @@ export const resolvers = {
         }
         if (uData.skuUom !== undefined) updateData.skuUom = uData.skuUom;
         if (uData.isActive !== undefined) updateData.isActive = uData.isActive;
+        if (uData.isLotControlled !== undefined) {
+          updateData.isLotControlled = uData.isLotControlled;
+        }
+        if (uData.isExpiryControlled !== undefined) {
+          updateData.isExpiryControlled = uData.isExpiryControlled;
+        }
+
+        const existingSku = await skuRepository.getSkuById(id);
+        const nextIsExpiryControlled =
+          uData.isExpiryControlled ?? existingSku?.isExpiryControlled ?? false;
+
         if (uData.pickingStrategy !== undefined && uData.pickingStrategy !== null) {
-          updateData.pickingStrategy = uData.pickingStrategy;
+          updateData.pickingStrategy = resolvePickingStrategy(
+            uData.pickingStrategy,
+            nextIsExpiryControlled,
+          );
+        } else if (
+          uData.isExpiryControlled === false &&
+          existingSku?.pickingStrategy === 'FEFO'
+        ) {
+          updateData.pickingStrategy = 'FIFO';
         }
 
         const sku = await skuRepository.updateSku(id, updateData);
-        if (!sku) return null;
-        
+        if (!sku) {
+          throw new GraphQLError('SKU not found or update failed', {
+            extensions: { code: 'NOT_FOUND' },
+          });
+        }
+
         return transformSku(sku);
-        
       } catch (error) {
         logger.error('[sku.resolvers.updateSku] Error:', error);
-        return null;
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
+        throw new GraphQLError(
+          error instanceof Error ? error.message : 'Failed to update SKU',
+          { extensions: { code: 'INTERNAL_SERVER_ERROR' } },
+        );
       }
     }),
 

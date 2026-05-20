@@ -20,6 +20,7 @@ export const typeDefs = `#graphql
     skuCode: String!
     skuDescription: String!
     pickingStrategy: String!
+    isExpiryControlled: Boolean!
     skuExpiryDate: String
     unitCode: String
     unitName: String
