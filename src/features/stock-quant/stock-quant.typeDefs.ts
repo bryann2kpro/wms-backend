@@ -18,6 +18,7 @@ export const typeDefs = `#graphql
     rackId: ID!
     rackLabel: String
     lotNo: String
+    expiryDate: String
     organizationId: ID!
     createdAt: String!
     updatedAt: String!

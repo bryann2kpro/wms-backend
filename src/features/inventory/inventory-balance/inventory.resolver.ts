@@ -29,6 +29,7 @@ function transformInventoryBalance(row: {
   skuCode?: string;
   skuDescription?: string;
   pickingStrategy?: string;
+  isExpiryControlled?: boolean;
   skuExpiryDate?: Date | null;
   unitCode?: string | null;
   unitName?: string | null;
@@ -43,6 +44,7 @@ function transformInventoryBalance(row: {
     skuCode: row.skuCode ?? "",
     skuDescription: row.skuDescription ?? "",
     pickingStrategy: row.pickingStrategy ?? "FIFO",
+    isExpiryControlled: row.isExpiryControlled ?? false,
     skuExpiryDate: row.skuExpiryDate instanceof Date ? row.skuExpiryDate.toISOString() : (row.skuExpiryDate ?? null),
     unitCode: row.unitCode ?? null,
     unitName: row.unitName ?? null,

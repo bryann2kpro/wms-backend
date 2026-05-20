@@ -70,6 +70,7 @@ export class StockQuantRepositoryClass {
           id: StockQuantTable.id,
           skuId: StockQuantTable.skuId,
           lotNo: StockQuantTable.lotNo,
+          expiryDate: StockQuantTable.expiryDate,
           description: StockQuantTable.description,
           quantity: StockQuantTable.quantity,
           rackId: StockQuantTable.rackId,
