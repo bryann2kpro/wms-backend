@@ -118,6 +118,20 @@ async function assertSkuLotExpiryControls(
     }
 }
 
+type GrnItemRackInput = { rackId?: string | null; rackIds?: string[] | null };
+
+function assertSingleRackPerGrnItem(items: GrnItemRackInput[] | null | undefined) {
+    if (!items?.length) return;
+    for (const item of items) {
+        const rackIds = (item.rackIds ?? []).filter((id): id is string => Boolean(id?.trim()));
+        if (rackIds.length > 1) {
+            throw new GraphQLError('Each GRN line item may have only one rack.', {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+    }
+}
+
 async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
     advanceNoticeId?: string | null;
     items?: CreateInboundResolverItemInput[] | null;
@@ -396,6 +410,7 @@ export const resolvers = {
                     advanceNoticeId: input.advanceNoticeId,
                     items: input.items,
                 });
+                assertSingleRackPerGrnItem(input.items);
                 await assertSkuLotExpiryControls(input.items, context.organizationId ?? undefined);
                 const result = await inboundServices.createInbound({
                     userId: input.userId,
@@ -471,6 +486,7 @@ export const resolvers = {
                         });
                     }
 
+                    assertSingleRackPerGrnItem(input.items);
                     await assertSkuLotExpiryControls(
                         input.items,
                         context.organizationId ?? undefined,
@@ -683,6 +699,7 @@ export const resolvers = {
                     }
 
                     if (input.items?.length) {
+                        assertSingleRackPerGrnItem(input.items);
                         await assertSkuLotExpiryControls(
                             input.items,
                             context.organizationId ?? undefined,
