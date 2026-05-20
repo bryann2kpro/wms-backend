@@ -1,6 +1,6 @@
 {
-  "id": "4f1ea743-afd7-432f-8d4e-1af01594d48c",
-  "prevId": "d41eba05-aa2b-448a-bd96-c2e03386c56e",
+  "id": "d8e06daa-8113-4bf5-9b88-b62d69c85a59",
+  "prevId": "4f1ea743-afd7-432f-8d4e-1af01594d48c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2697,8 +2697,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "main.m_areas": {
-      "name": "m_areas",
+    "main.m_warehouse_areas": {
+      "name": "m_warehouse_areas",
       "schema": "main",
       "columns": {
         "area_id": {
@@ -2710,6 +2710,12 @@
         },
         "organization_id": {
           "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "warehouse_id": {
+          "name": "warehouse_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -2767,9 +2773,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "m_areas_organization_id_m_organizations_organization_id_fk": {
-          "name": "m_areas_organization_id_m_organizations_organization_id_fk",
-          "tableFrom": "m_areas",
+        "m_warehouse_areas_organization_id_m_organizations_organization_id_fk": {
+          "name": "m_warehouse_areas_organization_id_m_organizations_organization_id_fk",
+          "tableFrom": "m_warehouse_areas",
           "tableTo": "m_organizations",
           "schemaTo": "main",
           "columnsFrom": [
@@ -2781,9 +2787,23 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "m_areas_map_id_m_maps_map_id_fk": {
-          "name": "m_areas_map_id_m_maps_map_id_fk",
-          "tableFrom": "m_areas",
+        "m_warehouse_areas_warehouse_id_m_warehouses_warehouse_id_fk": {
+          "name": "m_warehouse_areas_warehouse_id_m_warehouses_warehouse_id_fk",
+          "tableFrom": "m_warehouse_areas",
+          "tableTo": "m_warehouses",
+          "schemaTo": "main",
+          "columnsFrom": [
+            "warehouse_id"
+          ],
+          "columnsTo": [
+            "warehouse_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "m_warehouse_areas_map_id_m_maps_map_id_fk": {
+          "name": "m_warehouse_areas_map_id_m_maps_map_id_fk",
+          "tableFrom": "m_warehouse_areas",
           "tableTo": "m_maps",
           "schemaTo": "main",
           "columnsFrom": [
@@ -3450,6 +3470,24 @@
           "primaryKey": false,
           "notNull": true
         },
+        "bar_code": {
+          "name": "bar_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reference_no": {
+          "name": "reference_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "storage_bin_id": {
           "name": "storage_bin_id",
           "type": "uuid",
@@ -3462,9 +3500,22 @@
           "primaryKey": false,
           "notNull": true
         },
-        "description": {
-          "name": "description",
-          "type": "text",
+        "printed_count": {
+          "name": "printed_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "printed_at": {
+          "name": "printed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_printed_at": {
+          "name": "last_printed_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -3574,6 +3625,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'FIXED_BIN'"
+        },
+        "item_code": {
+          "name": "item_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
         "is_active": {
           "name": "is_active",
@@ -3913,6 +3970,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "bar_code": {
+          "name": "bar_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "is_active": {
           "name": "is_active",
           "type": "boolean",
@@ -3977,10 +4040,10 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "m_racks_area_id_m_areas_area_id_fk": {
-          "name": "m_racks_area_id_m_areas_area_id_fk",
+        "m_racks_area_id_m_warehouse_areas_area_id_fk": {
+          "name": "m_racks_area_id_m_warehouse_areas_area_id_fk",
           "tableFrom": "m_racks",
-          "tableTo": "m_areas",
+          "tableTo": "m_warehouse_areas",
           "schemaTo": "main",
           "columnsFrom": [
             "area_id"
