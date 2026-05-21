@@ -11,6 +11,7 @@ export const typeDefs = `#graphql
   """
   type Rack {
     rackId: ID!
+    zoneId: ID
     rackRow: String!
     rackColumn: String!
     rackLevel: String!
@@ -42,6 +43,7 @@ export const typeDefs = `#graphql
   Input for creating a new Rack
   """
   input CreateRackInput {
+    zoneId: ID
     rackRow: String!
     rackColumn: String!
     rackLevel: String!
@@ -53,6 +55,7 @@ export const typeDefs = `#graphql
   Input for updating an existing Rack
   """
   input UpdateRackInput {
+    zoneId: ID
     rackRow: String
     rackColumn: String
     rackLevel: String

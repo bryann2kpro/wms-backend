@@ -30,6 +30,7 @@ const rackFilterSchema = z.object({
 }));
 
 const createRackSchema = z.object({
+  zoneId: z.string().uuid().optional().nullable(),
   rackRow: z.string().min(1, 'Rack row is required'),
   rackColumn: z.string().min(1, 'Rack column is required'),
   rackLevel: z.string().min(1, 'Rack level is required'),
@@ -38,6 +39,7 @@ const createRackSchema = z.object({
 });
 
 const updateRackSchema = z.object({
+  zoneId: z.string().uuid().optional().nullable(),
   rackRow: z.string().min(1).optional(),
   rackColumn: z.string().min(1).optional(),
   rackLevel: z.string().min(1).optional(),
@@ -50,6 +52,7 @@ const updateRackSchema = z.object({
 
 function transformRack(rack: {
   rackId: string;
+  zoneId?: string | null;
   rackRow: string;
   rackColumn: string;
   rackLevel: string;
@@ -60,6 +63,7 @@ function transformRack(rack: {
 }) {
   return {
     rackId: rack.rackId,
+    zoneId: rack.zoneId ?? null,
     rackRow: rack.rackRow,
     rackColumn: rack.rackColumn,
     rackLevel: rack.rackLevel,
@@ -155,6 +159,7 @@ export const resolvers = {
         }
         const rack = await racksRepository.createRack({
           organizationId: context.organizationId,
+          zoneId: data.zoneId ?? undefined,
           rackRow: data.rackRow,
           rackColumn: data.rackColumn,
           rackLevel: data.rackLevel,
@@ -188,6 +193,7 @@ export const resolvers = {
           throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: uError.flatten().fieldErrors } });
         }
         const rack = await racksRepository.updateRack({
+          zoneId: uData.zoneId ?? undefined,
           rackRow: uData.rackRow,
           rackColumn: uData.rackColumn,
           rackLevel: uData.rackLevel,

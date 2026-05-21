@@ -40,6 +40,9 @@ import { resolvers as pickFaceStrategyResolvers } from '@/features/master-data/p
 import { resolvers as pickupCriteriaResolvers } from '@/features/master-data/pickup-criteria.resolvers';
 import { resolvers as palletLabelResolvers } from '@/features/master-data/pallet-label.resolvers';
 import { resolvers as transportResolvers } from '@/features/master-data/transport.resolvers';
+import { resolvers as zoneResolvers } from '@/features/master-data/zone.resolver';
+import { resolvers as binResolvers } from '@/features/master-data/bin.resolver';
+import { resolvers as putawayRuleResolvers } from '@/features/master-data/putaway-rule.resolver';
 import { resolvers as reportResolvers } from '@/features/report/report.resolvers';
 import { resolvers as documentsResolvers } from '@/features/documents/documents.resolvers';
 import { resolvers as dashboardResolvers } from '@/features/dashboard/dashboard.resolver';
@@ -142,6 +145,9 @@ export const resolvers = mergeResolvers([
   pickupCriteriaResolvers,
   palletLabelResolvers,
   transportResolvers,
+  zoneResolvers,
+  binResolvers,
+  putawayRuleResolvers,
   reportResolvers,
   documentsResolvers,
   dashboardResolvers,
