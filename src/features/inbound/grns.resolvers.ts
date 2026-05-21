@@ -18,6 +18,7 @@ import { GrnFilter } from './grns.repository';
 import type { GrnItemsType } from './grns-items.repository';
 import { inArray } from 'drizzle-orm';
 import { InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
+import { recordGrnApprovalStockQuants } from './grn-stock-quant.service';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -854,42 +855,16 @@ export const resolvers = {
                     const grn = await grnsRepository.updateGrn(id, updateData, context.tx);
                     if (!grn) return false;
 
-                    // When status is set to Approved: add GRN item qty (net) and lossQty to SKU inventory
-                    if (updateData.status === 'Approved') {
+                    // First approval only (Submitted → Approved): record inbound movement and stock quants.
+                    if (
+                        updateData.status === 'Approved' &&
+                        existingGrn.status === 'Submitted'
+                    ) {
                         const grnItems = await grnItemsRepository.getGrnItems({ grnId: id }, context.tx);
                         if (grnItems === false) {
                             logger.error('[grns.resolvers]: Failed to get GRN items');
                             throw new Error('Failed to get GRN items for approval');
                         }
-                    //     // Aggregate per SKU: net received (qty - lossQty) → cartonQuantity, lossQty → lossQuantity
-                    //     const addQtyBySkuId = new Map<string, number>();
-                    //     const addLossBySkuId = new Map<string, number>();
-                    //     for (const item of grnItems) {
-                    //         const qty = Number(item.qty ?? 0);
-                    //         const lossQty = Number((item as { lossQty?: string }).lossQty ?? 0);
-                    //         const netQty = qty - lossQty;
-                    //         addQtyBySkuId.set(item.skuId, (addQtyBySkuId.get(item.skuId) ?? 0) + netQty);
-                    //         addLossBySkuId.set(item.skuId, (addLossBySkuId.get(item.skuId) ?? 0) + lossQty);
-                    //     }
-                    //     const skuIds = [...new Set([...addQtyBySkuId.keys(), ...addLossBySkuId.keys()])];
-                    //     if (skuIds.length > 0) {
-                    //         const { query: skus } = await skuRepository.getSku({ skuId: skuIds }, undefined, context.tx);
-                    //         const skuMap = new Map(skus.map((s) => [s.skuId, s]));
-                    //         const updates = skuIds.map(async (skuId) => {
-                    //             const sku = skuMap.get(skuId);
-                    //             if (!sku) throw new Error(`SKU not found: ${skuId}`);
-                    //             const currentQty = Number(sku.cartonQuantity ?? 0);
-                    //             const currentLoss = Number(sku.lossQuantity ?? 0);
-                    //             const addQty = addQtyBySkuId.get(skuId) ?? 0;
-                    //             const addLoss = addLossBySkuId.get(skuId) ?? 0;
-                    //             const newQty = (currentQty + addQty).toFixed(2);
-                    //             const newLoss = (currentLoss + addLoss).toFixed(2);
-                    //             const updated = await skuRepository.updateSku(skuId, { cartonQuantity: newQty, lossQuantity: newLoss }, context.tx);
-                    //             if (!updated) throw new Error(`Failed to update SKU quantity: ${skuId}`);
-                    //             return updated;
-                    //         });
-                    //         await Promise.all(updates);
-                    //     }
 
                         await inventoryMovementRepository.createInventoryMovement(grnItems.map(item => ({
                             skuId: item.skuId,
@@ -900,6 +875,13 @@ export const resolvers = {
                             updatedBy: updatedBy,
                             movementType: InventoryMovementType.INBOUND,
                         })), updatedBy, context.organizationId!, context.tx);
+
+                        await recordGrnApprovalStockQuants({
+                            organizationId: context.organizationId!,
+                            userId: updatedBy,
+                            items: grnItems,
+                            tx: context.tx!,
+                        });
 
                         return transformGrn(grn);
                     }

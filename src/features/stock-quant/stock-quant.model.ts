@@ -11,6 +11,7 @@ export const StockQuantTable = MainSchema.table('stock_quant', {
     expiryDate: timestamp('expiry_date'),
     description: text('description'),
     quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull().default('0'),
+    reservedQty: numeric('reserved_qty', { precision: 12, scale: 2 }).notNull().default('0'),
     rackId: uuid('rack_id').notNull().references(() => RacksTable.rackId),
     organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

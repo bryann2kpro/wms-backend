@@ -4,7 +4,7 @@
  * @description Data access for `stock_quant` rows (quantity per SKU and rack).
  */
 
-import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { logger } from "@/util/logger";
 import { pagination, PgQueryType } from "@/util/pagination";
@@ -24,8 +24,16 @@ export type StockQuantListType = StockQuantType & {
 export type StockQuantFilter = {
   id?: string;
   skuId?: string | string[];
+  skuCode?: string;
   rackId?: string | string[];
+  rackLabel?: string;
 };
+
+export type StockQuantPaginatedResult = PaginatedResponse<StockQuantListType> & {
+  totalQuantity: string;
+};
+
+const stockQuantRackLabelExpr = sql<string | null>`concat_ws('-', ${RacksTable.rackRow}, ${RacksTable.rackLevel}, ${RacksTable.rackColumn})`;
 
 export type StockQuantUpdateInput = {
   description?: string | null;
@@ -41,7 +49,7 @@ export class StockQuantRepositoryClass {
     organizationId: string,
     filter: StockQuantFilter,
     paginationParams: PaginationParams,
-  ): Promise<PaginatedResponse<StockQuantListType>> {
+  ): Promise<StockQuantPaginatedResult> {
     try {
       logger.info("ℹ️ [StockQuantRepository.getStockQuants] Listing stock quants...");
 
@@ -57,10 +65,18 @@ export class StockQuantRepositoryClass {
         conditions.push(eq(StockQuantTable.skuId, filter.skuId));
       }
 
+      if (filter.skuCode?.trim()) {
+        conditions.push(ilike(SkuTable.skuCode, `%${filter.skuCode.trim()}%`));
+      }
+
       if (Array.isArray(filter.rackId)) {
         conditions.push(inArray(StockQuantTable.rackId, filter.rackId));
       } else if (filter.rackId) {
         conditions.push(eq(StockQuantTable.rackId, filter.rackId));
+      }
+
+      if (filter.rackLabel?.trim()) {
+        conditions.push(ilike(stockQuantRackLabelExpr, `%${filter.rackLabel.trim()}%`));
       }
 
       const whereClause = and(...conditions);
@@ -80,7 +96,7 @@ export class StockQuantRepositoryClass {
           createdBy: StockQuantTable.createdBy,
           updatedBy: StockQuantTable.updatedBy,
           skuCode: SkuTable.skuCode,
-          rackLabel: sql<string | null>`concat_ws('-', ${RacksTable.rackRow}, ${RacksTable.rackLevel}, ${RacksTable.rackColumn})`,
+          rackLabel: stockQuantRackLabelExpr,
         })
         .from(StockQuantTable)
         .leftJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
@@ -91,18 +107,31 @@ export class StockQuantRepositoryClass {
       const pageSize = paginationParams.pageSize ?? 20;
       const pageNumber = paginationParams.pageNumber ?? 1;
 
-      const totalRow = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(StockQuantTable)
-        .where(whereClause);
+      const [totalRow, sumRow] = await Promise.all([
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(StockQuantTable)
+          .leftJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
+          .leftJoin(RacksTable, eq(RacksTable.rackId, StockQuantTable.rackId))
+          .where(whereClause),
+        db
+          .select({
+            totalQuantity: sql<string>`coalesce(sum(${StockQuantTable.quantity}::numeric), 0)::text`,
+          })
+          .from(StockQuantTable)
+          .leftJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
+          .leftJoin(RacksTable, eq(RacksTable.rackId, StockQuantTable.rackId))
+          .where(whereClause),
+      ]);
 
       const totalCount = totalRow[0]?.count ?? 0;
+      const totalQuantity = sumRow[0]?.totalQuantity ?? "0";
 
       const paged = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
       const data = (await paged.query) as StockQuantListType[];
 
       logger.info("✅ [StockQuantRepository.getStockQuants] Done");
-      return { query: data, pagination: paged.pagination };
+      return { query: data, pagination: paged.pagination, totalQuantity };
     } catch (error) {
       logger.error("❌ [StockQuantRepository.getStockQuants]", error);
       throw error;
@@ -183,6 +212,59 @@ export class StockQuantRepositoryClass {
       return rows[0] ?? null;
     } catch (error) {
       logger.error("❌ [StockQuantRepository.getStockQuantBySkuRackAndLot]", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find stock quant by rack → SKU → lot → expiry.
+   * Lot and expiry are optional: null/empty incoming values match rows without lot/expiry.
+   */
+  async getStockQuantByRackSkuLotAndExpiry(
+    organizationId: string,
+    rackId: string,
+    skuId: string,
+    lotNo: string | null | undefined,
+    expiryDate: Date | null | undefined,
+    tx?: DbTransaction,
+  ): Promise<StockQuantType | null> {
+    try {
+      const client = tx ?? db;
+      const lotTrimmed = (lotNo ?? "").trim();
+
+      const conditions = [
+        eq(StockQuantTable.organizationId, organizationId),
+        eq(StockQuantTable.rackId, rackId),
+        eq(StockQuantTable.skuId, skuId),
+      ];
+
+      if (lotTrimmed === "") {
+        conditions.push(
+          or(
+            isNull(StockQuantTable.lotNo),
+            eq(StockQuantTable.lotNo, ""),
+            sql`trim(coalesce(${StockQuantTable.lotNo}, '')) = ''`,
+          )!,
+        );
+      } else {
+        conditions.push(eq(StockQuantTable.lotNo, lotTrimmed));
+      }
+
+      if (expiryDate == null) {
+        conditions.push(isNull(StockQuantTable.expiryDate));
+      } else {
+        const expiryDay = expiryDate.toISOString().slice(0, 10);
+        conditions.push(sql`date(${StockQuantTable.expiryDate}) = ${expiryDay}::date`);
+      }
+
+      const rows = await client
+        .select()
+        .from(StockQuantTable)
+        .where(and(...conditions))
+        .limit(1);
+      return rows[0] ?? null;
+    } catch (error) {
+      logger.error("❌ [StockQuantRepository.getStockQuantByRackSkuLotAndExpiry]", error);
       throw error;
     }
   }

@@ -34,8 +34,10 @@ export const resolvers = {
           id?: string;
           skuId?: string;
           skuIds?: string[];
+          skuCode?: string;
           rackId?: string;
           rackIds?: string[];
+          rackLabel?: string;
         };
         pageSize?: number;
         pageNumber?: number;
@@ -54,6 +56,9 @@ export const resolvers = {
 
           if (args.filter.rackIds) filter.rackId = args.filter.rackIds;
           else if (args.filter.rackId) filter.rackId = args.filter.rackId;
+
+          if (args.filter.skuCode?.trim()) filter.skuCode = args.filter.skuCode.trim();
+          if (args.filter.rackLabel?.trim()) filter.rackLabel = args.filter.rackLabel.trim();
         }
 
         const result = await stockQuantRepository.getStockQuants(
@@ -68,6 +73,7 @@ export const resolvers = {
         return {
           query: result.query.map(transformStockQuant),
           pagination: result.pagination,
+          totalQuantity: result.totalQuantity,
         };
       } catch (error) {
         logger.error("[stockQuants resolver]", error);

@@ -8,6 +8,7 @@ export const StockQuantTransactionTable = MainSchema.table('stock_quant_transact
     id: uuid('id').defaultRandom().notNull().primaryKey(),
     skuId: uuid('sku_id').notNull().references(() => SkuTable.skuId),
     lotNo: text('lot_no'),
+    expiryDate: timestamp('expiry_date'),
     description: text('description'),
     quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull().default('0'),
     sourceRackId: uuid('source_rack_id').notNull().references(() => RacksTable.rackId),
