@@ -32,6 +32,8 @@ export const typeDefs = `#graphql
   type StockQuantPaginatedResponse {
     query: [StockQuant!]!
     pagination: Pagination!
+    """Sum of quantity across all rows matching the current filter (not just the current page)."""
+    totalQuantity: String!
   }
 
   """
@@ -41,8 +43,10 @@ export const typeDefs = `#graphql
     id: ID
     skuId: ID
     skuIds: [ID!]
+    skuCode: String
     rackId: ID
     rackIds: [ID!]
+    rackLabel: String
   }
 
   """
