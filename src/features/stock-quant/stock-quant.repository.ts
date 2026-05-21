@@ -216,6 +216,59 @@ export class StockQuantRepositoryClass {
     }
   }
 
+  /**
+   * Find stock quant by rack → SKU → lot → expiry.
+   * Lot and expiry are optional: null/empty incoming values match rows without lot/expiry.
+   */
+  async getStockQuantByRackSkuLotAndExpiry(
+    organizationId: string,
+    rackId: string,
+    skuId: string,
+    lotNo: string | null | undefined,
+    expiryDate: Date | null | undefined,
+    tx?: DbTransaction,
+  ): Promise<StockQuantType | null> {
+    try {
+      const client = tx ?? db;
+      const lotTrimmed = (lotNo ?? "").trim();
+
+      const conditions = [
+        eq(StockQuantTable.organizationId, organizationId),
+        eq(StockQuantTable.rackId, rackId),
+        eq(StockQuantTable.skuId, skuId),
+      ];
+
+      if (lotTrimmed === "") {
+        conditions.push(
+          or(
+            isNull(StockQuantTable.lotNo),
+            eq(StockQuantTable.lotNo, ""),
+            sql`trim(coalesce(${StockQuantTable.lotNo}, '')) = ''`,
+          )!,
+        );
+      } else {
+        conditions.push(eq(StockQuantTable.lotNo, lotTrimmed));
+      }
+
+      if (expiryDate == null) {
+        conditions.push(isNull(StockQuantTable.expiryDate));
+      } else {
+        const expiryDay = expiryDate.toISOString().slice(0, 10);
+        conditions.push(sql`date(${StockQuantTable.expiryDate}) = ${expiryDay}::date`);
+      }
+
+      const rows = await client
+        .select()
+        .from(StockQuantTable)
+        .where(and(...conditions))
+        .limit(1);
+      return rows[0] ?? null;
+    } catch (error) {
+      logger.error("❌ [StockQuantRepository.getStockQuantByRackSkuLotAndExpiry]", error);
+      throw error;
+    }
+  }
+
   async createStockQuant(
     data: StockQuantInsertType,
     tx?: DbTransaction,
