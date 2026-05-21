@@ -22,9 +22,17 @@ export const typeDefs = `#graphql
     skuId: ID!
     skuCode: String!
     skuDescription: String!
-    skuPrice: Float
-    skuQuantity: Float!
-    lossQuantity: Float!
+    barcode: String
+    brand: String
+    category: String
+    manufacturer: String
+    caseRate: Float
+    caseExtLengthMm: Float
+    caseExtWidthMm: Float
+    caseExtHeightMm: Float
+    caseGrossWeightKg: Float
+    casesPerLayer: Float
+    noOfLayers: Float
     skuExpiryDate: String
     """Stock picking strategy for outbound allocation: FIFO (default) | LIFO | FEFO"""
     pickingStrategy: String!
@@ -60,8 +68,17 @@ export const typeDefs = `#graphql
   input CreateSkuInput {
     skuCode: String!
     skuDescription: String!
-    skuPrice: Float
-    skuQuantity: Float!
+    barcode: String
+    brand: String
+    category: String
+    manufacturer: String
+    caseRate: Float
+    caseExtLengthMm: Float
+    caseExtWidthMm: Float
+    caseExtHeightMm: Float
+    caseGrossWeightKg: Float
+    casesPerLayer: Float
+    noOfLayers: Float
     skuExpiryDate: String
     skuBatches: [SkuBatchInput!]
     skuSuppliers: [SkuSupplierInput!]
@@ -81,9 +98,17 @@ export const typeDefs = `#graphql
   input UpdateSkuInput {
     skuCode: String
     skuDescription: String
-    skuPrice: Float
-    skuQuantity: Float
-    lossQuantity: Float
+    barcode: String
+    brand: String
+    category: String
+    manufacturer: String
+    caseRate: Float
+    caseExtLengthMm: Float
+    caseExtWidthMm: Float
+    caseExtHeightMm: Float
+    caseGrossWeightKg: Float
+    casesPerLayer: Float
+    noOfLayers: Float
     skuExpiryDate: String
     skuBatches: [SkuBatchInput!]
     skuSuppliers: [SkuSupplierInput!]

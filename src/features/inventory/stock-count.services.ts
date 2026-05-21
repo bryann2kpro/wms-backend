@@ -51,14 +51,14 @@ export class StockCountServices {
                     skuId: SkuTable.skuId,
                     skuCode: SkuTable.skuCode,
                     skuDescription: SkuTable.skuDescription,
-                    openingQty: SkuTable.cartonQuantity,
-                    openingLossQty: SkuTable.lossQuantity,
+                    openingQty: InventoryBalancesTable.onHandQty,
+                    openingLossQty: InventoryBalancesTable.lossQty,
                     onHandQty: InventoryBalancesTable.onHandQty,
                     reservedQty: InventoryBalancesTable.reservedQty,
                     lossQty: InventoryBalancesTable.lossQty,
                     skuExpiryDate: SkuTable.skuExpiryDate,
-                    qtyDifference: sql<number>`${SkuTable.cartonQuantity} - ${InventoryBalancesTable.onHandQty}`,
-                    lossQtyDifference: sql<number>`${SkuTable.lossQuantity} - ${InventoryBalancesTable.lossQty}`,
+                    qtyDifference: sql<number>`0`,
+                    lossQtyDifference: sql<number>`0`,
                 })
                 .from(SkuTable)
                 .leftJoin(InventoryBalancesTable, eq(SkuTable.skuId, InventoryBalancesTable.skuId))

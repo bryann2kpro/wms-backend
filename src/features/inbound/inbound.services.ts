@@ -34,7 +34,6 @@ export type CreateInboundItemInput = {
 
 /**
  * Input for creating an inbound (GRN) – same type and process as createGrn.
- * When inboundQty and skuId are provided, the SKU's cartonQuantity is updated to inboundQty (in same transaction).
  */
 export type CreateInboundInput = {
     userId: string;
@@ -50,10 +49,6 @@ export type CreateInboundInput = {
     warehouseId?: string | null;
     status?: string | null;
     items?: CreateInboundItemInput[] | null;
-    /** When set with skuId, updates that SKU's carton quantity to this value (in same transaction). */
-    inboundQty?: number | string | null;
-    /** SKU to update when inboundQty is provided. */
-    skuId?: string | null;
     /** ID of the advance notice this GRN was created from. Optional — omit for manual GRNs. */
     advanceNoticeId?: string | null;
 };
@@ -201,14 +196,6 @@ export class InboundServices {
                             }
                         }
                     }
-                }
-
-                if (data.inboundQty != null && data.skuId) {
-                    await this.skuRepository.updateSku(data.skuId, {
-                        cartonQuantity: String(data.inboundQty),
-                        updatedBy: createdBy,
-                        updatedAt: new Date(),
-                    }, organizationId, tx);
                 }
 
                 // Mark the advance notice as linked so it no longer appears in the dropdown
@@ -374,8 +361,6 @@ export class InboundServices {
                 const newSku = await this.skuRepository.createSku({
                     skuCode: item.skuCode,
                     skuDescription: descriptionToUse,
-                    cartonQuantity: '0',
-                    lossQuantity: '0',
                     skuUom: resolvedUom,
                     isActive: true,
                     createdBy,

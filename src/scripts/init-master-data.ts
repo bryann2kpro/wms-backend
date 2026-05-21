@@ -381,36 +381,24 @@ const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] =
   {
     skuCode: 'RAW-E0011',
     skuDescription: 'Empire Sushi Box(Medium) 300PCS/CTN (Local)',
-    skuPrice: null,
-    cartonQuantity: '0',
-    lossQuantity: '0',
     skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
   },{
     skuCode: 'RAW-E0012',
     skuDescription: 'Empire Sushi Box(Large) 300PCS/CTN (Local)',
-    skuPrice: null,
-    cartonQuantity: '0',
-    lossQuantity: '0',
     skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
   },{
     skuCode: 'RAW-E0013',
     skuDescription: 'Empire Sushi Box(Small) 300PCS/CTN (Local)',
-    skuPrice: null,
-    cartonQuantity: '0',
-    lossQuantity: '0',
     skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
   },{
     skuCode: 'RAW-E0014',
     skuDescription: 'Empire Sushi Box (60PCS/PKT) (Local)',
-    skuPrice: null,
-    cartonQuantity: '0',
-    lossQuantity: '0',
     skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.PACKET,
@@ -537,4 +525,3 @@ export async function initMasterData(): Promise<void> {
     throw error;
   }
 }
-

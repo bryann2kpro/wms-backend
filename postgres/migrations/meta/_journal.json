@@ -607,14 +607,14 @@
     {
       "idx": 86,
       "version": "7",
-      "when": 1779088921585,
+      "when": 1779241970285,
       "tag": "0086_soft_clea",
       "breakpoints": true
     },
     {
       "idx": 87,
       "version": "7",
-      "when": 1779091788227,
+      "when": 1779244278000,
       "tag": "0087_fearless_quentin_quire",
       "breakpoints": true
     },
@@ -623,6 +623,20 @@
       "version": "7",
       "when": 1779244278813,
       "tag": "0088_numerous_madame_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1779266804320,
+      "tag": "0089_white_karma",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1779267527106,
+      "tag": "0090_faulty_hydra",
       "breakpoints": true
     }
   ]

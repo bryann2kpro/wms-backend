@@ -401,8 +401,6 @@ export const resolvers = {
             warehouseId?: string | null;
             status?: string | null;
             items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
-            inboundQty?: number | null;
-            skuId?: string | null;
             advanceNoticeId?: string | null;
         } }, context: GraphQLContext) => {
             try {
@@ -426,8 +424,6 @@ export const resolvers = {
                     warehouseId: input.warehouseId,
                     status: input.status,
                     items: input.items ?? undefined,
-                    inboundQty: input.inboundQty ?? undefined,
-                    skuId: input.skuId ?? undefined,
                     advanceNoticeId: input.advanceNoticeId ?? undefined,
                 });
                 return result;
@@ -531,8 +527,6 @@ export const resolvers = {
                                         const newSku = await skuRepository.createSku({
                                             skuCode: item.skuCode,
                                             skuDescription: item.skuDescription,
-                                            cartonQuantity: '0',
-                                            lossQuantity: '0',
                                             skuUom: item.skuUom,
                                             isActive: true,
                                             createdBy,
@@ -588,8 +582,6 @@ export const resolvers = {
                                     const newSku = await skuRepository.createSku({
                                         skuCode: item.skuCode,
                                         skuDescription: item.skuDescription,
-                                        cartonQuantity: '0',
-                                        lossQuantity: '0',
                                         skuUom: item.skuUom,
                                         isActive: true,
                                         createdBy,
@@ -781,8 +773,6 @@ export const resolvers = {
                                     const newSku = await skuRepository.createSku({
                                         skuCode: item.skuCode,
                                         skuDescription: item.skuDescription,
-                                        cartonQuantity: '0',
-                                        lossQuantity: '0',
                                         skuUom: item.skuUom,
                                         isActive: true,
                                         createdBy,
