@@ -110,6 +110,7 @@ export const resolvers = {
       args: {
         input: {
           skuId: string;
+          lotNo?: string | null;
           description?: string | null;
           quantity: string;
           sourceRackId: string;
@@ -127,6 +128,7 @@ export const resolvers = {
         const created = await stockQuantTransactionRepository.createStockQuantTransaction(
           {
             skuId: args.input.skuId,
+            lotNo: args.input.lotNo?.trim() || null,
             description: args.input.description ?? null,
             quantity: args.input.quantity,
             sourceRackId: args.input.sourceRackId,
@@ -151,6 +153,7 @@ export const resolvers = {
       args: {
         id: string;
         input: {
+          lotNo?: string | null;
           description?: string | null;
           quantity?: string;
           sourceRackId?: string;
@@ -169,6 +172,7 @@ export const resolvers = {
           organizationId,
           args.id,
           {
+            lotNo: args.input.lotNo?.trim() || null,
             description: args.input.description,
             quantity: args.input.quantity,
             sourceRackId: args.input.sourceRackId,

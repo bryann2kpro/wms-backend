@@ -89,6 +89,7 @@ export class StockQuantRepositoryClass {
           expiryDate: StockQuantTable.expiryDate,
           description: StockQuantTable.description,
           quantity: StockQuantTable.quantity,
+          reservedQty: StockQuantTable.reservedQty,
           rackId: StockQuantTable.rackId,
           organizationId: StockQuantTable.organizationId,
           createdAt: StockQuantTable.createdAt,

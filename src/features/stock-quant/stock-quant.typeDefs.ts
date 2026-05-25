@@ -15,6 +15,7 @@ export const typeDefs = `#graphql
     skuCode: String
     description: String
     quantity: String!
+    reservedQty: String!
     rackId: ID!
     rackLabel: String
     lotNo: String

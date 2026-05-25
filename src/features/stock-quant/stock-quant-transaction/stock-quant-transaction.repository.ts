@@ -35,10 +35,11 @@ export type StockQuantTransactionFilter = {
 };
 
 export type StockQuantTransactionUpdateInput = {
+  lotNo?: string | null;
   description?: string | null;
   quantity?: string;
   sourceRackId?: string;
-  destinationRackId?: string;
+  destinationRackId?: string | null;
   type?: string | null;
   updatedBy: string;
 };
@@ -82,6 +83,7 @@ export class StockQuantTransactionRepositoryClass {
     return {
       id: StockQuantTransactionTable.id,
       skuId: StockQuantTransactionTable.skuId,
+      lotNo: StockQuantTransactionTable.lotNo,
       description: StockQuantTransactionTable.description,
       quantity: StockQuantTransactionTable.quantity,
       sourceRackId: StockQuantTransactionTable.sourceRackId,
