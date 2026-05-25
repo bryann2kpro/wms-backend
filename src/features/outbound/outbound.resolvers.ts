@@ -51,6 +51,7 @@ const createPurchaseOrderLineItemSchema = z.object({
   skuCode: z.string().min(1, "SKU code is required"),
   skuId: z.string().uuid().optional(),
   qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => Number(v)),
+  stockQuantId: z.string().uuid().optional(),
 });
 
 const createPurchaseOrderInputSchema = z.object({
@@ -519,6 +520,7 @@ export const resolvers = {
             skuCode: item.skuCode,
             skuId: item.skuId,
             qtyRequired: item.qtyRequired,
+            stockQuantId: item.stockQuantId,
           })),
           isEmergency: data.isEmergency,
         });

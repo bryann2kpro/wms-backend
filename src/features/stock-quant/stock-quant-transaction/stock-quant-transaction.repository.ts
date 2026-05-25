@@ -160,6 +160,34 @@ export class StockQuantTransactionRepositoryClass {
     }
   }
 
+  async findByReferenceAndType(
+    organizationId: string,
+    referenceNo: string,
+    type: string,
+    skuId?: string,
+    tx?: DbTransaction,
+  ): Promise<StockQuantTransactionType[]> {
+    try {
+      const client = tx ?? db;
+      const conditions = [
+        eq(StockQuantTransactionTable.organizationId, organizationId),
+        eq(StockQuantTransactionTable.description, referenceNo),
+        eq(StockQuantTransactionTable.type, type),
+      ];
+      if (skuId) {
+        conditions.push(eq(StockQuantTransactionTable.skuId, skuId));
+      }
+      return client
+        .select()
+        .from(StockQuantTransactionTable)
+        .where(and(...conditions))
+        .orderBy(StockQuantTransactionTable.createdAt);
+    } catch (error) {
+      logger.error("❌ [StockQuantTransactionRepository.findByReferenceAndType]", error);
+      throw error;
+    }
+  }
+
   async createStockQuantTransaction(
     data: StockQuantTransactionInsertType,
     tx?: DbTransaction,

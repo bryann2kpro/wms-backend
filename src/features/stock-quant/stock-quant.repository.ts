@@ -38,6 +38,7 @@ const stockQuantRackLabelExpr = sql<string | null>`concat_ws('-', ${RacksTable.r
 export type StockQuantUpdateInput = {
   description?: string | null;
   quantity?: string;
+  reservedQty?: string;
   rackId?: string;
   updatedBy: string;
 };
@@ -154,6 +155,48 @@ export class StockQuantRepositoryClass {
       return rows[0] ?? null;
     } catch (error) {
       logger.error("❌ [StockQuantRepository.getStockQuantById]", error);
+      throw error;
+    }
+  }
+
+  async listStockQuantsBySkuId(
+    organizationId: string,
+    skuId: string,
+    tx?: DbTransaction,
+  ): Promise<StockQuantListType[]> {
+    try {
+      const client = tx ?? db;
+      const rows = await client
+        .select({
+          id: StockQuantTable.id,
+          skuId: StockQuantTable.skuId,
+          lotNo: StockQuantTable.lotNo,
+          expiryDate: StockQuantTable.expiryDate,
+          description: StockQuantTable.description,
+          quantity: StockQuantTable.quantity,
+          reservedQty: StockQuantTable.reservedQty,
+          rackId: StockQuantTable.rackId,
+          organizationId: StockQuantTable.organizationId,
+          createdAt: StockQuantTable.createdAt,
+          updatedAt: StockQuantTable.updatedAt,
+          createdBy: StockQuantTable.createdBy,
+          updatedBy: StockQuantTable.updatedBy,
+          skuCode: SkuTable.skuCode,
+          rackLabel: stockQuantRackLabelExpr,
+        })
+        .from(StockQuantTable)
+        .leftJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
+        .leftJoin(RacksTable, eq(RacksTable.rackId, StockQuantTable.rackId))
+        .where(
+          and(
+            eq(StockQuantTable.organizationId, organizationId),
+            eq(StockQuantTable.skuId, skuId),
+          ),
+        )
+        .orderBy(desc(StockQuantTable.updatedAt));
+      return rows as StockQuantListType[];
+    } catch (error) {
+      logger.error("❌ [StockQuantRepository.listStockQuantsBySkuId]", error);
       throw error;
     }
   }

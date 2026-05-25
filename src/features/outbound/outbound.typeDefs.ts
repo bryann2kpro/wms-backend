@@ -280,6 +280,8 @@ export const typeDefs = `#graphql
         skuCode: String!
         skuId: ID
         qtyRequired: Float!
+        """Specific stock_quant row to reserve from (required from UI)."""
+        stockQuantId: ID
     }
 
     """
