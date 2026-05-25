@@ -8,6 +8,7 @@ import { GraphQLError } from 'graphql';
 const binFilterSchema = z.object({
   binId: z.string().uuid().optional(),
   rackId: z.string().uuid().optional(),
+  rackIds: z.array(z.string().uuid()).optional(),
   isPickFace: z.boolean().optional(),
 });
 
@@ -55,7 +56,7 @@ function transformBin(bin: any) {
 export const resolvers = {
   Query: {
     bins: async (_: unknown, args: {
-      filter?: { binId?: string; rackId?: string; isPickFace?: boolean };
+      filter?: { binId?: string; rackId?: string; rackIds?: string[]; isPickFace?: boolean };
       pageSize?: number;
       pageNumber?: number;
     }, _context: GraphQLContext) => {
@@ -67,7 +68,8 @@ export const resolvers = {
           throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
         }
         if (data.binId) filter.binId = data.binId;
-        if (data.rackId) filter.rackId = data.rackId;
+        if (data.rackIds?.length) filter.rackId = data.rackIds;
+        else if (data.rackId) filter.rackId = data.rackId;
         if (data.isPickFace !== undefined) filter.isPickFace = data.isPickFace;
       }
 

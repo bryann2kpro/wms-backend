@@ -8,7 +8,7 @@ import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model'
 
 export type BinFilter = {
   binId?: string | string[];
-  rackId?: string;
+  rackId?: string | string[];
   isPickFace?: boolean;
 };
 
@@ -27,7 +27,9 @@ export class BinRepositoryClass {
         whereCondition.push(eq(BinsTable.binId, filter.binId));
       }
 
-      if (filter.rackId) {
+      if (Array.isArray(filter.rackId)) {
+        whereCondition.push(inArray(BinsTable.rackId, filter.rackId));
+      } else if (filter.rackId) {
         whereCondition.push(eq(BinsTable.rackId, filter.rackId));
       }
 

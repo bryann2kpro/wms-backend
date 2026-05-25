@@ -24,6 +24,7 @@ export const typeDefs = `#graphql
   input BinFilterInput {
     binId: ID
     rackId: ID
+    rackIds: [ID]
     isPickFace: Boolean
   }
 

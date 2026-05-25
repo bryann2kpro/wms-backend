@@ -70,6 +70,7 @@ export class RacksRepositoryClass {
       const baseQuery = db
         .select({
           rackId: RacksTable.rackId,
+          zoneId: RacksTable.zoneId,
           rackRow: RacksTable.rackRow,
           rackColumn: RacksTable.rackColumn,
           rackLevel: RacksTable.rackLevel,
