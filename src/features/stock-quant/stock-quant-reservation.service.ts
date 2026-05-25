@@ -1,7 +1,8 @@
 /**
- * Reserve / release quantity on stock_quant rows for outbound POs.
- * Allocations are recorded in stock_quant_transaction (type PORESERVED) using
- * description = purchase order number for release on cancel/update.
+ * Reserve / release / ship quantity on stock_quant rows for outbound POs.
+ * Reservations are recorded in stock_quant_transaction (type PORESERVED).
+ * Shipments are recorded in stock_quant_transaction (type POSHIPMENT) using
+ * description = purchase order number; allocations follow the lot selected at PO creation.
  */
 
 import type { DbTransaction } from "@/types/db-transaction";
@@ -20,6 +21,8 @@ import {
 
 /** Outbound PO reservation recorded on stock_quant_transaction. */
 const PORESERVED_TYPE = "PORESERVED";
+/** Outbound PO shipment recorded on stock_quant_transaction. */
+const POSHIPMENT_TYPE = "POSHIPMENT";
 
 const stockQuantRepository = new StockQuantRepositoryClass();
 const stockQuantTransactionRepository = new StockQuantTransactionRepositoryClass();
@@ -404,6 +407,92 @@ export async function releaseStockQuantPartialForSku(params: {
         skuId: params.skuId,
         remaining,
       },
+    );
+  }
+}
+
+export async function shipStockQuantForPurchaseOrder(params: {
+  organizationId: string;
+  userId: string;
+  referenceNo: string;
+  tx: DbTransaction;
+}): Promise<void> {
+  const { organizationId, userId, referenceNo, tx } = params;
+
+  const allocations = await stockQuantTransactionRepository.findByReferenceAndType(
+    organizationId,
+    referenceNo,
+    PORESERVED_TYPE,
+    undefined,
+    tx,
+  );
+
+  for (const allocation of allocations) {
+    const qty = parseQty(allocation.quantity);
+    if (qty <= 0) continue;
+
+    const stockRow = await stockQuantRepository.getStockQuantByRackSkuLotAndExpiry(
+      organizationId,
+      allocation.sourceRackId,
+      allocation.skuId,
+      allocation.lotNo,
+      allocation.expiryDate,
+      tx,
+    );
+
+    if (!stockRow) {
+      throw new Error(
+        `Stock quant batch not found for PO "${referenceNo}" shipment (SKU ${allocation.skuId}).`,
+      );
+    }
+
+    const onHand = parseQty(stockRow.quantity);
+    const reserved = parseQty(stockRow.reservedQty);
+    if (onHand < qty) {
+      throw new Error(
+        `Insufficient on-hand stock quant for PO "${referenceNo}" shipment: required ${qty}, on hand ${onHand}.`,
+      );
+    }
+    if (reserved < qty) {
+      throw new Error(
+        `Insufficient reserved stock quant for PO "${referenceNo}" shipment: required ${qty}, reserved ${reserved}.`,
+      );
+    }
+
+    const newOnHand = roundQtyPutaway(onHand - qty);
+    const newReserved = roundQtyPutaway(reserved - qty);
+    await stockQuantRepository.updateStockQuant(
+      organizationId,
+      stockRow.id,
+      {
+        quantity: qtyPutawayToDbString(newOnHand),
+        reservedQty: qtyPutawayToDbString(newReserved),
+        updatedBy: userId,
+      },
+      tx,
+    );
+
+    await stockQuantTransactionRepository.createStockQuantTransaction(
+      {
+        skuId: allocation.skuId,
+        lotNo: allocation.lotNo?.trim() ? allocation.lotNo.trim() : null,
+        expiryDate: allocation.expiryDate ?? null,
+        description: referenceNo,
+        quantity: qtyPutawayToDbString(qty),
+        sourceRackId: allocation.sourceRackId,
+        destinationRackId: null,
+        type: POSHIPMENT_TYPE,
+        organizationId,
+        createdBy: userId,
+        updatedBy: userId,
+      },
+      tx,
+    );
+
+    await stockQuantTransactionRepository.deleteStockQuantTransaction(
+      organizationId,
+      allocation.id,
+      tx,
     );
   }
 }

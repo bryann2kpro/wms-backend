@@ -22,6 +22,7 @@ import {
     releaseStockQuantForPurchaseOrder,
     releaseStockQuantPartialForSku,
     reserveStockQuantForPurchaseOrderLine,
+    shipStockQuantForPurchaseOrder,
 } from "../stock-quant/stock-quant-reservation.service";
 import { RegionPricingTable } from "../master-data/region.model";
 import { and, eq } from "drizzle-orm";
@@ -463,6 +464,12 @@ export class OutboundServices {
                         existing.organizationId,
                         tx,
                     );
+                    await shipStockQuantForPurchaseOrder({
+                        organizationId: existing.organizationId,
+                        userId: data.userId,
+                        referenceNo: existing.poNo,
+                        tx,
+                    });
                     logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] Inventory movement created for SHIPPED');
                 }
 
