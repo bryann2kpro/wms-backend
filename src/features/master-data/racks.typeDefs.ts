@@ -12,9 +12,14 @@ export const typeDefs = `#graphql
   type Rack {
     rackId: ID!
     zoneId: ID
+    areaId: ID
     rackRow: String!
     rackColumn: String!
     rackLevel: String!
+    binCode: String
+    barCode: String
+    binType: String!
+    isActive: Boolean!
     createdAt: String!
     updatedAt: String!
     createdBy: String!
@@ -37,6 +42,9 @@ export const typeDefs = `#graphql
     rackRow: String
     rackColumn: String
     rackLevel: String
+    binCode: String
+    binType: String
+    isActive: Boolean
   }
 
   """
@@ -44,9 +52,14 @@ export const typeDefs = `#graphql
   """
   input CreateRackInput {
     zoneId: ID
+    areaId: ID
     rackRow: String!
     rackColumn: String!
     rackLevel: String!
+    binCode: String
+    barCode: String
+    binType: String
+    isActive: Boolean
     createdBy: String!
     updatedBy: String!
   }
@@ -56,9 +69,14 @@ export const typeDefs = `#graphql
   """
   input UpdateRackInput {
     zoneId: ID
+    areaId: ID
     rackRow: String
     rackColumn: String
     rackLevel: String
+    binCode: String
+    barCode: String
+    binType: String
+    isActive: Boolean
     updatedBy: String!
   }
 

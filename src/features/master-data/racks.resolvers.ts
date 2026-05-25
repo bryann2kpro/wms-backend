@@ -21,6 +21,9 @@ const rackFilterSchema = z.object({
   rackColumns: z.array(z.string()).optional(),
   rackLevel: z.string().optional(),
   rackLevels: z.array(z.string()).optional(),
+  binCode: z.string().optional(),
+  binType: z.string().optional(),
+  isActive: z.boolean().optional(),
 }).transform((data) => ({
   ...data,
   rackIds: data.rackId ? [data.rackId] : data.rackIds,
@@ -31,18 +34,28 @@ const rackFilterSchema = z.object({
 
 const createRackSchema = z.object({
   zoneId: z.string().uuid().optional().nullable(),
+  areaId: z.string().uuid().optional().nullable(),
   rackRow: z.string().min(1, 'Rack row is required'),
   rackColumn: z.string().min(1, 'Rack column is required'),
   rackLevel: z.string().min(1, 'Rack level is required'),
+  binCode: z.string().optional().nullable(),
+  barCode: z.string().optional().nullable(),
+  binType: z.string().optional(),
+  isActive: z.boolean().optional(),
   createdBy: z.string().min(1),
   updatedBy: z.string().min(1),
 });
 
 const updateRackSchema = z.object({
   zoneId: z.string().uuid().optional().nullable(),
+  areaId: z.string().uuid().optional().nullable(),
   rackRow: z.string().min(1).optional(),
   rackColumn: z.string().min(1).optional(),
   rackLevel: z.string().min(1).optional(),
+  binCode: z.string().optional().nullable(),
+  barCode: z.string().optional().nullable(),
+  binType: z.string().optional(),
+  isActive: z.boolean().optional(),
   updatedBy: z.string().min(1),
 });
 
@@ -53,9 +66,14 @@ const updateRackSchema = z.object({
 function transformRack(rack: {
   rackId: string;
   zoneId?: string | null;
+  areaId?: string | null;
   rackRow: string;
   rackColumn: string;
   rackLevel: string;
+  binCode?: string | null;
+  barCode?: string | null;
+  binType: string;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -64,9 +82,14 @@ function transformRack(rack: {
   return {
     rackId: rack.rackId,
     zoneId: rack.zoneId ?? null,
+    areaId: rack.areaId ?? null,
     rackRow: rack.rackRow,
     rackColumn: rack.rackColumn,
     rackLevel: rack.rackLevel,
+    binCode: rack.binCode ?? null,
+    barCode: rack.barCode ?? null,
+    binType: rack.binType,
+    isActive: rack.isActive,
     createdAt: rack.createdAt.toISOString(),
     updatedAt: rack.updatedAt.toISOString(),
     createdBy: rack.createdBy,
@@ -108,6 +131,9 @@ export const resolvers = {
         if (data.rackRows) filter.rackRow = data.rackRows;
         if (data.rackColumns) filter.rackColumn = data.rackColumns;
         if (data.rackLevels) filter.rackLevel = data.rackLevels;
+        if (data.binCode) filter.binCode = data.binCode;
+        if (data.binType) filter.binType = data.binType;
+        if (data.isActive !== undefined) filter.isActive = data.isActive;
       }
 
       const result = await racksRepository.getRack(filter, {
@@ -160,9 +186,14 @@ export const resolvers = {
         const rack = await racksRepository.createRack({
           organizationId: context.organizationId,
           zoneId: data.zoneId ?? undefined,
+          areaId: data.areaId ?? undefined,
           rackRow: data.rackRow,
           rackColumn: data.rackColumn,
           rackLevel: data.rackLevel,
+          binCode: data.binCode ?? undefined,
+          barCode: data.barCode ?? undefined,
+          binType: data.binType ?? 'FIXED',
+          isActive: data.isActive ?? true,
           createdBy: data.createdBy,
           updatedBy: data.updatedBy,
         }, context.organizationId, context.tx);
@@ -194,9 +225,14 @@ export const resolvers = {
         }
         const rack = await racksRepository.updateRack({
           zoneId: uData.zoneId ?? undefined,
+          areaId: uData.areaId ?? undefined,
           rackRow: uData.rackRow,
           rackColumn: uData.rackColumn,
           rackLevel: uData.rackLevel,
+          binCode: uData.binCode ?? undefined,
+          barCode: uData.barCode ?? undefined,
+          binType: uData.binType,
+          isActive: uData.isActive,
           updatedBy: uData.updatedBy,
         }, id, context.organizationId || undefined, context.tx);
         if (!rack) return null;
