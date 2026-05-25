@@ -60,6 +60,8 @@ export const PurchaseOrderItemsTable = MainSchema.table('purchase_order_items', 
   purchaseOrderNo: text('purchase_order_no').notNull(),
   skuCode: text('sku_code').notNull(),
   qtyRequired: numeric('qty_required', { precision: 10, scale: 2 }).notNull(),
+  expiryDate: timestamp('expiry_date'),
+  lotNo: text('lot_no'),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
