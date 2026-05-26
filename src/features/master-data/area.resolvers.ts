@@ -46,6 +46,7 @@ function transformArea(area: {
   areaCode: string;
   areaName: string;
   areaDescription: string | null;
+  warehouseName?: string | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -57,6 +58,7 @@ function transformArea(area: {
     areaCode: area.areaCode,
     areaName: area.areaName,
     areaDescription: area.areaDescription,
+    warehouseName: area.warehouseName ?? null,
     createdAt: area.createdAt.toISOString(),
     updatedAt: area.updatedAt.toISOString(),
     createdBy: area.createdBy,

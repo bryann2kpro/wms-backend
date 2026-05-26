@@ -6,6 +6,7 @@
 
 import { db } from '@/db';
 import { AreaInsertType, AreaTable, AreaType } from './area.model';
+import { WarehousesTable } from './warehouses.model';
 import { eq, and, like, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
@@ -71,12 +72,14 @@ export class AreaRepositoryClass {
           areaCode: AreaTable.areaCode,
           areaName: AreaTable.areaName,
           areaDescription: AreaTable.areaDescription,
+          warehouseName: WarehousesTable.warehouseName,
           createdAt: AreaTable.createdAt,
           updatedAt: AreaTable.updatedAt,
           createdBy: AreaTable.createdBy,
           updatedBy: AreaTable.updatedBy,
         })
         .from(AreaTable)
+        .leftJoin(WarehousesTable, eq(AreaTable.warehouseId, WarehousesTable.warehouseId))
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
 
       const pageSize = paginationParams.pageSize || 10;

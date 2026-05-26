@@ -13,6 +13,7 @@ export const typeDefs = `#graphql
     zoneCode: String!
     zoneName: String!
     purpose: ZonePurpose!
+    warehouseName: String
     createdAt: String!
     updatedAt: String!
     createdBy: String!

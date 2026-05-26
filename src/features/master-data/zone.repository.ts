@@ -1,5 +1,6 @@
 import { db } from '@/db';
 import { ZoneInsertType, ZonesTable, ZoneType } from './zone.model';
+import { WarehousesTable } from './warehouses.model';
 import { eq, and, like, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
@@ -41,8 +42,20 @@ export class ZoneRepositoryClass {
       }
 
       const baseQuery = db
-        .select()
+        .select({
+          zoneId: ZonesTable.zoneId,
+          warehouseId: ZonesTable.warehouseId,
+          zoneCode: ZonesTable.zoneCode,
+          zoneName: ZonesTable.zoneName,
+          purpose: ZonesTable.purpose,
+          createdAt: ZonesTable.createdAt,
+          updatedAt: ZonesTable.updatedAt,
+          createdBy: ZonesTable.createdBy,
+          updatedBy: ZonesTable.updatedBy,
+          warehouseName: WarehousesTable.warehouseName,
+        })
         .from(ZonesTable)
+        .leftJoin(WarehousesTable, eq(ZonesTable.warehouseId, WarehousesTable.warehouseId))
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
 
       const pageSize = paginationParams.pageSize || 10;

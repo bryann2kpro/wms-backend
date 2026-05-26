@@ -35,6 +35,7 @@ function transformZone(zone: any) {
     zoneCode: zone.zoneCode,
     zoneName: zone.zoneName,
     purpose: zone.purpose,
+    warehouseName: zone.warehouseName ?? null,
     createdAt: zone.createdAt instanceof Date ? zone.createdAt.toISOString() : zone.createdAt,
     updatedAt: zone.updatedAt instanceof Date ? zone.updatedAt.toISOString() : zone.updatedAt,
     createdBy: zone.createdBy,

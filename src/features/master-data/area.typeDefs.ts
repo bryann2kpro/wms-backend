@@ -15,6 +15,7 @@ export const typeDefs = `#graphql
     areaCode: String!
     areaName: String!
     areaDescription: String
+    warehouseName: String
     createdAt: String!
     updatedAt: String!
     createdBy: String!
