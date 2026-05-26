@@ -6,6 +6,9 @@ export const typeDefs = gql`
     skuId: ID!
     storageBinId: ID!
     binType: String!
+    itemCode: String!
+    storageBin: String
+    skuDescription: String
     isActive: Boolean!
     createdAt: String!
     updatedAt: String!
@@ -28,6 +31,7 @@ export const typeDefs = gql`
   input CreatePickFaceStrategyInput {
     skuId: ID!
     storageBinId: ID!
+    itemCode: String!
     binType: String
     createdBy: String!
     updatedBy: String!

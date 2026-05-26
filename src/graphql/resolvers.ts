@@ -30,6 +30,7 @@ import { resolvers as organizationResolvers } from '@/features/master-data/organ
 import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
 import { resolvers as deliveryScheduleResolvers } from '@/features/master-data/delivery-schedule.resolvers';
 import { resolvers as outletsResolvers } from '@/features/master-data/outlets.resolvers';
+import { resolvers as skuAssignmentResolvers } from '@/features/sku-assignment/sku-assignment.resolvers';
 import { resolvers as suppliersResolvers } from '@/features/master-data/suppliers.resolvers';
 import { resolvers as stockUnitResolvers } from '@/features/master-data/stock-unit.resolvers';
 import { resolvers as racksResolvers } from '@/features/master-data/racks.resolvers';
@@ -135,6 +136,7 @@ export const resolvers = mergeResolvers([
   regionResolvers,
   deliveryScheduleResolvers,
   outletsResolvers,
+  skuAssignmentResolvers,
   suppliersResolvers,
   stockUnitResolvers,
   racksResolvers,

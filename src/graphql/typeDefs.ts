@@ -27,6 +27,7 @@ import { typeDefs as organizationTypeDefs } from '@/features/master-data/organiz
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
 import { typeDefs as deliveryScheduleTypeDefs } from '@/features/master-data/delivery-schedule.typeDefs';
 import { typeDefs as outletsTypeDefs } from '@/features/master-data/outlets.typeDefs';
+import { typeDefs as skuAssignmentTypeDefs } from '@/features/sku-assignment/sku-assignment.typeDefs';
 import { typeDefs as suppliersTypeDefs } from '@/features/master-data/suppliers.typeDefs';
 import { typeDefs as stockUnitTypeDefs } from '@/features/master-data/stock-unit.typeDefs';
 import { typeDefs as racksTypeDefs } from '@/features/master-data/racks.typeDefs';
@@ -130,6 +131,7 @@ export const typeDefs = [
   regionTypeDefs,
   deliveryScheduleTypeDefs,
   outletsTypeDefs,
+  skuAssignmentTypeDefs,
   suppliersTypeDefs,
   stockUnitTypeDefs,
   racksTypeDefs,
