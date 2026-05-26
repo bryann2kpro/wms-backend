@@ -34,6 +34,7 @@ import { typeDefs as racksTypeDefs } from '@/features/master-data/racks.typeDefs
 import { typeDefs as warehousesTypeDefs } from '@/features/master-data/warehouses.typeDefs';
 import { typeDefs as mapTypeDefs } from '@/features/master-data/map.typeDefs';
 import { typeDefs as areaTypeDefs } from '@/features/master-data/area.typeDefs';
+import { typeDefs as setupAreaTypeDefs } from '@/features/master-data/setup-area.typeDefs';
 import { typeDefs as pickFaceStrategyTypeDefs } from '@/features/master-data/pick-face-strategy.typeDefs';
 import { typeDefs as pickupCriteriaTypeDefs } from '@/features/master-data/pickup-criteria.typeDefs';
 import { typeDefs as palletLabelTypeDefs } from '@/features/master-data/pallet-label.typeDefs';
@@ -139,6 +140,7 @@ export const typeDefs = [
   warehousesTypeDefs,
   mapTypeDefs,
   areaTypeDefs,
+  setupAreaTypeDefs,
   pickFaceStrategyTypeDefs,
   pickupCriteriaTypeDefs,
   palletLabelTypeDefs,

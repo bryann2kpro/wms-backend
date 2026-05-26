@@ -37,6 +37,7 @@ import { resolvers as racksResolvers } from '@/features/master-data/racks.resolv
 import { resolvers as warehousesResolvers } from '@/features/master-data/warehouses.resolvers';
 import { resolvers as mapResolvers } from '@/features/master-data/map.resolvers';
 import { resolvers as areaResolvers } from '@/features/master-data/area.resolvers';
+import { resolvers as setupAreaResolvers } from '@/features/master-data/setup-area.resolvers';
 import { resolvers as pickFaceStrategyResolvers } from '@/features/master-data/pick-face-strategy.resolvers';
 import { resolvers as pickupCriteriaResolvers } from '@/features/master-data/pickup-criteria.resolvers';
 import { resolvers as palletLabelResolvers } from '@/features/master-data/pallet-label.resolvers';
@@ -144,6 +145,7 @@ export const resolvers = mergeResolvers([
   warehousesResolvers,
   mapResolvers,
   areaResolvers,
+  setupAreaResolvers,
   pickFaceStrategyResolvers,
   pickupCriteriaResolvers,
   palletLabelResolvers,
