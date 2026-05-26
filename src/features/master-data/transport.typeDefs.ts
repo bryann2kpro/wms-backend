@@ -13,7 +13,7 @@ export const typeDefs = `#graphql
     id: ID!
     code: String!
     description: String
-    storageBinId: ID
+    storageBinId: String
     location: String
     minLengthMm: String
     minWidthMm: String
@@ -51,7 +51,7 @@ export const typeDefs = `#graphql
   input CreateTransportInput {
     code: String!
     description: String
-    storageBinId: ID
+    storageBinId: String
     location: String
     minLengthMm: String
     minWidthMm: String
@@ -71,7 +71,7 @@ export const typeDefs = `#graphql
   input UpdateTransportInput {
     code: String
     description: String
-    storageBinId: ID
+    storageBinId: String
     location: String
     minLengthMm: String
     minWidthMm: String

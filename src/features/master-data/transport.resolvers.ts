@@ -22,7 +22,7 @@ const numericFieldSchema = z.union([z.string(), z.number()]).transform((v) => St
 const createTransportSchema = z.object({
   code: z.string().min(1, 'Code is required'),
   description: z.string().optional(),
-  storageBinId: z.string().uuid().optional(),
+  storageBinId: z.string().optional(),
   location: z.string().optional(),
   minLengthMm: numericFieldSchema,
   minWidthMm: numericFieldSchema,
@@ -39,7 +39,7 @@ const createTransportSchema = z.object({
 const updateTransportSchema = z.object({
   code: z.string().min(1).optional(),
   description: z.string().optional(),
-  storageBinId: z.string().uuid().optional(),
+  storageBinId: z.string().optional(),
   location: z.string().optional(),
   minLengthMm: numericFieldSchema,
   minWidthMm: numericFieldSchema,

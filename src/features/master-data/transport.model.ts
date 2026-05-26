@@ -1,14 +1,13 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, timestamp, numeric } from "drizzle-orm/pg-core";
 import { OrganizationsTable } from "@/features/master-data/organization.model";
-import { RacksTable } from "@/features/master-data/racks.model";
 
 export const TransportTable = MainSchema.table('m_transports', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
   code: text('code').notNull(),
   description: text('description'),
-  storageBinId: uuid('storage_bin_id').references(() => RacksTable.rackId),
+  storageBinId: text('storage_bin_id'),
   location: text('location'),
   minLengthMm: numeric('min_length_mm', { precision: 10, scale: 2 }),
   minWidthMm: numeric('min_width_mm', { precision: 10, scale: 2 }),
