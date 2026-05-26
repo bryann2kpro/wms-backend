@@ -41,6 +41,7 @@ import { typeDefs as transportTypeDefs } from '@/features/master-data/transport.
 import { typeDefs as zoneTypeDefs } from '@/features/master-data/zone.typeDefs';
 import { typeDefs as binTypeDefs } from '@/features/master-data/bin.typeDefs';
 import { typeDefs as putawayRuleTypeDefs } from '@/features/master-data/putaway-rule.typeDefs';
+import { typeDefs as pickingCriteriaTypeDefs } from '@/features/master-data/picking-criteria.typeDefs';
 import { typeDefs as reportTypeDefs } from '@/features/report/report.typeDefs';
 import { typeDefs as documentsTypeDefs } from '@/features/documents/documents.typeDefs';
 import { typeDefs as dashboardTypeDefs } from '@/features/dashboard/dashboard.typeDefs';
@@ -145,6 +146,7 @@ export const typeDefs = [
   zoneTypeDefs,
   binTypeDefs,
   putawayRuleTypeDefs,
+  pickingCriteriaTypeDefs,
   reportTypeDefs,
   documentsTypeDefs,
   auditLogTypeDefs,

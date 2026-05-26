@@ -76,6 +76,9 @@ export class PickFaceStrategyRepositoryClass {
           updatedBy: PickFaceStrategyTable.updatedBy,
           storageBin: RacksTable.binCode,
           skuDescription: SkuTable.skuDescription,
+          rackRow: RacksTable.rackRow,
+          rackColumn: RacksTable.rackColumn,
+          rackLevel: RacksTable.rackLevel,
         })
         .from(PickFaceStrategyTable)
         .leftJoin(RacksTable, eq(PickFaceStrategyTable.storageBinId, RacksTable.rackId))
@@ -124,6 +127,9 @@ export class PickFaceStrategyRepositoryClass {
           updatedBy: PickFaceStrategyTable.updatedBy,
           storageBin: RacksTable.binCode,
           skuDescription: SkuTable.skuDescription,
+          rackRow: RacksTable.rackRow,
+          rackColumn: RacksTable.rackColumn,
+          rackLevel: RacksTable.rackLevel,
         })
         .from(PickFaceStrategyTable)
         .leftJoin(RacksTable, eq(PickFaceStrategyTable.storageBinId, RacksTable.rackId))
