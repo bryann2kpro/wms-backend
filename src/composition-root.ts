@@ -34,6 +34,7 @@ import { RacksRepositoryClass } from '@/features/master-data/racks.repository.js
 import { WarehousesRepositoryClass } from '@/features/master-data/warehouses.repository.js';
 import { MapRepositoryClass } from '@/features/master-data/map.repository.js';
 import { AreaRepositoryClass } from '@/features/master-data/area.repository.js';
+import { SetupAreaRepositoryClass } from '@/features/master-data/setup-area.repository.js';
 import { PickFaceStrategyRepositoryClass } from '@/features/master-data/pick-face-strategy.repository.js';
 import { PickupCriteriaRepositoryClass } from '@/features/master-data/pickup-criteria.repository.js';
 import { PalletLabelRepositoryClass } from '@/features/master-data/pallet-label.repository.js';
@@ -116,6 +117,7 @@ export const racksRepository = new RacksRepositoryClass();
 export const warehousesRepository = new WarehousesRepositoryClass();
 export const mapsRepository = new MapRepositoryClass();
 export const areasRepository = new AreaRepositoryClass();
+export const setupAreasRepository = new SetupAreaRepositoryClass();
 export const pickFaceStrategiesRepository = new PickFaceStrategyRepositoryClass();
 export const pickupCriteriasRepository = new PickupCriteriaRepositoryClass();
 export const palletLabelsRepository = new PalletLabelRepositoryClass();

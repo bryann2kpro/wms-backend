@@ -673,6 +673,13 @@
       "when": 1779774349184,
       "tag": "0095_true_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1779778739208,
+      "tag": "0096_sharp_korath",
+      "breakpoints": true
     }
   ]
 }
