@@ -6,6 +6,8 @@
 
 import { db } from '@/db';
 import { PickFaceStrategyTable, PickFaceStrategyType, PickFaceStrategyInsertType } from './pick-face-strategy.model';
+import { SkuTable } from './sku.model';
+import { RacksTable } from './racks.model';
 import { eq, and, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
@@ -66,13 +68,18 @@ export class PickFaceStrategyRepositoryClass {
           skuId: PickFaceStrategyTable.skuId,
           storageBinId: PickFaceStrategyTable.storageBinId,
           binType: PickFaceStrategyTable.binType,
+          itemCode: PickFaceStrategyTable.itemCode,
           isActive: PickFaceStrategyTable.isActive,
           createdAt: PickFaceStrategyTable.createdAt,
           updatedAt: PickFaceStrategyTable.updatedAt,
           createdBy: PickFaceStrategyTable.createdBy,
           updatedBy: PickFaceStrategyTable.updatedBy,
+          storageBin: RacksTable.binCode,
+          skuDescription: SkuTable.skuDescription,
         })
         .from(PickFaceStrategyTable)
+        .leftJoin(RacksTable, eq(PickFaceStrategyTable.storageBinId, RacksTable.rackId))
+        .leftJoin(SkuTable, eq(PickFaceStrategyTable.skuId, SkuTable.skuId))
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
 
       const pageSize = paginationParams.pageSize || 10;
@@ -103,8 +110,24 @@ export class PickFaceStrategyRepositoryClass {
         whereConditions.push(eq(PickFaceStrategyTable.organizationId, organizationId));
       }
       const [strategy] = await db
-        .select()
+        .select({
+          id: PickFaceStrategyTable.id,
+          organizationId: PickFaceStrategyTable.organizationId,
+          skuId: PickFaceStrategyTable.skuId,
+          storageBinId: PickFaceStrategyTable.storageBinId,
+          binType: PickFaceStrategyTable.binType,
+          itemCode: PickFaceStrategyTable.itemCode,
+          isActive: PickFaceStrategyTable.isActive,
+          createdAt: PickFaceStrategyTable.createdAt,
+          updatedAt: PickFaceStrategyTable.updatedAt,
+          createdBy: PickFaceStrategyTable.createdBy,
+          updatedBy: PickFaceStrategyTable.updatedBy,
+          storageBin: RacksTable.binCode,
+          skuDescription: SkuTable.skuDescription,
+        })
         .from(PickFaceStrategyTable)
+        .leftJoin(RacksTable, eq(PickFaceStrategyTable.storageBinId, RacksTable.rackId))
+        .leftJoin(SkuTable, eq(PickFaceStrategyTable.skuId, SkuTable.skuId))
         .where(and(...whereConditions))
         .limit(1);
 

@@ -6,6 +6,9 @@
 
 import { z } from "zod";
 import { warehousesRepository, authRepository } from "@/composition-root";
+
+const UUID_SCHEMA = z.string().uuid();
+const isUUID = (val: string) => UUID_SCHEMA.safeParse(val).success;
 import { withAudit } from "@/features/audit-log/audit.wrapper";
 import { GraphQLError } from "graphql/error";
 import { logger } from "@/util/logger";
@@ -97,14 +100,14 @@ export const resolvers = {
         pageNumber: args.pageNumber,
       }, context.organizationId || undefined);
 
-      // Batch-load audit users to avoid N+1
+      // Batch-load audit users to avoid N+1 — skip non-UUID values like "system"
       const allUserIds = Array.from(
         new Set(
           result.query.flatMap((w: any) => [w.createdBy, w.updatedBy].filter(Boolean))
         )
-      );
+      ).filter(isUUID);
 
-      const users = await authRepository.getUsersByIds(allUserIds);
+      const users = allUserIds.length > 0 ? await authRepository.getUsersByIds(allUserIds) : [];
       const userMap = new Map(users.map((u) => [u.id, u]));
 
       return {
@@ -299,12 +302,12 @@ export const resolvers = {
      * Resolve createdByUser for a warehouse
      */
     createdByUser: async (warehouse: { createdBy: string }) => {
-      // Prefer preloaded data (from transformWarehouse) to avoid extra DB calls
       // @ts-expect-error allow reading potential preloaded field
       if (warehouse.createdByUser) {
         // @ts-expect-error
         return warehouse.createdByUser;
       }
+      if (!isUUID(warehouse.createdBy)) return null;
       const user = await authRepository.getUserById(warehouse.createdBy);
       if (!user) return null;
       return { id: user.id, displayName: user.displayName };
@@ -314,12 +317,12 @@ export const resolvers = {
      * Resolve updatedByUser for a warehouse
      */
     updatedByUser: async (warehouse: { updatedBy: string }) => {
-      // Prefer preloaded data (from transformWarehouse) to avoid extra DB calls
       // @ts-expect-error allow reading potential preloaded field
       if (warehouse.updatedByUser) {
         // @ts-expect-error
         return warehouse.updatedByUser;
       }
+      if (!isUUID(warehouse.updatedBy)) return null;
       const user = await authRepository.getUserById(warehouse.updatedBy);
       if (!user) return null;
       return { id: user.id, displayName: user.displayName };

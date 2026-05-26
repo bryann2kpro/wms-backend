@@ -9,7 +9,9 @@ export const PalletLabelTable = MainSchema.table('m_pallet_labels', {
 
   barCode: text('bar_code'),
   referenceNo: text('reference_no'),
+  itemCode: text('item_code').notNull(),
   description: text('description'),
+  itemDesc02: text('item_desc_02'),
   storageBinId: uuid('storage_bin_id').references(() => RacksTable.rackId),
   labelCode: text('label_code').notNull(),
   printedCount: integer('printed_count').notNull().default(0),
@@ -17,6 +19,9 @@ export const PalletLabelTable = MainSchema.table('m_pallet_labels', {
   lastPrintedAt: timestamp('last_printed_at', { withTimezone: true }),
 
   isActive: boolean('is_active').notNull().default(true),
+  isDeleted: boolean('is_deleted').notNull().default(false),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   createdBy: text('created_by').notNull(),

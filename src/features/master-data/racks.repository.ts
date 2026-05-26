@@ -7,7 +7,7 @@
 import { db } from '@/db';
 import { OutletsTable, OutletType, OutletInsertType } from './outlets.model';
 import { RegionTable } from './region.model';
-import { eq, and, like, inArray, isNull } from 'drizzle-orm';
+import { eq, and, like, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -24,6 +24,9 @@ export type RackFilter = {
   rackRow?: string | string[];
   rackColumn?: string | string[];
   rackLevel?: string | string[];
+  binCode?: string;
+  binType?: string;
+  isActive?: boolean;
 };
 
 export class RacksRepositoryClass {
@@ -67,12 +70,30 @@ export class RacksRepositoryClass {
         whereCondition.push(like(RacksTable.rackLevel, `%${filter.rackLevel}%`));
       }
 
+      if (filter.binCode) {
+        whereCondition.push(like(RacksTable.binCode, `%${filter.binCode}%`));
+      }
+
+      if (filter.binType) {
+        whereCondition.push(eq(RacksTable.binType, filter.binType));
+      }
+
+      if (filter.isActive !== undefined) {
+        whereCondition.push(eq(RacksTable.isActive, filter.isActive));
+      }
+
       const baseQuery = db
         .select({
           rackId: RacksTable.rackId,
+          zoneId: RacksTable.zoneId,
+          areaId: RacksTable.areaId,
           rackRow: RacksTable.rackRow,
           rackColumn: RacksTable.rackColumn,
           rackLevel: RacksTable.rackLevel,
+          binCode: RacksTable.binCode,
+          barCode: RacksTable.barCode,
+          binType: RacksTable.binType,
+          isActive: RacksTable.isActive,
           createdAt: RacksTable.createdAt,
           updatedAt: RacksTable.updatedAt,
           createdBy: RacksTable.createdBy,

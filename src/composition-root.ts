@@ -38,7 +38,11 @@ import { PickFaceStrategyRepositoryClass } from '@/features/master-data/pick-fac
 import { PickupCriteriaRepositoryClass } from '@/features/master-data/pickup-criteria.repository.js';
 import { PalletLabelRepositoryClass } from '@/features/master-data/pallet-label.repository.js';
 import { TransportRepositoryClass } from '@/features/master-data/transport.repository.js';
+import { ZoneRepositoryClass } from '@/features/master-data/zone.repository.js';
+import { BinRepositoryClass } from '@/features/master-data/bin.repository.js';
+import { PutawayRuleRepositoryClass } from '@/features/master-data/putaway-rule.repository.js';
 import { AuditLogRepositoryClass } from './features/audit-log/audit.repository';
+import { SkuAssignmentRepositoryClass } from './features/sku-assignment/sku-assignment.repository';
 import { ReportControllerClass } from './features/report/report.controller';
 // Inbound Repositories
 import { GrnsRepositoryClass } from './features/inbound/grns.repository';
@@ -104,6 +108,7 @@ export const skuRepository = new SkuRepositoryClass();
 export const regionRepository = new RegionRepositoryClass();
 export const deliveryScheduleRepository = new DeliveryScheduleRepositoryClass();
 export const outletsRepository = new OutletsRepositoryClass();
+export const skuAssignmentRepository = new SkuAssignmentRepositoryClass();
 export const suppliersRepository = new SuppliersRepositoryClass();
 export const stockUnitRepository = new StockUnitRepositoryClass();
 export const racksRepository = new RacksRepositoryClass();
@@ -114,6 +119,9 @@ export const pickFaceStrategiesRepository = new PickFaceStrategyRepositoryClass(
 export const pickupCriteriasRepository = new PickupCriteriaRepositoryClass();
 export const palletLabelsRepository = new PalletLabelRepositoryClass();
 export const transportsRepository = new TransportRepositoryClass();
+export const zonesRepository = new ZoneRepositoryClass();
+export const binsRepository = new BinRepositoryClass();
+export const putawayRulesRepository = new PutawayRuleRepositoryClass();
 
 // Inbound Repositories
 export const grnsRepository = new GrnsRepositoryClass(runningNoRepository);

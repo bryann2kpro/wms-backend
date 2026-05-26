@@ -14,6 +14,9 @@ export const typeDefs = `#graphql
     outletName: String!
     outletCode: String!
     address: String
+    chain: String
+    channel: String
+    debtor: String
     regionId: ID
     """
     Flattened region name (from JOIN). For full region object, use 'region' field.
@@ -62,6 +65,9 @@ export const typeDefs = `#graphql
     outletName: String!
     outletCode: String!
     address: String
+    chain: String
+    channel: String
+    debtor: String
     regionId: ID
     createdBy: String!
     updatedBy: String!
@@ -74,6 +80,9 @@ export const typeDefs = `#graphql
     outletName: String
     outletCode: String
     address: String
+    chain: String
+    channel: String
+    debtor: String
     regionId: ID
     updatedBy: String!
   }
