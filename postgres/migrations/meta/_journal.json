@@ -652,6 +652,13 @@
       "when": 1779696311929,
       "tag": "0092_shocking_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1779761874323,
+      "tag": "0093_transport_storage_bin_text",
+      "breakpoints": true
     }
   ]
 }
