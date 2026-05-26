@@ -902,7 +902,7 @@ export const resolvers = {
                     return transformGrn(grn);
                 } catch (error) {
                     logger.error('[grns.resolvers] Error:', error);
-                    return false;
+                    throw error;
                 }
             }
         ),

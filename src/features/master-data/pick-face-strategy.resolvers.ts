@@ -22,6 +22,7 @@ const pickFaceStrategyFilterSchema = z.object({
 const createPickFaceStrategySchema = z.object({
   skuId: z.string().uuid(),
   storageBinId: z.string().uuid(),
+  itemCode: z.string().min(1),
   binType: z.string().optional().default('FIXED_BIN'),
   createdBy: z.string().min(1),
   updatedBy: z.string().min(1),
@@ -44,17 +45,23 @@ function transformPickFaceStrategy(strategy: {
   skuId: string;
   storageBinId: string;
   binType: string;
+  itemCode: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
   updatedBy: string;
+  storageBin?: string | null;
+  skuDescription?: string | null;
 }) {
   return {
     id: strategy.id,
     skuId: strategy.skuId,
     storageBinId: strategy.storageBinId,
     binType: strategy.binType,
+    itemCode: strategy.itemCode,
+    storageBin: strategy.storageBin ?? null,
+    skuDescription: strategy.skuDescription ?? null,
     isActive: strategy.isActive,
     createdAt: strategy.createdAt.toISOString(),
     updatedAt: strategy.updatedAt.toISOString(),
@@ -129,6 +136,7 @@ export const resolvers = {
       async (_: unknown, { input }: { input: {
         skuId: string;
         storageBinId: string;
+        itemCode: string;
         binType?: string;
         createdBy: string;
         updatedBy: string;
@@ -146,6 +154,7 @@ export const resolvers = {
           organizationId: context.organizationId,
           skuId: data.skuId,
           storageBinId: data.storageBinId,
+          itemCode: data.itemCode,
           binType: data.binType,
           createdBy: data.createdBy,
           updatedBy: data.updatedBy,

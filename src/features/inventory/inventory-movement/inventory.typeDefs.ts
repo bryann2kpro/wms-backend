@@ -18,6 +18,8 @@ export const typeDefs = `#graphql
     balanceAfter: String!
     referenceNo: String
     reason: String
+    lotNo: String
+    rackId: ID
     createdAt: String!
     createdBy: String!
     createdByUser: InventoryMovementAuditUser
@@ -60,6 +62,8 @@ export const typeDefs = `#graphql
     reason: String
     regionId: ID
     regionIds: [ID!]
+    dateFrom: String
+    dateTo: String
   }
 
   """
