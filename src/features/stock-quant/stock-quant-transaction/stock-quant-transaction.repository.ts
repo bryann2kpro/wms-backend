@@ -35,10 +35,11 @@ export type StockQuantTransactionFilter = {
 };
 
 export type StockQuantTransactionUpdateInput = {
+  lotNo?: string | null;
   description?: string | null;
   quantity?: string;
   sourceRackId?: string;
-  destinationRackId?: string;
+  destinationRackId?: string | null;
   type?: string | null;
   updatedBy: string;
 };
@@ -82,6 +83,7 @@ export class StockQuantTransactionRepositoryClass {
     return {
       id: StockQuantTransactionTable.id,
       skuId: StockQuantTransactionTable.skuId,
+      lotNo: StockQuantTransactionTable.lotNo,
       description: StockQuantTransactionTable.description,
       quantity: StockQuantTransactionTable.quantity,
       sourceRackId: StockQuantTransactionTable.sourceRackId,
@@ -154,6 +156,34 @@ export class StockQuantTransactionRepositoryClass {
       return rows[0] ?? null;
     } catch (error) {
       logger.error("❌ [StockQuantTransactionRepository.getStockQuantTransactionById]", error);
+      throw error;
+    }
+  }
+
+  async findByReferenceAndType(
+    organizationId: string,
+    referenceNo: string,
+    type: string,
+    skuId?: string,
+    tx?: DbTransaction,
+  ): Promise<StockQuantTransactionType[]> {
+    try {
+      const client = tx ?? db;
+      const conditions = [
+        eq(StockQuantTransactionTable.organizationId, organizationId),
+        eq(StockQuantTransactionTable.description, referenceNo),
+        eq(StockQuantTransactionTable.type, type),
+      ];
+      if (skuId) {
+        conditions.push(eq(StockQuantTransactionTable.skuId, skuId));
+      }
+      return client
+        .select()
+        .from(StockQuantTransactionTable)
+        .where(and(...conditions))
+        .orderBy(StockQuantTransactionTable.createdAt);
+    } catch (error) {
+      logger.error("❌ [StockQuantTransactionRepository.findByReferenceAndType]", error);
       throw error;
     }
   }

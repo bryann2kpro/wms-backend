@@ -13,6 +13,7 @@ export const typeDefs = `#graphql
     id: ID!
     skuId: ID!
     skuCode: String
+    lotNo: String
     description: String
     quantity: String!
     sourceRackId: ID!
@@ -48,6 +49,7 @@ export const typeDefs = `#graphql
 
   input CreateStockQuantTransactionInput {
     skuId: ID!
+    lotNo: String
     description: String
     quantity: String!
     sourceRackId: ID!
@@ -56,6 +58,7 @@ export const typeDefs = `#graphql
   }
 
   input UpdateStockQuantTransactionInput {
+    lotNo: String
     description: String
     quantity: String
     sourceRackId: ID

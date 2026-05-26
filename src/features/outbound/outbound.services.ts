@@ -17,6 +17,13 @@ import { PickFaceStrategyRepositoryClass } from "../master-data/pick-face-strate
 
 import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
+import {
+    assertSufficientStockQuantForLines,
+    releaseStockQuantForPurchaseOrder,
+    releaseStockQuantPartialForSku,
+    reserveStockQuantForPurchaseOrderLine,
+    shipStockQuantForPurchaseOrder,
+} from "../stock-quant/stock-quant-reservation.service";
 import { RegionPricingTable } from "../master-data/region.model";
 import { and, eq } from "drizzle-orm";
 import { env } from "@/env";
@@ -37,6 +44,7 @@ export type CreatePurchaseOrderItemInput = {
   skuCode: string;
   skuId?: string;
   qtyRequired: number;
+  stockQuantId?: string;
 };
 
 export type CreatePurchaseOrderData = {
@@ -83,6 +91,7 @@ export class OutboundServices {
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 1: Check if skus are in stock...');
                 const resolvedLines = await this.resolveAndValidateLineItems(data.items, tx);
                 await this.assertSufficientStock(resolvedLines, tx);
+                await assertSufficientStockQuantForLines(organizationId, resolvedLines, tx);
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 2: Compute the next delivery date...');
                 const outlet = await this.outletsRepository.getOutletById(data.outletId);
@@ -214,6 +223,19 @@ export class OutboundServices {
                 }));
 
                 await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, data.userId, organizationId, tx);
+
+                for (const line of resolvedLines) {
+                    await reserveStockQuantForPurchaseOrderLine({
+                        organizationId,
+                        userId: data.userId,
+                        referenceNo: data.purchaseOrderNo,
+                        skuId: line.skuId,
+                        skuCode: line.skuCode,
+                        qtyRequired: line.qtyRequired,
+                        stockQuantId: line.stockQuantId,
+                        tx,
+                    });
+                }
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 6: Automatically Create Delivery Order...');
                 const doNo = data.purchaseOrderNo.startsWith('PO') 
@@ -442,6 +464,12 @@ export class OutboundServices {
                         existing.organizationId,
                         tx,
                     );
+                    await shipStockQuantForPurchaseOrder({
+                        organizationId: existing.organizationId,
+                        userId: data.userId,
+                        referenceNo: existing.poNo,
+                        tx,
+                    });
                     logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] Inventory movement created for SHIPPED');
                 }
 
@@ -638,6 +666,30 @@ export class OutboundServices {
                             data.organizationId,
                             tx
                         );
+
+                        for (const movement of movementsToCreate) {
+                            const qty = parseFloat(String(movement.quantity));
+                            if (!Number.isFinite(qty) || qty === 0) continue;
+                            if (qty > 0) {
+                                await reserveStockQuantForPurchaseOrderLine({
+                                    organizationId: data.organizationId,
+                                    userId: data.userId,
+                                    referenceNo: po.purchaseOrderNo,
+                                    skuId: movement.skuId,
+                                    qtyRequired: String(qty),
+                                    tx,
+                                });
+                            } else {
+                                await releaseStockQuantPartialForSku({
+                                    organizationId: data.organizationId,
+                                    userId: data.userId,
+                                    referenceNo: po.purchaseOrderNo,
+                                    skuId: movement.skuId,
+                                    qtyToRelease: String(Math.abs(qty)),
+                                    tx,
+                                });
+                            }
+                        }
                     }
 
                     // Recalculate group QOM amounts for this PO and all siblings.
@@ -844,6 +896,13 @@ export class OutboundServices {
                             tx
                         );
                     }
+
+                    await releaseStockQuantForPurchaseOrder({
+                        organizationId: data.organizationId,
+                        userId: data.userId,
+                        referenceNo: po.purchaseOrderNo,
+                        tx,
+                    });
                 }
 
                 // 5. Recalculate sibling PO amounts — the cancelled PO is now excluded
@@ -1145,14 +1204,16 @@ export class OutboundServices {
      * Returns list of { skuId, qtyRequired, skuCode? } for stock check and downstream use.
      */
     private async resolveAndValidateLineItems(
-        items: (DeliveryOrderItemInsertType | CreateDeliveryOrderItemInput)[],
+        items: (DeliveryOrderItemInsertType | CreateDeliveryOrderItemInput | CreatePurchaseOrderItemInput)[],
         tx?: DbTransaction
-    ): Promise<{ skuId: string; qtyRequired: string; skuCode?: string }[]> {
-        const resolved: { skuId: string; qtyRequired: string; skuCode?: string }[] = [];
+    ): Promise<{ skuId: string; qtyRequired: string; skuCode?: string; stockQuantId?: string }[]> {
+        const resolved: { skuId: string; qtyRequired: string; skuCode?: string; stockQuantId?: string }[] = [];
         for (const item of items) {
             const qtyRequired = String(item.qtyRequired ?? "0");
             let skuId: string | null = "skuId" in item && item.skuId ? item.skuId : null;
             const skuCode = "skuCode" in item ? item.skuCode : undefined;
+            const stockQuantId =
+                "stockQuantId" in item && item.stockQuantId ? item.stockQuantId : undefined;
 
             if (!skuId && skuCode) {
                 const skuResult = await this.skuRepository.getSku(
@@ -1169,7 +1230,7 @@ export class OutboundServices {
                     `Line item missing or invalid SKU: provide either skuId or skuCode. ${skuCode ? `skuCode="${skuCode}" not found.` : ""}`
                 );
             }
-            resolved.push({ skuId, qtyRequired, skuCode });
+            resolved.push({ skuId, qtyRequired, skuCode, stockQuantId });
         }
         return resolved;
     }

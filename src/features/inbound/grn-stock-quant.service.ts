@@ -1,13 +1,15 @@
 /**
- * Records stock_quant rows when a GRN is approved.
+ * Records stock_quant rows and INBOUND stock_quant_transaction rows when a GRN is approved.
  * Upsert key: rack → sku → lot (optional) → expiry (optional).
  * When all match, quantity is added; otherwise a new row is created.
+ * Each received line also writes a transaction: source rack = receiving rack, destination = null.
  */
 
 import type { DbTransaction } from "@/types/db-transaction";
 import { logger } from "@/util/logger";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
 import { StockQuantRepositoryClass } from "../stock-quant/stock-quant.repository";
+import { StockQuantTransactionRepositoryClass } from "../stock-quant/stock-quant-transaction/stock-quant-transaction.repository";
 import {
   normalizedPutawayLotNo,
   qtyPutawayToDbString,
@@ -16,6 +18,7 @@ import {
 import type { GrnItemsType } from "./grns-items.repository";
 
 const stockQuantRepository = new StockQuantRepositoryClass();
+const stockQuantTransactionRepository = new StockQuantTransactionRepositoryClass();
 const skuRepository = new SkuRepositoryClass();
 
 export async function recordGrnApprovalStockQuants(params: {
@@ -83,17 +86,32 @@ export async function recordGrnApprovalStockQuants(params: {
         },
         tx,
       );
-      continue;
+    } else {
+      await stockQuantRepository.createStockQuant(
+        {
+          skuId: item.skuId,
+          rackId,
+          lotNo,
+          expiryDate,
+          description,
+          quantity: qtyStr,
+          organizationId,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+        tx,
+      );
     }
 
-    await stockQuantRepository.createStockQuant(
+    await stockQuantTransactionRepository.createStockQuantTransaction(
       {
         skuId: item.skuId,
-        rackId,
         lotNo,
-        expiryDate,
         description,
         quantity: qtyStr,
+        sourceRackId: rackId,
+        destinationRackId: null,
+        type: "INBOUND",
         organizationId,
         createdBy: userId,
         updatedBy: userId,
