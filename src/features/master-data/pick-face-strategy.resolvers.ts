@@ -53,14 +53,22 @@ function transformPickFaceStrategy(strategy: {
   updatedBy: string;
   storageBin?: string | null;
   skuDescription?: string | null;
+  rackRow?: string | null;
+  rackColumn?: string | null;
+  rackLevel?: string | null;
 }) {
+  const storageBinName = strategy.storageBin || 
+    (strategy.rackRow && strategy.rackLevel && strategy.rackColumn 
+      ? `${strategy.rackRow}-${strategy.rackLevel}-${strategy.rackColumn}` 
+      : null);
+
   return {
     id: strategy.id,
     skuId: strategy.skuId,
     storageBinId: strategy.storageBinId,
     binType: strategy.binType,
     itemCode: strategy.itemCode,
-    storageBin: strategy.storageBin ?? null,
+    storageBin: storageBinName,
     skuDescription: strategy.skuDescription ?? null,
     isActive: strategy.isActive,
     createdAt: strategy.createdAt.toISOString(),
@@ -159,10 +167,12 @@ export const resolvers = {
           createdBy: data.createdBy,
           updatedBy: data.updatedBy,
         }, context.organizationId, context.tx);
-        return strategy ? transformPickFaceStrategy(strategy) : null;
+        if (!strategy) return null;
+        const populated = await pickFaceStrategiesRepository.getPickFaceStrategyById(strategy.id, context.organizationId);
+        return populated ? transformPickFaceStrategy(populated) : transformPickFaceStrategy(strategy);
       },
     ),
-
+ 
     /**
      * Update an existing pick face strategy
      */
@@ -194,7 +204,8 @@ export const resolvers = {
           updatedBy: uData.updatedBy,
         }, id, context.organizationId || undefined, context.tx);
         if (!strategy) return null;
-        return transformPickFaceStrategy(strategy);
+        const populated = await pickFaceStrategiesRepository.getPickFaceStrategyById(strategy.id, context.organizationId || undefined);
+        return populated ? transformPickFaceStrategy(populated) : transformPickFaceStrategy(strategy);
       },
     ),
 
