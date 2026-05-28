@@ -1,5 +1,5 @@
 import { MainSchema } from "@/db/db.schema";
-import { uuid, text, timestamp, numeric } from "drizzle-orm/pg-core";
+import { uuid, text, timestamp, numeric, integer } from "drizzle-orm/pg-core";
 import { OrganizationsTable } from "@/features/master-data/organization.model";
 
 export const TransportTable = MainSchema.table('m_transports', {
@@ -17,6 +17,7 @@ export const TransportTable = MainSchema.table('m_transports', {
   maxWidthMm: numeric('max_width_mm', { precision: 10, scale: 2 }),
   maxHeightMm: numeric('max_height_mm', { precision: 10, scale: 2 }),
   maxWeightKg: numeric('max_weight_kg', { precision: 10, scale: 3 }),
+  numberOfPallets: integer('number_of_pallets'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   createdBy: text('created_by').notNull(),

@@ -23,6 +23,7 @@ export const typeDefs = `#graphql
     maxWidthMm: String
     maxHeightMm: String
     maxWeightKg: String
+    numberOfPallets: Int
     createdAt: String!
     updatedAt: String!
     createdBy: String!
@@ -61,6 +62,7 @@ export const typeDefs = `#graphql
     maxWidthMm: String
     maxHeightMm: String
     maxWeightKg: String
+    numberOfPallets: Int
     createdBy: String!
     updatedBy: String!
   }
@@ -81,6 +83,7 @@ export const typeDefs = `#graphql
     maxWidthMm: String
     maxHeightMm: String
     maxWeightKg: String
+    numberOfPallets: Int
     updatedBy: String!
   }
 

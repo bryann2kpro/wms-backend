@@ -66,6 +66,7 @@ export class TransportRepositoryClass {
           maxWidthMm: TransportTable.maxWidthMm,
           maxHeightMm: TransportTable.maxHeightMm,
           maxWeightKg: TransportTable.maxWeightKg,
+          numberOfPallets: TransportTable.numberOfPallets,
           createdAt: TransportTable.createdAt,
           updatedAt: TransportTable.updatedAt,
           createdBy: TransportTable.createdBy,
