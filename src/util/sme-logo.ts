@@ -26,7 +26,7 @@ export async function getSmeLogoDataUrl(): Promise<string | null> {
 }
 
 /** `<img class="logo" …>` or empty string if file missing */
-export async function getSmeLogoImgHtml(alt = 'SME Ederan'): Promise<string> {
+export async function getSmeLogoImgHtml(alt = 'SME Edaran'): Promise<string> {
   const dataUrl = await getSmeLogoDataUrl();
   if (!dataUrl) return '';
   const safeAlt = alt.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');

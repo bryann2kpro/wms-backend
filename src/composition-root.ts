@@ -32,7 +32,19 @@ import { SuppliersRepositoryClass } from '@/features/master-data/suppliers.repos
 import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repository.js';
 import { RacksRepositoryClass } from '@/features/master-data/racks.repository.js';
 import { WarehousesRepositoryClass } from '@/features/master-data/warehouses.repository.js';
+import { MapRepositoryClass } from '@/features/master-data/map.repository.js';
+import { AreaRepositoryClass } from '@/features/master-data/area.repository.js';
+import { SetupAreaRepositoryClass } from '@/features/master-data/setup-area.repository.js';
+import { PickFaceStrategyRepositoryClass } from '@/features/master-data/pick-face-strategy.repository.js';
+import { PickupCriteriaRepositoryClass } from '@/features/master-data/pickup-criteria.repository.js';
+import { PalletLabelRepositoryClass } from '@/features/master-data/pallet-label.repository.js';
+import { TransportRepositoryClass } from '@/features/master-data/transport.repository.js';
+import { ZoneRepositoryClass } from '@/features/master-data/zone.repository.js';
+import { BinRepositoryClass } from '@/features/master-data/bin.repository.js';
+import { PutawayRuleRepositoryClass } from '@/features/master-data/putaway-rule.repository.js';
+import { PickingCriteriaRepositoryClass } from '@/features/master-data/picking-criteria.repository';
 import { AuditLogRepositoryClass } from './features/audit-log/audit.repository';
+import { SkuAssignmentRepositoryClass } from './features/sku-assignment/sku-assignment.repository';
 import { ReportControllerClass } from './features/report/report.controller';
 // Inbound Repositories
 import { GrnsRepositoryClass } from './features/inbound/grns.repository';
@@ -40,6 +52,7 @@ import { GrnItemsRepositoryClass } from './features/inbound/grns-items.repositor
 import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplier-deliveries/supplier-delivery-item.repository';
 import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
 import { InboundServices } from './features/inbound/inbound.services';
+import { GrnPutawayService } from './features/inbound/grn-putaway.service';
 // Outbound Repositories & Services
 import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
@@ -52,6 +65,8 @@ import { InventoryBalanceRepositoryClass } from './features/inventory/inventory-
 import { StockCountServices } from './features/inventory/stock-count.services';
 import { StockCountSessionRepositoryClass } from './features/inventory/stock-count-session.repository';
 import { StockCountSessionService } from './features/inventory/stock-count-session.service';
+import { DailyOpeningStockRepositoryClass } from './features/inventory/daily-opening-stock/daily-opening-stock.repository';
+import { StockAdjustmentRepositoryClass } from './features/inventory/stock-adjustment/stock-adjustment.repository';
 // Dashboard
 import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
 import { InvoicesRepositoryClass } from './features/invoicing/invoices.repository';
@@ -60,12 +75,15 @@ import { RunningNoRepositoryClass } from './features/running-no/running-no.repos
 import { ApiKeysRepositoryClass } from '@/features/api-keys/api-keys.repository.js';
 import { ApiKeysControllerClass } from '@/features/api-keys/api-keys.controller.js';
 // ES Integration
-import { EsAdvanceNoticeRepositoryClass } from '@/features/es/es-advance-notice.repository.js';
-import { EsAdvanceNoticeControllerClass } from '@/features/es/es-advance-notice.controller.js';
+import { EsRepositoryClass } from '@/features/es/es.repository.js';
+import { EsControllerClass } from '@/features/es/es.controller.js';
 import { NetSuiteService } from '@/features/es/netsuite.service.js';
 import { EsItemReceiptServiceClass } from '@/features/es/es-item-receipt.service.js';
 // Notifications
 import { EmailNotificationRepositoryClass } from '@/features/notifications/email-notification.repository.js';
+import { EmailSettingsRepositoryClass } from '@/features/notifications/email-settings.repository.js';
+import { WhatsAppNotificationRepositoryClass, WhatsAppSettingsRepositoryClass } from '@/features/whatsapp/whatsapp.repository.js';
+import { whatsAppClient as whatsAppClientInstance } from '@/features/whatsapp/whatsapp.client.js';
 
 
 // ============================================
@@ -92,10 +110,22 @@ export const skuRepository = new SkuRepositoryClass();
 export const regionRepository = new RegionRepositoryClass();
 export const deliveryScheduleRepository = new DeliveryScheduleRepositoryClass();
 export const outletsRepository = new OutletsRepositoryClass();
+export const skuAssignmentRepository = new SkuAssignmentRepositoryClass();
 export const suppliersRepository = new SuppliersRepositoryClass();
 export const stockUnitRepository = new StockUnitRepositoryClass();
 export const racksRepository = new RacksRepositoryClass();
 export const warehousesRepository = new WarehousesRepositoryClass();
+export const mapsRepository = new MapRepositoryClass();
+export const areasRepository = new AreaRepositoryClass();
+export const setupAreasRepository = new SetupAreaRepositoryClass();
+export const pickFaceStrategiesRepository = new PickFaceStrategyRepositoryClass();
+export const pickupCriteriasRepository = new PickupCriteriaRepositoryClass();
+export const palletLabelsRepository = new PalletLabelRepositoryClass();
+export const transportsRepository = new TransportRepositoryClass();
+export const zonesRepository = new ZoneRepositoryClass();
+export const binsRepository = new BinRepositoryClass();
+export const putawayRulesRepository = new PutawayRuleRepositoryClass();
+export const pickingCriteriaRepository = new PickingCriteriaRepositoryClass();
 
 // Inbound Repositories
 export const grnsRepository = new GrnsRepositoryClass(runningNoRepository);
@@ -110,9 +140,14 @@ export const exceptionsRepository = new ExceptionsRepositoryClass();
 // Inventory Repositories
 export const inventoryBalancesRepository = new InventoryBalanceRepositoryClass();
 export const inventoryMovementRepository = new InventoryMovementRepositoryClass(inventoryBalancesRepository);
+export const dailyOpeningStockRepository = new DailyOpeningStockRepositoryClass();
 export const stockCountServices = new StockCountServices();
-export const stockCountSessionRepository = new StockCountSessionRepositoryClass();
+export const stockCountSessionRepository = new StockCountSessionRepositoryClass(
+  inventoryMovementRepository,
+  dailyOpeningStockRepository,
+);
 export const stockCountSessionService = new StockCountSessionService(stockCountSessionRepository);
+export const stockAdjustmentRepository = new StockAdjustmentRepositoryClass(runningNoRepository);
 
 // Dashboard
 export const dashboardRepository = new DashboardRepositoryClass();
@@ -130,6 +165,7 @@ export const outboundServices = new OutboundServices(
   purchaseOrdersRepository,
   inventoryMovementRepository,
   documentsRepository,
+  pickFaceStrategiesRepository,
 );
 
 // ============================================
@@ -144,9 +180,13 @@ export const auditLogRepository = new AuditLogRepositoryClass();
 export const reportController = new ReportControllerClass();
 // Notifications
 export const emailNotificationRepository = new EmailNotificationRepositoryClass();
+export const emailSettingsRepository = new EmailSettingsRepositoryClass();
+export const whatsAppNotificationRepository = new WhatsAppNotificationRepositoryClass();
+export const whatsAppSettingsRepository = new WhatsAppSettingsRepositoryClass();
+export const whatsAppClient = whatsAppClientInstance;
 // ES Integration
-export const esAdvanceNoticeRepository = new EsAdvanceNoticeRepositoryClass();
-export const esAdvanceNoticeController = new EsAdvanceNoticeControllerClass(esAdvanceNoticeRepository, emailNotificationRepository);
+export const esRepository = new EsRepositoryClass();
+export const esController = new EsControllerClass(esRepository, emailNotificationRepository);
 
 export const inboundServices = new InboundServices(
     grnsRepository,
@@ -157,19 +197,22 @@ export const inboundServices = new InboundServices(
     inventoryMovementRepository,
     suppliersRepository,
     stockUnitRepository,
-    esAdvanceNoticeRepository,
+    esRepository,
 );
 
 // API Keys
 export const apiKeysRepository = new ApiKeysRepositoryClass();
 export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
 
+export const grnPutawayService = new GrnPutawayService(grnItemsRepository, pickFaceStrategiesRepository);
+
 export const netSuiteService = new NetSuiteService();
 export const esItemReceiptService = new EsItemReceiptServiceClass(
-  esAdvanceNoticeRepository,
+  esRepository,
   grnItemsRepository,
   skuRepository,
   suppliersRepository,
   supplierDeliveriesRepository,
   netSuiteService,
+  stockUnitRepository,
 );

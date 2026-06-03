@@ -151,6 +151,12 @@ export const typeDefs = `#graphql
         quantity: Float!
         units: String!
         custrecord_r2o_order_code: String
+        """NetSuite flag: T when the item is lot-tracked."""
+        islotitem: String
+        """First lot serial from ASN lots[0], for GRN prefill when lot-tracked."""
+        lotNo: String
+        """First lot expiry from ASN lots[0] (YYYY-MM-DD when provided)."""
+        expiryDate: String
     }
 
     extend type Query {
@@ -241,5 +247,12 @@ export const typeDefs = `#graphql
         Requires authentication.
         """
         deleteGrn(id: ID!): Boolean! @auth
+
+        """
+        Manually trigger putaway bin assignment for all items in a GRN.
+        Looks up each SKU's FIXED_BIN pick face strategy and sets grn_items.rackId.
+        Returns count of items updated.
+        """
+        assignPutawayBins(grnId: ID!): Int! @auth
     }
 `

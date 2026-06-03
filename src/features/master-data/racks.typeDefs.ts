@@ -11,9 +11,15 @@ export const typeDefs = `#graphql
   """
   type Rack {
     rackId: ID!
+    zoneId: ID
+    areaId: ID
     rackRow: String!
     rackColumn: String!
     rackLevel: String!
+    binCode: String
+    barCode: String
+    binType: String!
+    isActive: Boolean!
     createdAt: String!
     updatedAt: String!
     createdBy: String!
@@ -29,6 +35,14 @@ export const typeDefs = `#graphql
   }
 
   """
+  Input for sorting racks
+  """
+  input RackSortInput {
+    sortBy: String
+    sortOrder: String
+  }
+
+  """
   Input for filtering racks
   """
   input RackFilterInput {
@@ -36,15 +50,24 @@ export const typeDefs = `#graphql
     rackRow: String
     rackColumn: String
     rackLevel: String
+    binCode: String
+    binType: String
+    isActive: Boolean
   }
 
   """
   Input for creating a new Rack
   """
   input CreateRackInput {
+    zoneId: ID
+    areaId: ID
     rackRow: String!
     rackColumn: String!
     rackLevel: String!
+    binCode: String
+    barCode: String
+    binType: String
+    isActive: Boolean
     createdBy: String!
     updatedBy: String!
   }
@@ -53,9 +76,15 @@ export const typeDefs = `#graphql
   Input for updating an existing Rack
   """
   input UpdateRackInput {
+    zoneId: ID
+    areaId: ID
     rackRow: String
     rackColumn: String
     rackLevel: String
+    binCode: String
+    barCode: String
+    binType: String
+    isActive: Boolean
     updatedBy: String!
   }
 
@@ -64,7 +93,7 @@ export const typeDefs = `#graphql
     Get racks with optional filtering and pagination.
     Requires authentication.
     """
-    racks(filter: RackFilterInput, pageSize: Int, pageNumber: Int): RackPaginatedResponse! @auth
+    racks(filter: RackFilterInput, sort: RackSortInput, pageSize: Int, pageNumber: Int): RackPaginatedResponse! @auth
     
     """
     Get a single rack by ID.

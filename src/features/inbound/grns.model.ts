@@ -1,7 +1,7 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { OrganizationsTable } from "@/features/master-data/organization.model";
-import { EsAdvanceNoticesTable } from "@/features/es/es-advance-notice.model";
+import { EsAdvanceNoticesTable } from "@/features/es/es.model";
 
 /**
  * Goods Received Notes (GRN) Table

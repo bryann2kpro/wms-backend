@@ -2,6 +2,8 @@ import { MainSchema } from "@/db/db.schema";
 import { uuid, text, numeric, timestamp } from "drizzle-orm/pg-core";
 import { SkuTable } from "../../master-data/sku.model";
 import { RegionTable } from "@/features/master-data/region.model";
+import { RacksTable } from "@/features/master-data/racks.model";
+import { StockAdjustmentsTable } from "@/features/inventory/stock-adjustment/stock-adjustment.model";
 
 const InventoryMovementTypeEnum = MainSchema.enum('inventory_movement_type', [
   'INBOUND', // Inventory received from a supplier
@@ -9,6 +11,7 @@ const InventoryMovementTypeEnum = MainSchema.enum('inventory_movement_type', [
   'SHIPMENT', // Truck left warehouse
   'ADJUSTMENT', // Stock count correction
   'DAMAGED', // Found broken item
+  'LOSS_ADJUSTMENT', // Stock count loss correction
 ]);
 
 export enum InventoryMovementType {
@@ -17,6 +20,7 @@ export enum InventoryMovementType {
   SHIPMENT = 'SHIPMENT', // Truck left warehouse
   ADJUSTMENT = 'ADJUSTMENT', // Stock count correction
   DAMAGED = 'DAMAGED', // Found broken item
+  LOSS_ADJUSTMENT = 'LOSS_ADJUSTMENT', // Stock count loss correction
 };
 
 /**
@@ -29,7 +33,11 @@ export enum InventoryMovementType {
  * @field movementType - Type of movement (INBOUND, OUTBOUND, ADJUSTMENT, TRANSFER, SALE, RETURN, OTHER)
  * @field quantity - Quantity moved
  * @field balanceAfter - Balance after the movement
- * @field referenceId - Reference to the source document
+ * @field referenceNo - Human-readable reference (e.g. adjustment number)
+ * @field stockAdjustmentId - FK when movement originated from a stock adjustment (nullable for INBOUND, etc.)
+ * @field rackId - Bin location when recorded (e.g. stock adjustments)
+ * @field lotNo - Lot traceability when applicable (e.g. adjustments)
+ * @field expiryDate - Expiry for the lot line when applicable
  * @field reason - Reason for the movement
  * @field createdAt - Date and time the movement was created
  * @field createdBy - User who created the movement
@@ -42,6 +50,10 @@ export const InventoryMovementsTable = MainSchema.table('inventory_movements', {
   quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull(),
   balanceAfter: numeric('balance_after', { precision: 12, scale: 2 }).default('0'),
   referenceNo: text('reference_no'),
+  stockAdjustmentId: uuid('stock_adjustment_id').references(() => StockAdjustmentsTable.id),
+  rackId: uuid('rack_id').references(() => RacksTable.rackId),
+  lotNo: text('lot_no'),
+  expiryDate: timestamp('expiry_date', { withTimezone: true }),
   reason: text('reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   createdBy: text('created_by').notNull(),

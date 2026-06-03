@@ -88,6 +88,30 @@
             color: var(--text-muted);
         }
 
+        .region-filter-line {
+            margin-top: 0.65rem;
+            font-size: 0.72rem;
+            line-height: 1.45;
+            color: var(--text-secondary);
+        }
+
+        .region-filter-line .region-filter-prefix {
+            font-size: 0.6rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+        }
+
+        .region-filter-line strong {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .brand-text > .region-filter-line + .region-filter-line {
+            margin-top: 0.35rem;
+        }
+
         /* Title side */
         .doc-title-block {
             text-align: right;
@@ -230,14 +254,6 @@
             font-size: 0.78rem;
         }
 
-        .col-desc .do-breakdown {
-            margin-top: 0.25rem;
-            font-size: 0.68rem;
-            color: var(--text-muted);
-            font-family: 'IBM Plex Mono', monospace;
-            line-height: 1.6;
-        }
-
         .col-dos {
             color: var(--text-muted);
             font-family: 'IBM Plex Mono', monospace;
@@ -265,6 +281,26 @@
             color: var(--text-secondary);
             line-height: 1.7;
             width: 180px;
+        }
+
+        .col-rack {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            width: 190px;
+            white-space: nowrap;
+        }
+
+        .col-mark {
+            width: 96px;
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .col-mark-done {
+            color: #15803D;
+            font-weight: 700;
         }
 
         .alloc-line {
@@ -365,13 +401,21 @@
     <div class="report-wrap">
         <header class="doc-header">
             <div class="brand-wrap">
-                {{logoImgHtml}}
+                <img class="logo" alt="SME logo" src="https://smee-bucket-348170387599-ap-southeast-5-an.s3.ap-southeast-5.amazonaws.com/sme-edaran/sme-logo.jpg">
                 <div class="brand-text">
                     <div class="brand">SME EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
                     <div class="brand-sub">
                         NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
                         SUNGAI BULOH, 47000 SELANGOR.<br/>
                         TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
+                    </div>
+                    <div class="region-filter-line">
+                        <span class="region-filter-prefix">Region</span>:
+                        <strong>{{regionLabel}}</strong>
+                    </div>
+                    <div class="region-filter-line">
+                        <span class="region-filter-prefix">Scheduled delivery Date</span>:
+                        <strong>{{scheduledDeliveryRange}}</strong>
                     </div>
                 </div>
             </div>
@@ -401,9 +445,10 @@
                     <tr>
                         <th style="text-align:center; width:40px">#</th>
                         <th style="text-align:left; width:100px">SKU Code</th>
-                        <th style="text-align:left">Description &amp; DO Breakdown</th>
+                        <th style="text-align:left">Description</th>
                         <th style="text-align:center; width:72px">Total Req</th>
-                        <th style="text-align:left; width:190px">Rack / Allocation</th>
+                        <th style="text-align:left; width:190px">Rack(s)</th>
+                        <th style="text-align:center; width:96px">Completed Picking</th>
                     </tr>
                 </thead>
                 <tbody>

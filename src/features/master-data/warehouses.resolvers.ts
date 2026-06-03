@@ -4,8 +4,11 @@
  * @description Resolver functions for Warehouse operations.
  */
 
-import { prettifyError, z } from "zod";
+import { z } from "zod";
 import { warehousesRepository, authRepository } from "@/composition-root";
+
+const UUID_SCHEMA = z.string().uuid();
+const isUUID = (val: string) => UUID_SCHEMA.safeParse(val).success;
 import { withAudit } from "@/features/audit-log/audit.wrapper";
 import { GraphQLError } from "graphql/error";
 import { logger } from "@/util/logger";
@@ -48,6 +51,18 @@ function transformWarehouse(warehouse: WarehouseWithAuditUsers) {
 // RESOLVERS
 // ============================================
 
+const warehouseFilterSchema = z.object({
+  warehouseId: z.string().uuid().optional(),
+  warehouseIds: z.array(z.string().uuid()).optional(),
+  warehouseCode: z.string().optional(),
+  warehouseCodes: z.array(z.string()).optional(),
+  warehouseName: z.string().optional(),
+}).transform((data) => ({
+  ...data,
+  warehouseIds: data.warehouseId ? [data.warehouseId] : data.warehouseIds,
+  warehouseCodes: data.warehouseCode ? [data.warehouseCode] : data.warehouseCodes,
+}));
+
 export const resolvers = {
   Query: {
     /**
@@ -71,21 +86,13 @@ export const resolvers = {
       const filter: WarehouseFilter = {};
 
       if (args.filter) {
-        if (args.filter.warehouseIds) {
-          filter.warehouseId = args.filter.warehouseIds;
-        } else if (args.filter.warehouseId) {
-          filter.warehouseId = args.filter.warehouseId;
+        const { success, data, error } = warehouseFilterSchema.safeParse(args.filter);
+        if (!success) {
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
         }
-
-        if (args.filter.warehouseCodes) {
-          filter.warehouseCode = args.filter.warehouseCodes;
-        } else if (args.filter.warehouseCode) {
-          filter.warehouseCode = args.filter.warehouseCode;
-        }
-
-        if (args.filter.warehouseName) {
-          filter.warehouseName = args.filter.warehouseName;
-        }
+        if (data.warehouseIds) filter.warehouseId = data.warehouseIds;
+        if (data.warehouseCodes) filter.warehouseCode = data.warehouseCodes;
+        if (data.warehouseName) filter.warehouseName = data.warehouseName;
       }
 
       const result = await warehousesRepository.getWarehouse(filter, {
@@ -93,14 +100,14 @@ export const resolvers = {
         pageNumber: args.pageNumber,
       }, context.organizationId || undefined);
 
-      // Batch-load audit users to avoid N+1
+      // Batch-load audit users to avoid N+1 — skip non-UUID values like "system"
       const allUserIds = Array.from(
         new Set(
           result.query.flatMap((w: any) => [w.createdBy, w.updatedBy].filter(Boolean))
         )
-      );
+      ).filter(isUUID);
 
-      const users = await authRepository.getUsersByIds(allUserIds);
+      const users = allUserIds.length > 0 ? await authRepository.getUsersByIds(allUserIds) : [];
       const userMap = new Map(users.map((u) => [u.id, u]));
 
       return {
@@ -191,10 +198,8 @@ export const resolvers = {
         const { success, data, error } = createWarehouseSchema.safeParse(input);
 
         if (!success) {
-          logger.warn("⚠️ [WarehousesResolvers.createWarehouse] Invalid input:", prettifyError(error));
-          throw new GraphQLError("Invalid input", {
-            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
-          });
+          logger.warn("⚠️ [WarehousesResolvers.createWarehouse] Invalid input:", error.flatten().fieldErrors);
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
         }
         logger.info("ℹ️ [WarehousesResolvers.createWarehouse] Input validated successfully");
         logger.debug("🔍 [WarehousesResolvers.createWarehouse] Data:", data);
@@ -202,8 +207,13 @@ export const resolvers = {
         const userId = context.user?.id ?? "system";
 
         logger.info("ℹ️ [WarehousesResolvers.createWarehouse] Creating warehouse...");
+        if (!context.organizationId) {
+          throw new GraphQLError('Organization context is required', {
+            extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+          });
+        }
         const warehouse = await warehousesRepository.createWarehouse({
-          organizationId: context.organizationId || '00000000-0000-0000-0000-000000000001',
+          organizationId: context.organizationId,
           warehouseName: data.warehouseName,
           warehouseCode: data.warehouseCode ?? null,
           warehouseAddress: data.warehouseAddress ?? null,
@@ -247,10 +257,8 @@ export const resolvers = {
         const { success, data, error } = updateWarehouseSchema.safeParse(input);
 
         if (!success) {
-          logger.warn("⚠️ [WarehousesResolvers.updateWarehouse] Invalid input:", prettifyError(error));
-          throw new GraphQLError("Invalid input", {
-            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
-          });
+          logger.warn("⚠️ [WarehousesResolvers.updateWarehouse] Invalid input:", error.flatten().fieldErrors);
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
         }
 
         logger.info("ℹ️ [WarehousesResolvers.updateWarehouse] Input validated successfully");
@@ -294,12 +302,12 @@ export const resolvers = {
      * Resolve createdByUser for a warehouse
      */
     createdByUser: async (warehouse: { createdBy: string }) => {
-      // Prefer preloaded data (from transformWarehouse) to avoid extra DB calls
       // @ts-expect-error allow reading potential preloaded field
       if (warehouse.createdByUser) {
         // @ts-expect-error
         return warehouse.createdByUser;
       }
+      if (!isUUID(warehouse.createdBy)) return null;
       const user = await authRepository.getUserById(warehouse.createdBy);
       if (!user) return null;
       return { id: user.id, displayName: user.displayName };
@@ -309,12 +317,12 @@ export const resolvers = {
      * Resolve updatedByUser for a warehouse
      */
     updatedByUser: async (warehouse: { updatedBy: string }) => {
-      // Prefer preloaded data (from transformWarehouse) to avoid extra DB calls
       // @ts-expect-error allow reading potential preloaded field
       if (warehouse.updatedByUser) {
         // @ts-expect-error
         return warehouse.updatedByUser;
       }
+      if (!isUUID(warehouse.updatedBy)) return null;
       const user = await authRepository.getUserById(warehouse.updatedBy);
       if (!user) return null;
       return { id: user.id, displayName: user.displayName };

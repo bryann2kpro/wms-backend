@@ -9,8 +9,9 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { esAdvanceNoticeController } from '@/composition-root.js';
+import { esController } from '@/composition-root.js';
 import authenticateApiKey from '@/middlewares/authenticate-api-key.js';
+import authenticateJWT from '@/middlewares/authenticate-jwt';
 
 const router = Router();
 
@@ -25,8 +26,21 @@ const router = Router();
 router.post(
   '/advance-notice',
   authenticateApiKey,
-  esAdvanceNoticeController.receiveAdvanceNotice.bind(esAdvanceNoticeController),
+  esController.receiveAdvanceNotice.bind(esController),
 );
+
+/**
+ * @route GET /es/item-receipt?id=<id>
+ * @description Get sent item receipt data by id.
+ * @headers Authorization: <bearer-token>
+ * @returns { success: boolean, message: string, data: ItemReceipt }
+ */
+router.get(
+  '/item-receipt',
+  authenticateJWT,
+  esController.getItemReceipt.bind(esController),
+);
+
 
 // Malformed JSON handler — Express body parser throws SyntaxError with type 'entity.parse.failed'
 // This must be a 4-arg middleware and placed after the route definitions

@@ -10,7 +10,7 @@ import { InventoryMovementType } from "../inventory/inventory-movement/inventory
 import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
 import { GrnItemRacksTable } from "./grns.model";
 import { OrganizationRepositoryClass } from "../master-data/organization.repository";
-import { EsAdvanceNoticeRepositoryClass } from "../es/es-advance-notice.repository";
+import { EsAdvanceNoticeRepositoryClass } from "../es/es.repository";
 import { SuppliersRepositoryClass } from "../master-data/suppliers.repository";
 import { StockUnitRepositoryClass } from "../master-data/stock-unit.repository";
 
@@ -26,6 +26,7 @@ export type CreateInboundItemInput = {
     rackId?: string | null;
     rackIds?: string[] | null;
     expiryDate?: string | null;
+    lotNo?: string | null;
     skuCode?: string | null;
     skuDescription?: string | null;
     skuUom?: string | null;
@@ -33,7 +34,6 @@ export type CreateInboundItemInput = {
 
 /**
  * Input for creating an inbound (GRN) – same type and process as createGrn.
- * When inboundQty and skuId are provided, the SKU's cartonQuantity is updated to inboundQty (in same transaction).
  */
 export type CreateInboundInput = {
     userId: string;
@@ -49,10 +49,6 @@ export type CreateInboundInput = {
     warehouseId?: string | null;
     status?: string | null;
     items?: CreateInboundItemInput[] | null;
-    /** When set with skuId, updates that SKU's carton quantity to this value (in same transaction). */
-    inboundQty?: number | string | null;
-    /** SKU to update when inboundQty is provided. */
-    skuId?: string | null;
     /** ID of the advance notice this GRN was created from. Optional — omit for manual GRNs. */
     advanceNoticeId?: string | null;
 };
@@ -156,7 +152,7 @@ export class InboundServices {
                 }, tx);
 
                 // 4. Create GRN items (same as createGrn)
-                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; createdBy: string; updatedBy?: string }> = [];
+                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
                 if (data.items?.length) {
                     for (const item of data.items) {
                         const skuIdToUse = await this.resolveOrCreateSkuForItem(item, createdBy, updatedBy, tx);
@@ -172,6 +168,7 @@ export class InboundServices {
                             remarks: item.remarks ?? undefined,
                             rackId: rackIds[0] ?? undefined,
                             expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
+                            lotNo: item.lotNo ?? null,
                             createdBy,
                             updatedBy,
                         });
@@ -199,14 +196,6 @@ export class InboundServices {
                             }
                         }
                     }
-                }
-
-                if (data.inboundQty != null && data.skuId) {
-                    await this.skuRepository.updateSku(data.skuId, {
-                        cartonQuantity: String(data.inboundQty),
-                        updatedBy: createdBy,
-                        updatedAt: new Date(),
-                    }, organizationId, tx);
                 }
 
                 // Mark the advance notice as linked so it no longer appears in the dropdown
@@ -360,8 +349,9 @@ export class InboundServices {
             }
         }
 
-        // 3. Auto-create: need at minimum skuCode and skuDescription
-        if (item.skuCode && item.skuDescription) {
+        // 3. Auto-create: need at minimum skuCode; fall back to skuCode as description when skuDescription is blank
+        if (item.skuCode) {
+            const descriptionToUse = item.skuDescription?.trim() || item.skuCode;
             const resolvedUom = await this.resolveSkuUom(item.skuUom ?? null);
             if (!resolvedUom) {
                 logger.error('[InboundServices] Cannot create SKU — no valid UOM could be resolved', { skuCode: item.skuCode, skuUom: item.skuUom });
@@ -370,9 +360,7 @@ export class InboundServices {
             try {
                 const newSku = await this.skuRepository.createSku({
                     skuCode: item.skuCode,
-                    skuDescription: item.skuDescription,
-                    cartonQuantity: '0',
-                    lossQuantity: '0',
+                    skuDescription: descriptionToUse,
                     skuUom: resolvedUom,
                     isActive: true,
                     createdBy,

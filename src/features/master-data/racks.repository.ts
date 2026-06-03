@@ -7,7 +7,7 @@
 import { db } from '@/db';
 import { OutletsTable, OutletType, OutletInsertType } from './outlets.model';
 import { RegionTable } from './region.model';
-import { eq, and, like, inArray, isNull } from 'drizzle-orm';
+import { eq, and, like, inArray, asc, desc } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -24,6 +24,11 @@ export type RackFilter = {
   rackRow?: string | string[];
   rackColumn?: string | string[];
   rackLevel?: string | string[];
+  binCode?: string;
+  binType?: string;
+  isActive?: boolean;
+  sortBy?: string;
+  sortOrder?: string;
 };
 
 export class RacksRepositoryClass {
@@ -67,19 +72,49 @@ export class RacksRepositoryClass {
         whereCondition.push(like(RacksTable.rackLevel, `%${filter.rackLevel}%`));
       }
 
+      if (filter.binCode) {
+        whereCondition.push(like(RacksTable.binCode, `%${filter.binCode}%`));
+      }
+
+      if (filter.binType) {
+        whereCondition.push(eq(RacksTable.binType, filter.binType));
+      }
+
+      if (filter.isActive !== undefined) {
+        whereCondition.push(eq(RacksTable.isActive, filter.isActive));
+      }
+
+      const sortOrderFn = filter.sortOrder?.toUpperCase() === 'ASC' ? asc : desc;
+      const sortByField = filter.sortBy?.toUpperCase() ?? 'UPDATED_AT';
+      const orderByCol =
+        sortByField === 'BIN_CODE'    ? RacksTable.binCode    :
+        sortByField === 'RACK_ROW'    ? RacksTable.rackRow    :
+        sortByField === 'RACK_COLUMN' ? RacksTable.rackColumn :
+        sortByField === 'RACK_LEVEL'  ? RacksTable.rackLevel  :
+        sortByField === 'BIN_TYPE'    ? RacksTable.binType    :
+        sortByField === 'CREATED_AT'  ? RacksTable.createdAt  :
+        RacksTable.updatedAt;
+
       const baseQuery = db
         .select({
           rackId: RacksTable.rackId,
+          zoneId: RacksTable.zoneId,
+          areaId: RacksTable.areaId,
           rackRow: RacksTable.rackRow,
           rackColumn: RacksTable.rackColumn,
           rackLevel: RacksTable.rackLevel,
+          binCode: RacksTable.binCode,
+          barCode: RacksTable.barCode,
+          binType: RacksTable.binType,
+          isActive: RacksTable.isActive,
           createdAt: RacksTable.createdAt,
           updatedAt: RacksTable.updatedAt,
           createdBy: RacksTable.createdBy,
           updatedBy: RacksTable.updatedBy,
         })
         .from(RacksTable)
-        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+        .orderBy(sortOrderFn(orderByCol));
 
       const pageSize = paginationParams.pageSize || 10;
       const pageNumber = paginationParams.pageNumber || 1;

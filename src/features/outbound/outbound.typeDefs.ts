@@ -99,6 +99,13 @@ export const typeDefs = `#graphql
         doStatus: String
         doStatuses: [String!]
         search: String
+        "Filter by outlet region ID (uuid)"
+        regionId: ID
+        "Filter by any of these outlet region IDs (when non-empty, used instead of regionId)"
+        regionIds: [ID!]
+        "Filter by DO expected delivery date range (inclusive, ISO date string)"
+        scheduledDeliveryDateFrom: String
+        scheduledDeliveryDateTo: String
     }
 
     """
@@ -273,6 +280,8 @@ export const typeDefs = `#graphql
         skuCode: String!
         skuId: ID
         qtyRequired: Float!
+        """Specific stock_quant row to reserve from (required from UI)."""
+        stockQuantId: ID
     }
 
     """
@@ -284,6 +293,37 @@ export const typeDefs = `#graphql
         items: [CreatePurchaseOrderLineItemInput!]!
         "If true, bypasses delivery schedule cutoff and assigns to the next delivery day"
         isEmergency: Boolean
+    }
+
+    """
+    Input for a single line item when updating a purchase order.
+    """
+    input UpdatePurchaseOrderItemInput {
+        id: ID!
+        qtyRequired: Float!
+    }
+
+    """
+    Input for a new line item to add to an existing purchase order.
+    """
+    input NewPurchaseOrderItemInput {
+        skuId: ID!
+        skuCode: String!
+        qtyRequired: Float!
+    }
+
+    """
+    Input for updating an existing Purchase Order (partial update from UI).
+    Only the fields provided will be changed.
+    """
+    input UpdatePurchaseOrderInput {
+        scheduledDeliveryDate: String
+        outletId: ID
+        items: [UpdatePurchaseOrderItemInput!]
+        "New line items to add to the PO and its linked DO"
+        newItems: [NewPurchaseOrderItemInput!]
+        "IDs of existing PO items to remove (also removes linked DO item and releases inventory reservation)"
+        removedItemIds: [ID!]
     }
 
     """
@@ -302,6 +342,20 @@ export const typeDefs = `#graphql
         Create a purchase order and its line items. Used when creating POs from the UI.
         """
         createPurchaseOrder(input: CreatePurchaseOrderInput!): PurchaseOrder!
+
+        """
+        Update an existing purchase order. Editable fields: notes, scheduledDeliveryDate, outletId, item quantities.
+        PO status, DO status, NetSuite status, and createdBy are not editable via this mutation.
+        """
+        updatePurchaseOrder(id: ID!, input: UpdatePurchaseOrderInput!): PurchaseOrder!
+
+        """
+        Cancel a purchase order and its linked delivery order.
+        Releases all inventory reservations and recalculates the QOM group charge for any
+        remaining sibling POs going to the same outlet on the same delivery date.
+        POs in SHIPPED or DELIVERED status cannot be cancelled.
+        """
+        cancelPurchaseOrder(id: ID!): PurchaseOrder!
 
         """
         Create a delivery order. Validates line items (SKU resolution), checks stock,

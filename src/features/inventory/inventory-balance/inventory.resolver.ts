@@ -7,22 +7,32 @@
 
 import { inventoryBalancesRepository } from "@/composition-root";
 import { InventoryBalancesFilter } from "./inventory.repository";
+import { GraphQLContext } from "@/graphql/context";
+import { GraphQLError } from "graphql";
 
 export type InventoryBalanceFilterArgs = {
   skuId?: string;
   skuIds?: string[];
   skuCode?: string;
   skuCodes?: string[];
+  search?: string;
   recordedDate?: string;
 };
 
 function transformInventoryBalance(row: {
   id: string;
   skuId: string;
-  onHandQty: string;
-  lossQty: string;
-  reservedQty: string;
+  onHandQty: string | number;
+  lossQty: string | number;
+  reservedQty: string | number;
   updatedAt: Date;
+  skuCode?: string;
+  skuDescription?: string;
+  pickingStrategy?: string;
+  isExpiryControlled?: boolean;
+  skuExpiryDate?: Date | null;
+  unitCode?: string | null;
+  unitName?: string | null;
 }) {
   return {
     id: row.id,
@@ -30,7 +40,14 @@ function transformInventoryBalance(row: {
     onHandQty: String(row.onHandQty ?? "0"),
     lossQty: String(row.lossQty ?? "0"),
     reservedQty: String(row.reservedQty ?? "0"),
-    updatedAt: row.updatedAt.toISOString(),
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
+    skuCode: row.skuCode ?? "",
+    skuDescription: row.skuDescription ?? "",
+    pickingStrategy: row.pickingStrategy ?? "FIFO",
+    isExpiryControlled: row.isExpiryControlled ?? false,
+    skuExpiryDate: row.skuExpiryDate instanceof Date ? row.skuExpiryDate.toISOString() : (row.skuExpiryDate ?? null),
+    unitCode: row.unitCode ?? null,
+    unitName: row.unitName ?? null,
   };
 }
 
@@ -44,8 +61,14 @@ export const resolvers = {
         pageNumber?: number;
         sortBy?: string;
         sortOrder?: string;
-      }
+      },
+      context: GraphQLContext,
     ) => {
+      if (!context.organizationId) {
+        throw new GraphQLError("Unauthorized: organization context required", {
+          extensions: { code: "UNAUTHORIZED" },
+        });
+      }
       const filter: InventoryBalancesFilter = {};
       if (args.filter) {
         if (args.filter.skuIds) {
@@ -58,12 +81,16 @@ export const resolvers = {
         } else if (args.filter.skuCode) {
           filter.skuCode = args.filter.skuCode;
         }
+        if (args.filter.search) {
+          filter.search = args.filter.search;
+        }
         if (args.filter.recordedDate) {
           filter.recordedDate = new Date(args.filter.recordedDate);
         }
       }
 
       const result = await inventoryBalancesRepository.getInventoryBalances(
+        context.organizationId,
         filter,
         {
           pageSize: args.pageSize,
@@ -81,11 +108,18 @@ export const resolvers = {
 
     inventoryBalancesBySkuIds: async (
       _: unknown,
-      args: { skuIds: string[] }
+      args: { skuIds: string[] },
+      context: GraphQLContext,
     ) => {
+      if (!context.organizationId) {
+        throw new GraphQLError("Unauthorized: organization context required", {
+          extensions: { code: "UNAUTHORIZED" },
+        });
+      }
       const balances =
         await inventoryBalancesRepository.getInventoryBalanceBySkuIds(
-          args.skuIds
+          args.skuIds,
+          context.organizationId,
         );
       if (!balances || balances.length === 0) return [];
       return balances.map(transformInventoryBalance);

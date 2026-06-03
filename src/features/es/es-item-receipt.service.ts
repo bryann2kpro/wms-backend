@@ -1,20 +1,46 @@
 import { logger } from '@/util/logger.js';
-import { EsAdvanceNoticeRepositoryClass } from './es-advance-notice.repository.js';
+import { EsRepositoryClass } from './es.repository.js';
 import { NetSuiteService } from './netsuite.service.js';
 import { GrnItemsRepositoryClass } from '@/features/inbound/grns-items.repository.js';
 import { SkuRepositoryClass } from '@/features/master-data/sku.repository.js';
 import { SuppliersRepositoryClass } from '@/features/master-data/suppliers.repository.js';
 import { SupplierDeliveriesRepositoryClass } from '@/features/inbound/supplier-deliveries/supplier-deliveries.repository.js';
 import { GrnType } from '@/features/inbound/grns.model.js';
+import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repository.js';
+import { z } from 'zod';
+
+const ItemReceiptLineSchema = z.object({
+  lineuniquekey: z.number().optional(),
+  itemid: z.string().min(1),
+  quantity: z.number().positive(),
+  units: z.string(),
+  location: z.string(),
+  custcol_abj_grn_linenum: z.number().int().positive(),
+  abj_es_supplier_do: z.string().optional(),
+  // Lot data is flattened on the line (reverted contract, no nested lots array)
+  serialnumbers: z.string().min(1).optional(),
+  expirationdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD').optional(),
+});
+
+const ItemReceiptPayloadSchema = z.object({
+  recordType: z.literal('itemreceipt'),
+  timeStamp: z.string(),
+  externalid: z.string().min(1),
+  trandate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD'),
+  createdfrom: z.string(),
+  entity: z.string(),
+  lines: z.array(ItemReceiptLineSchema).min(1),
+});
 
 export class EsItemReceiptServiceClass {
   constructor(
-    private esAdvanceNoticeRepository: EsAdvanceNoticeRepositoryClass,
+    private esRepository: EsRepositoryClass,
     private grnItemsRepository: GrnItemsRepositoryClass,
     private skuRepository: SkuRepositoryClass,
     private suppliersRepository: SuppliersRepositoryClass,
     private supplierDeliveriesRepository: SupplierDeliveriesRepositoryClass,
     private netSuiteService: NetSuiteService,
+    private stockUnitRepository: StockUnitRepositoryClass,
   ) {}
 
   /**
@@ -26,8 +52,15 @@ export class EsItemReceiptServiceClass {
 
     // 1. Fetch GRN items
     const grnItems = await this.grnItemsRepository.getGrnItems({ grnId: grn.id });
-    if (!grnItems || grnItems === false || grnItems.length === 0) {
+    if (!grnItems || grnItems.length === 0) {
       logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] No GRN items found for grnId: ${grn.id}`);
+      if (grn.poNo) {
+        try {
+          await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', {}, { success: false, error: 'No GRN items found' });
+        } catch (saveErr) {
+          logger.error('❌ [EsItemReceiptService.sendItemReceipt] Failed to save failure log:', saveErr);
+        }
+      }
       return { success: false, nsResponse: { error: 'No GRN items found' } };
     }
     logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Found ${grnItems.length} GRN items`);
@@ -38,18 +71,23 @@ export class EsItemReceiptServiceClass {
     const skuMap = new Map(skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuId, s]));
     logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Fetched ${skuResult.query.length} SKUs`);
 
-    // 3. Fetch advance notice and build lineuniquekey map
+    // 3. Fetch advance notice and build lineuniquekey / lot-tracking maps
     let entity: string | undefined;
     const linekeyByItemId = new Map<string, number>();
+    const isLotItemByItemId = new Map<string, boolean>();
 
     if (grn.poNo) {
-      const advanceNotice = await this.esAdvanceNoticeRepository.findByTranid(grn.poNo);
+      const advanceNotice = await this.esRepository.findByTranid(grn.poNo);
       if (advanceNotice) {
-        const noticePayload = advanceNotice.payload as { entity?: string; lines?: Array<{ itemid: string; lineuniquekey: number }> };
+        const noticePayload = advanceNotice.payload as {
+          entity?: string;
+          lines?: Array<{ itemid: string; lineuniquekey: number; islotitem?: string }>;
+        };
         entity = noticePayload.entity;
         const lines = noticePayload.lines ?? [];
         for (const line of lines) {
           linekeyByItemId.set(line.itemid, line.lineuniquekey);
+          isLotItemByItemId.set(line.itemid, (line.islotitem ?? '').toUpperCase() === 'T');
         }
         logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Advance notice found — entity: ${entity}, ${lines.length} lines`);
       } else {
@@ -61,7 +99,7 @@ export class EsItemReceiptServiceClass {
 
     // Fallback entity: supplier name
     if (!entity && grn.supplierId) {
-      const supplierResult = await this.suppliersRepository.getSuppliers({ supplierId: grn.supplierId }, undefined, organizationId);
+      const supplierResult = await this.suppliersRepository.getSupplier({ supplierId: grn.supplierId }, {}, organizationId);
       const supplier = supplierResult && 'query' in supplierResult ? supplierResult.query?.[0] : null;
       if (supplier?.supplierName) {
         entity = supplier.supplierName;
@@ -83,38 +121,112 @@ export class EsItemReceiptServiceClass {
       }
     }
 
-    // 5. Build Item Receipt lines
+    // 5. Fetch UOM unit codes for all SKUs
+    const uomIds = [...new Set(skuResult.query.map((s: { skuUom: string }) => s.skuUom).filter(Boolean))];
+    const uomMap = new Map<string, string>();
+    if (uomIds.length > 0) {
+      const uomResult = await this.stockUnitRepository.getStockUnit({ stockUnitId: uomIds }, { pageSize: uomIds.length, pageNumber: 1 }, organizationId);
+      for (const unit of uomResult.query) {
+        uomMap.set(unit.stockUnitId, unit.unitCode);
+      }
+      logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Fetched ${uomResult.query.length} UOMs`);
+    }
+
+    // 6. Group GRN items by SKU and build Item Receipt lines
     const lines: Array<Record<string, unknown>> = [];
     let lineIndex = 1;
     let unmatchedCount = 0;
 
+    // Group GRN items by skuId
+    const itemsBySkuId = new Map<string, typeof grnItems>();
     for (const item of grnItems) {
-      const sku = skuMap.get(item.skuId) as { skuCode: string } | undefined;
+      const existing = itemsBySkuId.get(item.skuId) ?? [];
+      existing.push(item);
+      itemsBySkuId.set(item.skuId, existing);
+    }
+
+    for (const [skuId, items] of itemsBySkuId) {
+      const sku = skuMap.get(skuId) as { skuCode: string; skuUom: string } | undefined;
       if (!sku) {
-        logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] SKU not found for skuId: ${item.skuId} — skipping line`);
+        logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] SKU not found for skuId: ${skuId} — skipping line`);
         lineIndex++;
         continue;
       }
 
       const lineUniqueKey = linekeyByItemId.get(sku.skuCode);
+      const isLotTracked = isLotItemByItemId.get(sku.skuCode) === true;
       if (lineUniqueKey === undefined) {
         logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] No lineuniquekey match for skuCode: ${sku.skuCode}`);
         unmatchedCount++;
       }
+      logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Building line — skuCode: ${sku.skuCode}, lotTracked: ${isLotTracked}`);
+
+      // Reverted contract: lot fields are flattened at line-level.
+      let totalQuantity = 0;
+      const distinctLots = new Set<string>();
+      let serialnumbers: string | undefined;
+      let expirationdate: string | undefined;
+
+      for (const item of items) {
+        totalQuantity += Number(item.qty);
+
+        if (item.lotNo) {
+          distinctLots.add(item.lotNo);
+
+          // Temporary assumption from partner testing: single lot per grouped SKU line.
+          if (!serialnumbers) {
+            serialnumbers = item.lotNo;
+          }
+
+          if (!expirationdate && item.expiryDate) {
+            expirationdate = new Date(item.expiryDate).toISOString().split('T')[0];
+          }
+        }
+      }
 
       const line: Record<string, unknown> = {
         itemid: sku.skuCode,
+        quantity: totalQuantity,
+        units: uomMap.get(sku.skuUom) ?? '',
         location: 'Distribution Center (DC)',
-        quantity: Number(item.qty),
         custcol_abj_grn_linenum: lineIndex,
       };
 
+      if (isLotTracked && !serialnumbers) {
+        const errorMessage = `Lot-tracked ASN line is missing GRN lot_no for skuCode ${sku.skuCode} (GRN ${grn.grnNo}, PO ${grn.poNo ?? 'N/A'})`;
+        logger.error(`❌ [EsItemReceiptService.sendItemReceipt] ${errorMessage}`);
+        if (grn.poNo) {
+          try {
+            await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', {}, { success: false, error: errorMessage });
+          } catch (saveErr) {
+            logger.error('❌ [EsItemReceiptService.sendItemReceipt] Failed to save failure log:', saveErr);
+          }
+        }
+        return { success: false, nsResponse: { error: errorMessage } };
+      }
+
+      if (distinctLots.size > 1) {
+        const errorMessage = `Multi-lot payload is temporarily unsupported for skuCode ${sku.skuCode} under reverted IR contract (GRN ${grn.grnNo}, PO ${grn.poNo ?? 'N/A'})`;
+        logger.error(`❌ [EsItemReceiptService.sendItemReceipt] ${errorMessage}`);
+        if (grn.poNo) {
+          try {
+            await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', {}, { success: false, error: errorMessage });
+          } catch (saveErr) {
+            logger.error('❌ [EsItemReceiptService.sendItemReceipt] Failed to save failure log:', saveErr);
+          }
+        }
+        return { success: false, nsResponse: { error: errorMessage } };
+      }
+
+      if (serialnumbers) {
+        line.serialnumbers = serialnumbers;
+      }
+      if (expirationdate) {
+        line.expirationdate = expirationdate;
+      }
+
       if (lineUniqueKey !== undefined) {
         line.lineuniquekey = lineUniqueKey;
-      }
-      if (item.expiryDate) {
-        // Format as YYYY-MM-DD
-        line.expirationdate = new Date(item.expiryDate).toISOString().split('T')[0];
       }
       if (supplierDeliveryNo) {
         line.abj_es_supplier_do = supplierDeliveryNo;
@@ -128,14 +240,14 @@ export class EsItemReceiptServiceClass {
       logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] ${unmatchedCount} line(s) missing lineuniquekey — NetSuite may reject`);
     }
 
-    // 6. Build Item Receipt payload
+    // 7. Build Item Receipt payload
     const trandate = grn.receivedAt
       ? new Date(grn.receivedAt).toISOString().split('T')[0]
       : new Date().toISOString().split('T')[0];
 
     const payload = {
       recordType: 'itemreceipt',
-      timeStamp: new Date().toISOString(),
+      timeStamp: new Date().toISOString(),  
       externalid: grn.grnNo,
       trandate,
       createdfrom: grn.poNo ?? '',
@@ -143,10 +255,27 @@ export class EsItemReceiptServiceClass {
       lines,
     };
 
-    logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Payload built — ${lines.length} lines, calling NetSuite`);
+    logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Payload built — ${lines.length} lines, validating schema`);
 
-    // 7. POST to NetSuite
+    // 8. Validate payload against schema
+    const parsed = ItemReceiptPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      const errors = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+      logger.error(`❌ [EsItemReceiptService.sendItemReceipt] Payload validation failed — ${errors}`);
+      if (grn.poNo) {
+        try {
+          await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', payload, { success: false, error: `Payload validation failed: ${errors}` });
+        } catch (saveErr) {
+          logger.error('❌ [EsItemReceiptService.sendItemReceipt] Failed to save failure log:', saveErr);
+        }
+      }
+      return { success: false, nsResponse: { error: `Payload validation failed: ${errors}` } };
+    }
+
+    // 9. POST to NetSuite
     try {
+      logger.debug("ℹ️ [EsItemReceiptServiceClass.sendItemReceipt] payload:", );
+      console.log("payload: ", payload);
       const nsResult = await this.netSuiteService.postItemReceipt(payload);
       const success = nsResult.status >= 200 && nsResult.status < 300;
 
@@ -156,12 +285,27 @@ export class EsItemReceiptServiceClass {
         logger.error(`❌ [EsItemReceiptService.sendItemReceipt] NetSuite rejected — status: ${nsResult.status}`, nsResult.body);
       }
 
+      if (!grn.poNo) {
+        logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] GRN has no poNo — cannot save item receipt`);
+        return { success: false, nsResponse: { error: 'GRN has no poNo' } };
+      }
+
+      await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', payload, nsResult.body);
+
       return { success, nsResponse: nsResult.body };
     } catch (error) {
       logger.error('❌ [EsItemReceiptService.sendItemReceipt] HTTP error calling NetSuite:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (grn.poNo) {
+        try {
+          await this.esRepository.saveItemReceipt(grn.poNo, grn.advanceNoticeId ?? '', payload, { success: false, error: errorMessage });
+        } catch (saveErr) {
+          logger.error('❌ [EsItemReceiptService.sendItemReceipt] Failed to save failure log:', saveErr);
+        }
+      }
       return {
         success: false,
-        nsResponse: { error: error instanceof Error ? error.message : String(error) },
+        nsResponse: { error: errorMessage },
       };
     }
   }

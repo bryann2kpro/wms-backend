@@ -34,8 +34,8 @@ export class StockCountSessionService {
     return this.repo.createSession(organizationId, userId, name);
   }
 
-  updateItem(organizationId: string, itemId: string, patch: StockCountItemUpdateInput) {
-    return this.repo.updateItem(organizationId, itemId, patch);
+  updateItem(organizationId: string, itemId: string, patch: StockCountItemUpdateInput, userId?: string) {
+    return this.repo.updateItem(organizationId, itemId, patch, userId);
   }
 
   closeSession(organizationId: string, sessionId: string, userId: string) {

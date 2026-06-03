@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { db } from '@/db';
 import { logger } from '@/util/logger';
 import { RegionTable, RegionCode, RegionPricingTable } from '@/features/master-data/region.model';
+import { CountriesTable } from '@/features/master-data/country.model';
 import { RegionDeliveryScheduleTable, DayOfWeek } from '@/features/master-data/delivery-date.model';
 import { StockUnitTable, StockUnitCode } from '@/features/master-data/stock-unit.model';
 import { eq, inArray } from 'drizzle-orm';
@@ -32,7 +33,7 @@ const DEFAULT_REGIONS = [
  * Region-specific rate can be overridden here later.
  */
 const DEFAULT_REGION_PRICING = {
-  rate: '0.00',
+  rate: '10.00',
   minQty: '5',
   sstRate: '0.0600',
 };
@@ -65,9 +66,53 @@ const DEFAULT_DELIVERY_SCHEDULES = [
 ];
 
 /**
+ * Default country for all seeded regions. Matches the fixed UUID inserted
+ * by migration 0085_bright_maximus so re-running init is idempotent.
+ */
+const DEFAULT_COUNTRY = {
+  countryId: '00000000-0000-0000-0000-000000000002',
+  countryName: 'Malaysia',
+  countryCode: 'MY',
+  currency: 'MYR',
+  locale: 'en-MY',
+};
+
+/**
+ * Get or create the default country (Malaysia)
+ */
+async function getOrCreateDefaultCountry(): Promise<string> {
+  const existing = await db
+    .select()
+    .from(CountriesTable)
+    .where(eq(CountriesTable.countryCode, DEFAULT_COUNTRY.countryCode))
+    .limit(1);
+
+  if (existing.length > 0) {
+    logger.info(`✓ Country "${DEFAULT_COUNTRY.countryName}" (${DEFAULT_COUNTRY.countryCode}) already exists`);
+    return existing[0].countryId;
+  }
+
+  const [newCountry] = await db
+    .insert(CountriesTable)
+    .values({
+      countryId: DEFAULT_COUNTRY.countryId,
+      countryName: DEFAULT_COUNTRY.countryName,
+      countryCode: DEFAULT_COUNTRY.countryCode,
+      currency: DEFAULT_COUNTRY.currency,
+      locale: DEFAULT_COUNTRY.locale,
+      createdBy: 'system',
+      updatedBy: 'system',
+    })
+    .returning();
+
+  logger.info(`✅ Country "${DEFAULT_COUNTRY.countryName}" (${DEFAULT_COUNTRY.countryCode}) created successfully`);
+  return newCountry.countryId;
+}
+
+/**
  * Get or create a region by code
  */
-async function getOrCreateRegion(regionName: string, regionCode: string): Promise<string> {
+async function getOrCreateRegion(regionName: string, regionCode: string, countryId: string): Promise<string> {
   const existing = await db
     .select()
     .from(RegionTable)
@@ -84,6 +129,7 @@ async function getOrCreateRegion(regionName: string, regionCode: string): Promis
     .values({
       regionName,
       regionCode,
+      countryId,
       createdBy: 'system',
       updatedBy: 'system',
     })
@@ -173,11 +219,12 @@ async function getOrCreateDeliverySchedule(
  */
 async function initRegions(): Promise<Map<string, string>> {
   logger.info('📍 Initializing regions...');
-  
+
+  const countryId = await getOrCreateDefaultCountry();
   const regionMap = new Map<string, string>(); // regionCode -> regionId
 
   for (const region of DEFAULT_REGIONS) {
-    const regionId = await getOrCreateRegion(region.regionName, region.regionCode);
+    const regionId = await getOrCreateRegion(region.regionName, region.regionCode, countryId);
     regionMap.set(region.regionCode, regionId);
   }
 
@@ -299,7 +346,7 @@ async function initStockUnits(): Promise<void> {
 const DEFAULT_WAREHOUSES = [
   {
     warehouseCode: 'SMEE-WH',
-    warehouseName: 'SME Ederan Warehouse',
+    warehouseName: 'SME Edaran Warehouse',
     warehouseAddress: '123 SME Industrial Park, Kuala Lumpur',
   },
 ];
@@ -334,36 +381,24 @@ const DEFAULT_SKUS: (Omit<SkuInsertType, 'skuUom'> & { skuUomCode: string })[] =
   {
     skuCode: 'RAW-E0011',
     skuDescription: 'Empire Sushi Box(Medium) 300PCS/CTN (Local)',
-    skuPrice: null,
-    cartonQuantity: '0',
-    lossQuantity: '0',
     skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
   },{
     skuCode: 'RAW-E0012',
     skuDescription: 'Empire Sushi Box(Large) 300PCS/CTN (Local)',
-    skuPrice: null,
-    cartonQuantity: '0',
-    lossQuantity: '0',
     skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
   },{
     skuCode: 'RAW-E0013',
     skuDescription: 'Empire Sushi Box(Small) 300PCS/CTN (Local)',
-    skuPrice: null,
-    cartonQuantity: '0',
-    lossQuantity: '0',
     skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.CARTON,
   },{
     skuCode: 'RAW-E0014',
     skuDescription: 'Empire Sushi Box (60PCS/PKT) (Local)',
-    skuPrice: null,
-    cartonQuantity: '0',
-    lossQuantity: '0',
     skuExpiryDate: null,
     skuSuppliers: [],
     skuUomCode: StockUnitCode.PACKET,
@@ -490,4 +525,3 @@ export async function initMasterData(): Promise<void> {
     throw error;
   }
 }
-

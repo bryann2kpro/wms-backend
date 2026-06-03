@@ -12,6 +12,75 @@ import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { logger } from '@/util/logger';
 import { SkuType } from './sku.repository';
+import { z } from 'zod';
+import { GraphQLError } from 'graphql';
+
+const createSkuSchema = z.object({
+  skuCode: z.string().min(1, 'SKU code is required'),
+  skuDescription: z.string().min(1, 'SKU description is required'),
+  skuUom: z.string().min(1, 'Unit of measure is required'),
+  isActive: z.boolean(),
+  barcode: z.string().optional().nullable(),
+  brand: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  manufacturer: z.string().optional().nullable(),
+  caseRate: z.number().nonnegative().optional().nullable(),
+  caseExtLengthMm: z.number().nonnegative().optional().nullable(),
+  caseExtWidthMm: z.number().nonnegative().optional().nullable(),
+  caseExtHeightMm: z.number().nonnegative().optional().nullable(),
+  caseGrossWeightKg: z.number().nonnegative().optional().nullable(),
+  casesPerLayer: z.number().nonnegative().optional().nullable(),
+  noOfLayers: z.number().nonnegative().optional().nullable(),
+  skuExpiryDate: z.string().optional().nullable(),
+  skuSuppliers: z.array(z.object({
+    supplierId: z.string().uuid('Invalid supplier ID'),
+    originalSkuCode: z.string().optional().nullable(),
+  })).optional(),
+  pickingStrategy: z.enum(['FIFO', 'LIFO', 'FEFO']).optional().nullable(),
+  isLotControlled: z.boolean().optional(),
+  isExpiryControlled: z.boolean().optional(),
+  initialOnHandQty: z.number().nonnegative().optional().nullable(),
+  createdBy: z.string().optional().nullable(),
+  updatedBy: z.string().optional().nullable(),
+});
+
+const updateSkuSchema = z.object({
+  skuCode: z.string().min(1).optional(),
+  skuDescription: z.string().min(1).optional(),
+  skuUom: z.string().min(1).optional(),
+  isActive: z.boolean().optional(),
+  barcode: z.string().optional().nullable(),
+  brand: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  manufacturer: z.string().optional().nullable(),
+  caseRate: z.number().nonnegative().optional().nullable(),
+  caseExtLengthMm: z.number().nonnegative().optional().nullable(),
+  caseExtWidthMm: z.number().nonnegative().optional().nullable(),
+  caseExtHeightMm: z.number().nonnegative().optional().nullable(),
+  caseGrossWeightKg: z.number().nonnegative().optional().nullable(),
+  casesPerLayer: z.number().nonnegative().optional().nullable(),
+  noOfLayers: z.number().nonnegative().optional().nullable(),
+  skuExpiryDate: z.string().optional().nullable(),
+  skuSuppliers: z.array(z.object({
+    supplierId: z.string().uuid('Invalid supplier ID'),
+    originalSkuCode: z.string().optional().nullable(),
+  })).optional().nullable(),
+  pickingStrategy: z.enum(['FIFO', 'LIFO', 'FEFO']).optional().nullable(),
+  isLotControlled: z.boolean().optional(),
+  isExpiryControlled: z.boolean().optional(),
+  updatedBy: z.string().optional().nullable(),
+});
+
+function resolvePickingStrategy(
+  pickingStrategy: string | null | undefined,
+  isExpiryControlled: boolean,
+): string {
+  const strategy = pickingStrategy ?? 'FIFO';
+  if (strategy === 'FEFO' && !isExpiryControlled) {
+    return 'FIFO';
+  }
+  return strategy;
+}
 
 // ============================================
 // HELPER FUNCTIONS
@@ -41,19 +110,29 @@ function transformSupplier(supplier: {
 }
 
 /**
- * Transform SKU for GraphQL response (model has carton_Quantity -> skuQuantity, loss_Quantity -> lossQuantity)
+ * Transform SKU for GraphQL response
  */
 function transformSku(sku: {
   skuId: string;
   skuCode: string;
   skuDescription: string;
-  skuPrice: string | null;
-  cartonQuantity: string;
-  lossQuantity: string;
+  barcode: string | null;
+  brand: string | null;
+  category: string | null;
+  manufacturer: string | null;
+  caseRate: string | null;
+  caseExtLengthMm: string | null;
+  caseExtWidthMm: string | null;
+  caseExtHeightMm: string | null;
+  caseGrossWeightKg: string | null;
+  casesPerLayer: string | null;
+  noOfLayers: string | null;
   skuExpiryDate: Date | null;
   skuSuppliers: Array<{ supplierId: string; originalSkuCode: string | null }> | null;
   skuUom: string;
   pickingStrategy: string;
+  isLotControlled: boolean;
+  isExpiryControlled: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -64,12 +143,22 @@ function transformSku(sku: {
     skuId: sku.skuId,
     skuCode: sku.skuCode,
     skuDescription: sku.skuDescription,
-    skuPrice: sku.skuPrice ? parseFloat(sku.skuPrice) : null,
-    skuQuantity: parseFloat(sku.cartonQuantity),
-    lossQuantity: parseFloat(sku.lossQuantity),
+    barcode: sku.barcode,
+    brand: sku.brand,
+    category: sku.category,
+    manufacturer: sku.manufacturer,
+    caseRate: sku.caseRate ? parseFloat(sku.caseRate) : null,
+    caseExtLengthMm: sku.caseExtLengthMm ? parseFloat(sku.caseExtLengthMm) : null,
+    caseExtWidthMm: sku.caseExtWidthMm ? parseFloat(sku.caseExtWidthMm) : null,
+    caseExtHeightMm: sku.caseExtHeightMm ? parseFloat(sku.caseExtHeightMm) : null,
+    caseGrossWeightKg: sku.caseGrossWeightKg ? parseFloat(sku.caseGrossWeightKg) : null,
+    casesPerLayer: sku.casesPerLayer ? parseFloat(sku.casesPerLayer) : null,
+    noOfLayers: sku.noOfLayers ? parseFloat(sku.noOfLayers) : null,
     skuExpiryDate: sku.skuExpiryDate ? sku.skuExpiryDate.toISOString() : null,
     skuUom: sku.skuUom,
     pickingStrategy: sku.pickingStrategy,
+    isLotControlled: sku.isLotControlled,
+    isExpiryControlled: sku.isExpiryControlled,
     skuSuppliers: sku.skuSuppliers ?? [],
     isActive: sku.isActive,
     createdAt: sku.createdAt.toISOString(),
@@ -220,49 +309,80 @@ export const resolvers = {
         action: 'CREATE',
         getEntityId: (result): string | null =>
           result && typeof result === 'object' && 'skuId' in result ? result.skuId : null,
-      }, 
+    }, 
       async (_: unknown, { input }: { input: {
       skuCode: string;
       skuDescription: string;
-      skuPrice?: number;
-      skuQuantity?: number;
-      cartonQuantity?: number;
-      lossQuantity?: number | null;
+      barcode?: string | null;
+      brand?: string | null;
+      category?: string | null;
+      manufacturer?: string | null;
+      caseRate?: number | null;
+      caseExtLengthMm?: number | null;
+      caseExtWidthMm?: number | null;
+      caseExtHeightMm?: number | null;
+      caseGrossWeightKg?: number | null;
+      casesPerLayer?: number | null;
+      noOfLayers?: number | null;
       skuExpiryDate?: string | Date | null;
       skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }>;
       skuUom: string;
       isActive: boolean;
       pickingStrategy?: string | null;
+      isLotControlled?: boolean;
+      isExpiryControlled?: boolean;
+      initialOnHandQty?: number | null;
       createdBy?: string | null;
       updatedBy?: string | null;
     }}, context: GraphQLContext) => {
       try {
-        const createdBy = input.createdBy ?? context.user?.id ?? 'system';
-        const updatedBy = input.updatedBy ?? context.user?.id ?? 'system';
-        // GraphQL schema uses skuQuantity; map to cartonQuantity for DB
-        const cartonQty = input.skuQuantity ?? input.cartonQuantity ?? 0;
-        let expiryDate: Date | null = null;
-        if (input.skuExpiryDate != null && input.skuExpiryDate !== '') {
-          expiryDate = typeof input.skuExpiryDate === 'string' ? new Date(input.skuExpiryDate) : input.skuExpiryDate;
+        const { success, data, error } = createSkuSchema.safeParse(input);
+        if (!success) {
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: error.flatten().fieldErrors } });
         }
-        const skuSuppliersData = input.skuSuppliers?.map((s) => ({
+        const createdBy = data.createdBy ?? context.user?.id ?? 'system';
+        const updatedBy = data.updatedBy ?? context.user?.id ?? 'system';
+        let expiryDate: Date | null = null;
+        if (data.skuExpiryDate != null && data.skuExpiryDate !== '') {
+          expiryDate = new Date(data.skuExpiryDate);
+        }
+        const skuSuppliersData = data.skuSuppliers?.map((s) => ({
           supplierId: s.supplierId,
           originalSkuCode: s.originalSkuCode ?? null,
         }));
 
+        if (!context.organizationId) {
+          throw new GraphQLError('Organization context is required', {
+            extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+          });
+        }
+        const isExpiryControlled = data.isExpiryControlled ?? false;
+        const isLotControlled = data.isLotControlled ?? false;
         const sku = await skuRepository.createSku({
-          skuCode: input.skuCode,
-          skuDescription: input.skuDescription,
-          skuPrice: input.skuPrice?.toString(),
-          cartonQuantity: String(cartonQty),
-          lossQuantity: (input.lossQuantity != null ? input.lossQuantity : 0).toString(),
+          organizationId: context.organizationId,
+          skuCode: data.skuCode,
+          skuDescription: data.skuDescription,
+          barcode: data.barcode ?? null,
+          brand: data.brand ?? null,
+          category: data.category ?? null,
+          manufacturer: data.manufacturer ?? null,
+          caseRate: data.caseRate != null ? String(data.caseRate) : null,
+          caseExtLengthMm: data.caseExtLengthMm != null ? String(data.caseExtLengthMm) : null,
+          caseExtWidthMm: data.caseExtWidthMm != null ? String(data.caseExtWidthMm) : null,
+          caseExtHeightMm: data.caseExtHeightMm != null ? String(data.caseExtHeightMm) : null,
+          caseGrossWeightKg: data.caseGrossWeightKg != null ? String(data.caseGrossWeightKg) : null,
+          casesPerLayer: data.casesPerLayer != null ? String(data.casesPerLayer) : null,
+          noOfLayers: data.noOfLayers != null ? String(data.noOfLayers) : null,
           skuExpiryDate: expiryDate,
           skuSuppliers: skuSuppliersData ?? null,
-          skuUom: input.skuUom,
-          pickingStrategy: input.pickingStrategy ?? 'FIFO',
-          isActive: input.isActive,
+          skuUom: data.skuUom,
+          pickingStrategy: resolvePickingStrategy(data.pickingStrategy, isExpiryControlled),
+          isLotControlled,
+          isExpiryControlled,
+          isActive: data.isActive,
           createdBy,
           updatedBy,
+          initialOnHandQty: data.initialOnHandQty ?? undefined,
         });
 
         return transformSku(sku);
@@ -287,61 +407,105 @@ export const resolvers = {
       async (_: unknown, { id, input }: { id: string; input: {
       skuCode?: string;
       skuDescription?: string;
-      skuPrice?: number;
-      skuQuantity?: number;
-      lossQuantity?: number | null;
+      barcode?: string | null;
+      brand?: string | null;
+      category?: string | null;
+      manufacturer?: string | null;
+      caseRate?: number | null;
+      caseExtLengthMm?: number | null;
+      caseExtWidthMm?: number | null;
+      caseExtHeightMm?: number | null;
+      caseGrossWeightKg?: number | null;
+      casesPerLayer?: number | null;
+      noOfLayers?: number | null;
       skuSuppliers?: Array<{ supplierId: string; originalSkuCode?: string | null }> | null;
       skuExpiryDate?: string | Date | null;
       skuUom?: string;
       isActive?: boolean;
       pickingStrategy?: string | null;
+      isLotControlled?: boolean;
+      isExpiryControlled?: boolean;
       updatedBy?: string | null;
     }}, context: GraphQLContext) => {
       try {
-        const updatedBy = input.updatedBy ?? context.user?.id ?? 'system';
+        const { success: uSuccess, data: uData, error: uError } = updateSkuSchema.safeParse(input);
+        if (!uSuccess) {
+          throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: uError.flatten().fieldErrors } });
+        }
+        const updatedBy = uData.updatedBy ?? context.user?.id ?? 'system';
         const updateData: Record<string, unknown> = {
           updatedBy,
         };
 
-        if (input.skuCode !== undefined) updateData.skuCode = input.skuCode;
-        if (input.skuDescription !== undefined) updateData.skuDescription = input.skuDescription;
-        if (input.skuPrice !== undefined) {
-          updateData.skuPrice = input.skuPrice == null ? null : String(input.skuPrice);
-        }
-        if (input.skuQuantity !== undefined) {
-          updateData.cartonQuantity = String(input.skuQuantity);
-        }
-        if (input.lossQuantity !== undefined) {
-          updateData.lossQuantity = String(input.lossQuantity);
-        }
-        if (input.skuExpiryDate !== undefined) {
-          const raw = input.skuExpiryDate;
+        if (uData.skuCode !== undefined) updateData.skuCode = uData.skuCode;
+        if (uData.skuDescription !== undefined) updateData.skuDescription = uData.skuDescription;
+        if (uData.barcode !== undefined) updateData.barcode = uData.barcode;
+        if (uData.brand !== undefined) updateData.brand = uData.brand;
+        if (uData.category !== undefined) updateData.category = uData.category;
+        if (uData.manufacturer !== undefined) updateData.manufacturer = uData.manufacturer;
+        if (uData.caseRate !== undefined) updateData.caseRate = uData.caseRate == null ? null : String(uData.caseRate);
+        if (uData.caseExtLengthMm !== undefined) updateData.caseExtLengthMm = uData.caseExtLengthMm == null ? null : String(uData.caseExtLengthMm);
+        if (uData.caseExtWidthMm !== undefined) updateData.caseExtWidthMm = uData.caseExtWidthMm == null ? null : String(uData.caseExtWidthMm);
+        if (uData.caseExtHeightMm !== undefined) updateData.caseExtHeightMm = uData.caseExtHeightMm == null ? null : String(uData.caseExtHeightMm);
+        if (uData.caseGrossWeightKg !== undefined) updateData.caseGrossWeightKg = uData.caseGrossWeightKg == null ? null : String(uData.caseGrossWeightKg);
+        if (uData.casesPerLayer !== undefined) updateData.casesPerLayer = uData.casesPerLayer == null ? null : String(uData.casesPerLayer);
+        if (uData.noOfLayers !== undefined) updateData.noOfLayers = uData.noOfLayers == null ? null : String(uData.noOfLayers);
+        if (uData.skuExpiryDate !== undefined) {
+          const raw = uData.skuExpiryDate;
           if (raw === null || raw === '') {
             updateData.skuExpiryDate = null;
           } else {
-            updateData.skuExpiryDate = typeof raw === 'string' ? new Date(raw) : raw;
+            updateData.skuExpiryDate = new Date(raw);
           }
         }
-        if (input.skuSuppliers !== undefined) {
-          updateData.skuSuppliers = input.skuSuppliers?.map((s) => ({
+        if (uData.skuSuppliers !== undefined) {
+          updateData.skuSuppliers = uData.skuSuppliers?.map((s) => ({
             supplierId: s.supplierId,
             originalSkuCode: s.originalSkuCode ?? null,
           })) ?? null;
         }
-        if (input.skuUom !== undefined) updateData.skuUom = input.skuUom;
-        if (input.isActive !== undefined) updateData.isActive = input.isActive;
-        if (input.pickingStrategy !== undefined && input.pickingStrategy !== null) {
-          updateData.pickingStrategy = input.pickingStrategy;
+        if (uData.skuUom !== undefined) updateData.skuUom = uData.skuUom;
+        if (uData.isActive !== undefined) updateData.isActive = uData.isActive;
+        if (uData.isLotControlled !== undefined) {
+          updateData.isLotControlled = uData.isLotControlled;
+        }
+        if (uData.isExpiryControlled !== undefined) {
+          updateData.isExpiryControlled = uData.isExpiryControlled;
+        }
+
+        const existingSku = await skuRepository.getSkuById(id);
+        const nextIsExpiryControlled =
+          uData.isExpiryControlled ?? existingSku?.isExpiryControlled ?? false;
+
+        if (uData.pickingStrategy !== undefined && uData.pickingStrategy !== null) {
+          updateData.pickingStrategy = resolvePickingStrategy(
+            uData.pickingStrategy,
+            nextIsExpiryControlled,
+          );
+        } else if (
+          uData.isExpiryControlled === false &&
+          existingSku?.pickingStrategy === 'FEFO'
+        ) {
+          updateData.pickingStrategy = 'FIFO';
         }
 
         const sku = await skuRepository.updateSku(id, updateData);
-        if (!sku) return null;
-        
+        if (!sku) {
+          throw new GraphQLError('SKU not found or update failed', {
+            extensions: { code: 'NOT_FOUND' },
+          });
+        }
+
         return transformSku(sku);
-        
       } catch (error) {
         logger.error('[sku.resolvers.updateSku] Error:', error);
-        return null;
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
+        throw new GraphQLError(
+          error instanceof Error ? error.message : 'Failed to update SKU',
+          { extensions: { code: 'INTERNAL_SERVER_ERROR' } },
+        );
       }
     }),
 

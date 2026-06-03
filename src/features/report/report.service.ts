@@ -11,9 +11,12 @@ import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 import { regionRepository } from '@/composition-root';
 import { db } from '@/db';
-import { eq, and, gte, lt, sql } from 'drizzle-orm';
+import { eq, and, gte, lt, sql, asc, desc, inArray } from 'drizzle-orm';
 import { InventoryMovementsTable, InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
+import { InventoryBalancesTable } from '../inventory/inventory-balance/inventory.model';
 import { SkuTable } from '../master-data/sku.model';
+import { StockUnitTable } from '../master-data/stock-unit.model';
+import { RacksTable } from '../master-data/racks.model';
 import { InvoicesTable, InvoiceItemsTable } from '../invoicing/invoices.model';
 import { PurchaseOrdersTable } from '../outbound/purchase-orders.model';
 import { OutletsTable } from '../master-data/outlets.model';
@@ -26,6 +29,7 @@ const MOVEMENT_REPORT_HTML_PATH = path.join(__dirname, 'html', 'movement-report.
 const PROFORMA_INVOICES_HTML_PATH = path.join(__dirname, 'html', 'proforma-invoices.html');
 const STOCK_COUNT_CHECKLIST_HTML_PATH = path.join(__dirname, 'html', 'stock-count-checklist.html');
 const DO_PICKING_LIST_HTML_PATH = path.join(__dirname, 'html', 'do-picking-list.html');
+const STOCK_BALANCE_HTML_PATH = path.join(__dirname, 'html', 'stock-balance.html');
 
 // Movement Report row shape
 export interface MovementReportRow {
@@ -39,37 +43,43 @@ export interface MovementReportRow {
 export interface InvoiceSummaryRow {
   proformaId: string;
   invoiceDate: string;
+  deliveryDate: string;
   poNumber: string;
   doNumber: string;
   outlet: string;
   region: string;
   ctn: number;
+  beforeTaxAmount: number;
+  afterTaxAmount: number;
   amount: number;
 }
 
-const INVOICE_SUMMARY_MOCK_ROWS: InvoiceSummaryRow[] = [
-  { proformaId: 'ES-20260213-0001', invoiceDate: '22/1/2026', poNumber: '#PO260170528', doNumber: 'DO-0001', outlet: 'Aeon Midtown Falim', region: "Klang Valley" , ctn: 10, amount: 1250.00 },
-  { proformaId: 'ES-20260213-0002', invoiceDate: '22/1/2026', poNumber: '#PO260173297', doNumber: 'DO-0002', outlet: 'Lotuss Taiping', region: "Klang Valley" , ctn: 8, amount: 980.00 },
-  { proformaId: 'ES-20260213-0003', invoiceDate: '22/1/2026', poNumber: '#PO260173298', doNumber: 'DO-0003', outlet: 'Gurney Paragon', region: "Klang Valley" , ctn: 5, amount: 620.50 },
-  { proformaId: 'ES-20260213-0004', invoiceDate: '22/1/2026', poNumber: '#PO260173299', doNumber: 'DO-0004', outlet: 'Amanjaya', region: "Klang Valley" , ctn: 24, amount: 3120.00 },
-  { proformaId: 'ES-20260213-0005', invoiceDate: '22/1/2026', poNumber: '#PO260173300', doNumber: 'DO-0005', outlet: 'AEON Bukit Mertajam', region: "Klang Valley" , ctn: 18, amount: 2340.00 },
-  { proformaId: 'ES-2026213-0006', invoiceDate: '22/1/2026', poNumber: '#PO260173301', doNumber: 'DO-0006', outlet: 'Aman Central LG', region: "Klang Valley" , ctn: 15, amount: 1950.00 },
-  { proformaId: 'ES-2026213-0007', invoiceDate: '22/1/2026', poNumber: '#PO260173302', doNumber: 'DO-0007', outlet: 'Lotuss Teluk Intan', region: "Klang Valley" , ctn: 9, amount: 1107.00 },
-  { proformaId: 'ES-2026213-0008', invoiceDate: '22/1/2026', poNumber: '#PO260173303', doNumber: 'DO-0008', outlet: 'Pearl City', region: "North" , ctn: 13, amount: 1690.00 },
-  { proformaId: 'ES-2026213-0009', invoiceDate: '22/1/2026', poNumber: '#PO260173304', doNumber: 'DO-0009', outlet: 'Nibong Tebal', region: "South" , ctn: 6, amount: 744.00 },
-  { proformaId: 'ES-2026213-0010', invoiceDate: '22/1/2026', poNumber: '#PO260173305', doNumber: 'DO-0010', outlet: 'Lotuss Ipoh Bercham', region: "South" , ctn: 24, amount: 2976.00 },
-  { proformaId: 'ES-2026213-0011', invoiceDate: '22/1/2026', poNumber: '#PO260173306', doNumber: 'DO-0011', outlet: 'Sunway Carnival', region: "South" , ctn: 5, amount: 620.00 },
-  { proformaId: 'ES-2026213-0012', invoiceDate: '22/1/2026', poNumber: '#PO260173307', doNumber: 'DO-0012', outlet: 'Sentra Mall', region: "South" , ctn: 8, amount: 992.00 },
-  { proformaId: 'ES-2026213-0013', invoiceDate: '22/1/2026', poNumber: '#PO260173308', doNumber: 'DO-0013', outlet: 'AEON Seri Manjung', region: "South" , ctn: 6, amount: 744.00 },
-  { proformaId: 'ES-2026213-0014', invoiceDate: '22/1/2026', poNumber: '#PO260173309', doNumber: 'DO-0014', outlet: 'AEON Taiping', region: "South" , ctn: 6, amount: 744.00 },
-  { proformaId: 'ES-2026213-0015', invoiceDate: '22/1/2026', poNumber: '#PO260173310', doNumber: 'DO-0015', outlet: 'AEON Ipoh S18', region: "South" , ctn: 13, amount: 1612.00 },
-  { proformaId: 'ES-2026213-0016', invoiceDate: '22/1/2026', poNumber: '#PO260173311', doNumber: 'DO-0016', outlet: '1st Avenue', region: "South" , ctn: 17, amount: 2108.00 },
-  { proformaId: 'ES-2026213-0017', invoiceDate: '22/1/2026', poNumber: '#PO260173312', doNumber: 'DO-0017', outlet: 'Queensbay Mall', region: "South" , ctn: 10, amount: 1240.00 },
-  { proformaId: 'ES-2026213-0018', invoiceDate: '22/1/2026', poNumber: '#PO260173313', doNumber: 'DO-0018', outlet: 'Mydin Bukit Mertajam', region: "North" , ctn: 12, amount: 1488.00 },
-  { proformaId: 'ES-2026213-0019', invoiceDate: '22/1/2026', poNumber: '#PO260173314', doNumber: 'DO-0019', outlet: 'Gurney Plaza', region: "South" , ctn: 13, amount: 1612.00 },
-  { proformaId: 'ES-2026213-0020', invoiceDate: '22/1/2026', poNumber: '#PO260173315', doNumber: 'DO-0020', outlet: 'Serai Wangi', region: "South" , ctn: 10, amount: 1240.00 },
-  { proformaId: 'ES-2026213-0021', invoiceDate: '22/1/2026', poNumber: '#PO260173316', doNumber: 'DO-0021', outlet: 'AEON Kinta City', region: "South" , ctn: 12, amount: 1488.00 },
-]; 
+export type DeliveryDateSortOrder = 'ASC' | 'DESC';
+
+const DUPLICATE_OUTLET_SUFFIX = ' *';
+
+/**
+ * When more than one row shares the same invoice date and outlet, append an
+ * asterisk after the outlet name (e.g. for Excel / PDF Proforma Invoice Summary).
+ */
+export function markDuplicateInvoiceDateOutletRows(
+  rows: InvoiceSummaryRow[]
+): InvoiceSummaryRow[] {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const key = `${r.invoiceDate}\0${r.outlet}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return rows.map((r) => {
+    const key = `${r.invoiceDate}\0${r.outlet}`;
+    if ((counts.get(key) ?? 0) < 2) return r;
+    const outlet =
+      r.outlet.endsWith(DUPLICATE_OUTLET_SUFFIX) ?
+        r.outlet
+      : `${r.outlet}${DUPLICATE_OUTLET_SUFFIX}`;
+    return { ...r, outlet };
+  });
+}
 
 /**
  * Fetch movement report data. Replace with DB query when ready.
@@ -151,7 +161,7 @@ export async function renderMovementReportHtml(
     <td class="px-4 py-3" colspan="3">${escapeHtml(regionName)}</td>
   </tr>`;
 
-  const logoImgHtml = await getSmeLogoImgHtml('SME Ederan');
+  const logoImgHtml = await getSmeLogoImgHtml('SME Edaran');
 
   return template
     .replace(/\{\{logoImgHtml\}\}/, logoImgHtml)
@@ -176,15 +186,16 @@ function escapeHtml(s: string): string {
 export async function getInvoiceSummaryData(
   _dateFrom?: string,
   _dateTo?: string,
-  regionId?: string
+  regionId?: string,
+  deliveryDateSortOrder: DeliveryDateSortOrder = 'ASC'
 ): Promise<InvoiceSummaryRow[]> {
   const dateFrom = _dateFrom ? new Date(_dateFrom) : undefined;
   const dateToExclusive = _dateTo ? new Date(_dateTo) : undefined;
   if (dateToExclusive) dateToExclusive.setUTCDate(dateToExclusive.getUTCDate() + 1);
 
   const whereConditions = [
-    dateFrom ? gte(InvoicesTable.dateIssued, dateFrom) : undefined,
-    dateToExclusive ? lt(InvoicesTable.dateIssued, dateToExclusive) : undefined,
+    dateFrom ? gte(PurchaseOrdersTable.scheduledDeliveryDate, dateFrom) : undefined,
+    dateToExclusive ? lt(PurchaseOrdersTable.scheduledDeliveryDate, dateToExclusive) : undefined,
     regionId ? eq(OutletsTable.regionId, regionId) : undefined,
   ].filter(Boolean) as unknown as Parameters<typeof and>;
 
@@ -192,12 +203,15 @@ export async function getInvoiceSummaryData(
     .select({
       proformaId: InvoicesTable.invoiceNo,
       dateIssued: InvoicesTable.dateIssued,
+      scheduledDeliveryDate: PurchaseOrdersTable.scheduledDeliveryDate,
       poNumber: PurchaseOrdersTable.purchaseOrderNo,
       doNumber: InvoicesTable.doNo,
       outlet: OutletsTable.outletName,
       region: sql<string>`coalesce(${RegionTable.regionName}, '—')`,
       ctn: sql<number>`coalesce(sum(${InvoiceItemsTable.qty}), 0)::float8`,
-      // PO amount from NetSuite pull — invoice totals are often unset when proforma is issued
+      beforeTaxAmount: sql<number>`coalesce(${InvoicesTable.totalExclTax}::float8, 0)`,
+      afterTaxAmount: sql<number>`coalesce(${InvoicesTable.totalInclTax}::float8, ${PurchaseOrdersTable.amount}::float8, 0)`,
+      // Kept for existing PDF template compatibility.
       amount: sql<number>`coalesce(${PurchaseOrdersTable.amount}::float8, 0)`,
     })
     .from(InvoicesTable)
@@ -212,30 +226,50 @@ export async function getInvoiceSummaryData(
       InvoicesTable.dateIssued,
       InvoicesTable.doNo,
       PurchaseOrdersTable.purchaseOrderNo,
+      PurchaseOrdersTable.scheduledDeliveryDate,
       PurchaseOrdersTable.amount,
       OutletsTable.outletName,
       RegionTable.regionName
     )
-    .orderBy(InvoicesTable.dateIssued);
+    .orderBy(
+      // Keep rows with missing delivery date at the end regardless of selected direction.
+      sql<number>`case when ${PurchaseOrdersTable.scheduledDeliveryDate} is null then 1 else 0 end`,
+      deliveryDateSortOrder === 'DESC'
+        ? desc(PurchaseOrdersTable.scheduledDeliveryDate)
+        : asc(PurchaseOrdersTable.scheduledDeliveryDate),
+      asc(InvoicesTable.dateIssued),
+      asc(InvoicesTable.invoiceNo)
+    );
 
-  return rows.map((r) => {
+  const mapped = rows.map((r) => {
     const issued = r.dateIssued instanceof Date ? r.dateIssued : r.dateIssued ? new Date(r.dateIssued as unknown as string) : undefined;
     const invoiceDate =
       issued && !Number.isNaN(issued.getTime())
         ? `${issued.getUTCDate()}/${issued.getUTCMonth() + 1}/${issued.getUTCFullYear()}`
         : '—';
 
+    const sdd = r.scheduledDeliveryDate instanceof Date ? r.scheduledDeliveryDate : r.scheduledDeliveryDate ? new Date(r.scheduledDeliveryDate as unknown as string) : undefined;
+    const deliveryDate =
+      sdd && !Number.isNaN(sdd.getTime())
+        ? `${sdd.getUTCDate()}/${sdd.getUTCMonth() + 1}/${sdd.getUTCFullYear()}`
+        : '—';
+
     return {
       proformaId: r.proformaId ?? '',
       invoiceDate,
+      deliveryDate,
       poNumber: (r.poNumber ?? '').startsWith('#') ? r.poNumber ?? '' : `#${r.poNumber ?? ''}`,
       doNumber: r.doNumber ?? '', // TODO: join DeliveryOrdersTable when DO linkage is finalized
       outlet: r.outlet ?? '',
       region: r.region ?? '—',
       ctn: Math.round(Number(r.ctn ?? 0)),
+      beforeTaxAmount: Number(r.beforeTaxAmount ?? 0),
+      afterTaxAmount: Number(r.afterTaxAmount ?? 0),
       amount: Number(r.amount ?? 0),
     };
   });
+
+  return markDuplicateInvoiceDateOutletRows(mapped);
 }
 
 // Number of columns that precede the two numeric summary columns (Ctn, Amount).
@@ -269,7 +303,7 @@ function buildInvoiceDataRow(r: InvoiceSummaryRow, isAlt: boolean): string {
     <td class="px-4 py-3 whitespace-nowrap col-meta">${escapeHtml(r.invoiceDate)}</td>
     <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.poNumber)}</td>
     <td class="px-4 py-3 whitespace-nowrap col-code">${escapeHtml(r.doNumber)}</td>
-    <td class="px-4 py-3 whitespace-nowrap col-desc">${escapeHtml(r.outlet)}</td>
+    <td class="px-4 py-3 col-desc">${escapeHtml(r.outlet)}</td>
     <td class="px-4 py-3 whitespace-nowrap col-meta">${escapeHtml(r.region)}</td>
     <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">${r.ctn}</td>
     <td class="px-4 py-3 whitespace-nowrap text-right tabular-nums col-num">${formatAmount(r.amount)}</td>
@@ -328,7 +362,7 @@ export async function renderProformaInvoicesHtml(
   const [template, regionName, logoImgHtml] = await Promise.all([
     readFile(PROFORMA_INVOICES_HTML_PATH, 'utf-8'),
     resolveRegionName(regionId),
-    getSmeLogoImgHtml('SME Ederan'),
+    getSmeLogoImgHtml('SME Edaran'),
   ]);
 
   return template
@@ -508,10 +542,35 @@ export async function generateStockCountChecklistPdf(
 
 const ACTIVE_DO_STATUSES = ['CREATED', 'NEW', 'PICKING', 'PACKING'];
 
+/** Upper bound on DO line rows loaded for picking list PDF (must cover all lines or SKU totals truncate). Keep in sync with `ES_DO_WORK_QUEUE_PAGE_SIZE` in `smee-frontend/.../es-do.tsx`. */
+const DO_PICKING_LIST_LINE_FETCH_CAP = 100_000;
+
+/** ISO YYYY-MM-DD → en-MY display string for picking list header (calendar date in UTC). */
+function formatDoPickingListScheduleDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const d = new Date(`${iso}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-MY', { day: 'numeric', month: 'numeric', year: 'numeric' });
+}
+
+/** Human-readable scheduled delivery filter for PDF header; null if neither bound sent. */
+function formatScheduledDeliveryRangeForPdf(from?: string | null, to?: string | null): string | null {
+  const f = from?.trim();
+  const t = to?.trim();
+  if (!f && !t) return null;
+  if (f && t) {
+    if (f === t) return formatDoPickingListScheduleDate(f);
+    return `${formatDoPickingListScheduleDate(f)} – ${formatDoPickingListScheduleDate(t)}`;
+  }
+  if (f) return `From ${formatDoPickingListScheduleDate(f)}`;
+  return `Until ${formatDoPickingListScheduleDate(t!)}`;
+}
+
 interface DoPickingListSkuGroup {
   skuCode: string;
   skuDescription: string;
   totalQtyRequired: number;
+  totalQtyPicked: number;
   doBreakdown: { doNo: string; qtyRequired: number }[];
   allocations: { rackName: string | null; grnNo: string | null; lotNo: string | null; expiryDate: Date | null; qtyAllocated: string; priorityFlag: boolean }[];
 }
@@ -521,6 +580,7 @@ interface DoPickingListSkuGroup {
  */
 export async function renderDoPickingListHtml(
   skuGroups: DoPickingListSkuGroup[],
+  options?: { regionLabel?: string; scheduledDeliveryRange?: string | null },
 ): Promise<string> {
   const template = await readFile(DO_PICKING_LIST_HTML_PATH, 'utf-8');
   const logoImgHtml = await getSmeLogoImgHtml();
@@ -531,41 +591,70 @@ export async function renderDoPickingListHtml(
   for (const g of skuGroups) for (const d of g.doBreakdown) doNos.add(d.doNo);
   const totalUnits = skuGroups.reduce((sum, g) => sum + g.totalQtyRequired, 0);
 
-  const tableRows = skuGroups
-    .map((g, i) => {
+  const flattenedRows: {
+    skuCode: string;
+    skuDescription: string;
+    qtyRequired: number;
+    rackLabel: string;
+    completedPicking: boolean;
+  }[] = [];
+
+  for (const g of skuGroups) {
+    const completedPicking = g.totalQtyPicked >= g.totalQtyRequired;
+
+    const rackQtyMap = new Map<string, number>();
+    for (const a of g.allocations) {
+      const rackLabel = a.rackName?.trim() ? `Rack ${a.rackName.trim()}` : 'Rack —';
+      const qtyAllocated = parseFloat(String(a.qtyAllocated ?? 0)) || 0;
+      rackQtyMap.set(rackLabel, (rackQtyMap.get(rackLabel) ?? 0) + qtyAllocated);
+    }
+
+    if (rackQtyMap.size === 0) {
+      flattenedRows.push({
+        skuCode: g.skuCode,
+        skuDescription: g.skuDescription,
+        qtyRequired: g.totalQtyRequired,
+        rackLabel: 'Rack —',
+        completedPicking,
+      });
+      continue;
+    }
+
+    const rackRows = Array.from(rackQtyMap.entries()).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    for (const [rackLabel, qtyRequired] of rackRows) {
+      flattenedRows.push({
+        skuCode: g.skuCode,
+        skuDescription: g.skuDescription,
+        qtyRequired,
+        rackLabel,
+        completedPicking,
+      });
+    }
+  }
+
+  const tableRows = flattenedRows
+    .map((row, i) => {
       const rowAlt = i % 2 !== 0 ? ' tr-alt' : '';
-
-      const doBreakdownHtml = g.doBreakdown
-        .map((d) => `<span>${escapeHtml(d.doNo)}&thinsp;&times;&thinsp;${formatQtyNum(d.qtyRequired)}</span>`)
-        .join('&ensp;');
-
-      const seenRacks = new Set<string>();
-      const rackOrder: string[] = [];
-      for (const a of g.allocations) {
-        const r = a.rackName?.trim();
-        if (r && !seenRacks.has(r)) {
-          seenRacks.add(r);
-          rackOrder.push(r);
-        }
-      }
-      const rackHtml =
-        rackOrder.length === 0
-          ? '<span class="rack-empty">—</span>'
-          : rackOrder.map((name) => `<div class="rack-line">${escapeHtml(name)}</div>`).join('');
-
+      const markHtml = row.completedPicking ? '&#10003;' : '';
+      const markClass = row.completedPicking ? ' col-mark-done' : '';
       return `<tr class="tr-data${rowAlt}">
         <td class="col-no">${i + 1}</td>
-        <td class="col-sku">${escapeHtml(g.skuCode)}</td>
-        <td class="col-desc">
-          ${escapeHtml(g.skuDescription)}
-          <div class="do-breakdown">${doBreakdownHtml}</div>
-        </td>
-        <td class="col-qty col-qty-total">${formatQtyNum(g.totalQtyRequired)}</td>
-        <td class="col-rack">${rackHtml}</td>
-        <td class="col-mark"></td>
+        <td class="col-sku">${escapeHtml(row.skuCode)}</td>
+        <td class="col-desc">${escapeHtml(row.skuDescription)}</td>
+        <td class="col-qty col-qty-total">${formatQtyNum(row.qtyRequired)}</td>
+        <td class="col-rack">${escapeHtml(row.rackLabel)}</td>
+        <td class="col-mark${markClass}">${markHtml}</td>
       </tr>`;
     })
     .join('\n');
+
+  const regionLabel = (options?.regionLabel ?? 'All regions').trim() || 'All regions';
+  const scheduledDeliveryRange =
+    options?.scheduledDeliveryRange != null && String(options.scheduledDeliveryRange).trim() !== ''
+      ? String(options.scheduledDeliveryRange).trim()
+      : 'Not filtered';
 
   return template
     .replace(/\{\{logoImgHtml\}\}/g, logoImgHtml)
@@ -573,6 +662,8 @@ export async function renderDoPickingListHtml(
     .replace(/\{\{totalDOs\}\}/g, String(doNos.size))
     .replace(/\{\{totalSKUs\}\}/g, String(skuGroups.length))
     .replace(/\{\{totalUnits\}\}/g, formatQtyNum(totalUnits))
+    .replace(/\{\{regionLabel\}\}/g, escapeHtml(regionLabel))
+    .replace(/\{\{scheduledDeliveryRange\}\}/g, escapeHtml(scheduledDeliveryRange))
     .replace(/\{\{tableRows\}\}/, tableRows);
 }
 
@@ -582,15 +673,26 @@ function formatQtyNum(n: number): string {
 
 /**
  * Generate a DO Picking List PDF — SKU-grouped summary of all active DOs.
+ * Optionally filter by region and/or expected delivery date range.
  */
 export async function generateDoPickingListPdf(
   _orgId: string,
+  filter?: {
+    regionIds?: string[];
+    search?: string;
+    scheduledDeliveryDateFrom?: string;
+    scheduledDeliveryDateTo?: string;
+  },
 ): Promise<{ pdfBase64: string; filename: string }> {
   const { deliveryOrdersRepository } = await import('@/composition-root');
 
+
   const itemsResult = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(
-    { doStatus: ACTIVE_DO_STATUSES },
-    { pageSize: 9999, pageNumber: 1 },
+    {
+      ...filter,
+      doStatus: ACTIVE_DO_STATUSES,
+    },
+    { pageSize: DO_PICKING_LIST_LINE_FETCH_CAP, pageNumber: 1 },
   );
 
   // Fetch allocations for all items
@@ -614,13 +716,16 @@ export async function generateDoPickingListPdf(
         skuCode: item.skuCode ?? '—',
         skuDescription: item.skuDescription ?? '—',
         totalQtyRequired: 0,
+        totalQtyPicked: 0,
         doBreakdown: [],
         allocations: [],
       });
     }
     const g = grouped.get(key)!;
     const req = parseFloat(String(item.qtyRequired ?? 0)) || 0;
+    const picked = parseFloat(String(item.qtyPicked ?? 0)) || 0;
     g.totalQtyRequired += req;
+    g.totalQtyPicked += picked;
     if (item.doNo) {
       g.doBreakdown.push({ doNo: item.doNo, qtyRequired: req });
     }
@@ -642,11 +747,163 @@ export async function generateDoPickingListPdf(
     a.skuCode.localeCompare(b.skuCode),
   );
 
-  const html = await renderDoPickingListHtml(skuGroups);
+  let regionLabel = 'All regions';
+  // if (filter?.regionIds && filter.regionIds.length > 0) {
+  //   const rows = await Promise.all(
+  //     filter.regionIds.map((id) => regionRepository.getRegionById(id)),
+  //   );
+  //   const parts = rows
+  //     .map((r) => r?.regionName?.trim())
+  //     .filter((n): n is string => Boolean(n && n.length > 0));
+  //   regionLabel = parts.length > 0 ? parts.join(', ') : 'Unknown regions';
+  // } else if (filter?.regionId) {
+  //   const region = await regionRepository.getRegionById(filter.regionId);
+  //   const name = region?.regionName?.trim();
+  //   regionLabel = name && name.length > 0 ? name : 'Unknown region';
+  // }
+
+  const regions = await regionRepository.getRegionsByIds(filter?.regionIds ?? []);
+  regionLabel = regions.map((r) => r.regionName).join(', ') || 'Unknown region';
+
+
+  const scheduledDeliveryRange = formatScheduledDeliveryRangeForPdf(
+    filter?.scheduledDeliveryDateFrom,
+    filter?.scheduledDeliveryDateTo,
+  );
+
+  const html = await renderDoPickingListHtml(skuGroups, {
+    regionLabel,
+    scheduledDeliveryRange,
+  });
   const pdfBuffer = await htmlToPdf(html);
 
   const dateStr = new Date().toISOString().split('T')[0];
   const filename = `DO_Picking_List_${dateStr}.pdf`;
 
+  return { pdfBase64: pdfBuffer.toString('base64'), filename };
+}
+
+// ── Stock Balance Report ──────────────────────────────────────────────────────
+
+export type InventoryBalanceReportType = 'WITHOUT_RACK' | 'WITH_RACK';
+
+export interface InventoryBalanceReportRow {
+  skuCode: string;
+  skuDescription: string;
+  unitCode: string;
+  onHandQty: number;
+  rackLocations: string[];
+}
+
+export async function getInventoryBalanceReportData(
+  type: InventoryBalanceReportType,
+  organizationId: string,
+): Promise<InventoryBalanceReportRow[]> {
+  const rows = await db
+    .select({
+      skuCode: SkuTable.skuCode,
+      skuDescription: SkuTable.skuDescription,
+      unitCode: StockUnitTable.unitCode,
+      onHandQty: sql<number>`${InventoryBalancesTable.onHandQty}::float8`,
+      skuBatches: SkuTable.skuBatches,
+    })
+    .from(InventoryBalancesTable)
+    .innerJoin(SkuTable, eq(InventoryBalancesTable.skuId, SkuTable.skuId))
+    .innerJoin(StockUnitTable, eq(SkuTable.skuUom, StockUnitTable.stockUnitId))
+    .where(eq(InventoryBalancesTable.organizationId, organizationId))
+    .orderBy(asc(SkuTable.skuCode));
+
+  if (type === 'WITHOUT_RACK') {
+    return rows.map(({ skuCode, skuDescription, unitCode, onHandQty }) => ({
+      skuCode,
+      skuDescription,
+      unitCode,
+      onHandQty,
+      rackLocations: [],
+    }));
+  }
+
+  // WITH_RACK: collect all rackIds, batch-fetch, build label map
+  const allRackIds = Array.from(
+    new Set(
+      rows.flatMap((r) =>
+        (r.skuBatches ?? []).flatMap((b) => b.rackIds ?? []),
+      ),
+    ),
+  );
+
+  const rackLabelMap = new Map<string, string>();
+  if (allRackIds.length > 0) {
+    const racks = await db
+      .select({
+        rackId: RacksTable.rackId,
+        rackRow: RacksTable.rackRow,
+        rackColumn: RacksTable.rackColumn,
+        rackLevel: RacksTable.rackLevel,
+      })
+      .from(RacksTable)
+      .where(inArray(RacksTable.rackId, allRackIds));
+
+    for (const rack of racks) {
+      rackLabelMap.set(rack.rackId, `${rack.rackRow}-${rack.rackColumn}-${rack.rackLevel}`);
+    }
+  }
+
+  return rows.map(({ skuCode, skuDescription, unitCode, onHandQty, skuBatches }) => {
+    const rackIds = Array.from(
+      new Set((skuBatches ?? []).flatMap((b) => b.rackIds ?? [])),
+    );
+    const rackLocations = rackIds
+      .map((id) => rackLabelMap.get(id))
+      .filter((label): label is string => label !== undefined);
+    return { skuCode, skuDescription, unitCode, onHandQty, rackLocations };
+  });
+}
+
+export async function renderStockBalanceHtml(
+  rows: InventoryBalanceReportRow[],
+  type: InventoryBalanceReportType,
+): Promise<string> {
+  const template = await readFile(STOCK_BALANCE_HTML_PATH, 'utf-8');
+  const logoImgHtml = await getSmeLogoImgHtml('SME Edaran');
+
+  const withRack = type === 'WITH_RACK';
+
+  const tableRows = rows
+    .map((r, i) => {
+      const rowAlt = i % 2 === 0 ? 'tr-alt' : '';
+      const rackCell = withRack
+        ? `<td class="px-4 py-3 col-rack">${escapeHtml(r.rackLocations.join(', ') || '—')}</td>`
+        : '';
+      return `<tr class="tr-data ${rowAlt}">
+        <td class="px-4 py-3 col-num">${i + 1}</td>
+        <td class="px-4 py-3 col-code">${escapeHtml(r.skuCode)}</td>
+        <td class="px-4 py-3 col-desc">${escapeHtml(r.skuDescription)}</td>
+        <td class="px-4 py-3 col-uom">${escapeHtml(r.unitCode)}</td>
+        <td class="px-4 py-3 text-right tabular-nums col-num">${r.onHandQty.toFixed(2)}</td>
+        ${rackCell}
+      </tr>`;
+    })
+    .join('\n');
+
+  const rackHeader = withRack ? '<th style="text-align:left">Rack Location(s)</th>' : '';
+  const generatedDate = new Date().toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' });
+
+  return template
+    .replace(/\{\{logoImgHtml\}\}/, logoImgHtml)
+    .replace(/\{\{reportVariant\}\}/, withRack ? 'With Rack' : 'Without Rack')
+    .replace(/\{\{rackHeader\}\}/, rackHeader)
+    .replace(/\{\{tableRows\}\}/, tableRows)
+    .replace(/\{\{generatedDate\}\}/g, generatedDate);
+}
+
+export async function generateStockBalancePdf(
+  rows: InventoryBalanceReportRow[],
+  type: InventoryBalanceReportType,
+): Promise<{ pdfBase64: string; filename: string }> {
+  const html = await renderStockBalanceHtml(rows, type);
+  const pdfBuffer = await htmlToPdf(html);
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = `Stock_Balance_Report_${dateStr}.pdf`;
   return { pdfBase64: pdfBuffer.toString('base64'), filename };
 }

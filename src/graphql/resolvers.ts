@@ -21,18 +21,37 @@ import { resolvers as inventoryResolvers } from '@/features/inventory/inventory-
 import { resolvers as inventoryBalanceResolvers } from '@/features/inventory/inventory-balance/inventory.resolver';
 import { resolvers as stockCountResolvers } from '@/features/inventory/stock-count.resolver';
 import { resolvers as stockCountSessionResolvers } from '@/features/inventory/stock-count-session.resolver';
+import { resolvers as stockAdjustmentResolvers } from '@/features/inventory/stock-adjustment/stock-adjustment.resolver';
+import { resolvers as stockQuantResolvers } from '@/features/stock-quant/stock-quant.resolvers';
+import { resolvers as stockQuantTransactionResolvers } from '@/features/stock-quant/stock-quant-transaction/stock-quant-transaction.resolvers';
+import { resolvers as putawayResolvers } from '@/features/stock-quant/putaway/putaway.resolvers';
 // Master Data resolvers
 import { resolvers as organizationResolvers } from '@/features/master-data/organization.resolver';
 import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
 import { resolvers as deliveryScheduleResolvers } from '@/features/master-data/delivery-schedule.resolvers';
 import { resolvers as outletsResolvers } from '@/features/master-data/outlets.resolvers';
+import { resolvers as skuAssignmentResolvers } from '@/features/sku-assignment/sku-assignment.resolvers';
 import { resolvers as suppliersResolvers } from '@/features/master-data/suppliers.resolvers';
 import { resolvers as stockUnitResolvers } from '@/features/master-data/stock-unit.resolvers';
 import { resolvers as racksResolvers } from '@/features/master-data/racks.resolvers';
 import { resolvers as warehousesResolvers } from '@/features/master-data/warehouses.resolvers';
+import { resolvers as mapResolvers } from '@/features/master-data/map.resolvers';
+import { resolvers as areaResolvers } from '@/features/master-data/area.resolvers';
+import { resolvers as setupAreaResolvers } from '@/features/master-data/setup-area.resolvers';
+import { resolvers as pickFaceStrategyResolvers } from '@/features/master-data/pick-face-strategy.resolvers';
+import { resolvers as pickupCriteriaResolvers } from '@/features/master-data/pickup-criteria.resolvers';
+import { resolvers as palletLabelResolvers } from '@/features/master-data/pallet-label.resolvers';
+import { resolvers as transportResolvers } from '@/features/master-data/transport.resolvers';
+import { resolvers as zoneResolvers } from '@/features/master-data/zone.resolver';
+import { resolvers as binResolvers } from '@/features/master-data/bin.resolver';
+import { resolvers as putawayRuleResolvers } from '@/features/master-data/putaway-rule.resolver';
+import { resolvers as pickingCriteriaResolvers } from '@/features/master-data/picking-criteria.resolvers';
 import { resolvers as reportResolvers } from '@/features/report/report.resolvers';
 import { resolvers as documentsResolvers } from '@/features/documents/documents.resolvers';
 import { resolvers as dashboardResolvers } from '@/features/dashboard/dashboard.resolver';
+import { resolvers as emailSettingsResolvers } from '@/features/notifications/email-settings.resolver';
+import { resolvers as esResolvers } from '@/features/es/es.resolvers';
+import { resolvers as whatsAppResolvers } from '@/features/whatsapp/whatsapp.resolver';
 
 // ============================================
 // BASE RESOLVERS
@@ -110,16 +129,35 @@ export const resolvers = mergeResolvers([
   inventoryBalanceResolvers,
   stockCountResolvers,
   stockCountSessionResolvers,
+  stockAdjustmentResolvers,
+  stockQuantResolvers,
+  stockQuantTransactionResolvers,
+  putawayResolvers,
   // Master Data
   organizationResolvers,
   regionResolvers,
   deliveryScheduleResolvers,
   outletsResolvers,
+  skuAssignmentResolvers,
   suppliersResolvers,
   stockUnitResolvers,
   racksResolvers,
   warehousesResolvers,
+  mapResolvers,
+  areaResolvers,
+  setupAreaResolvers,
+  pickFaceStrategyResolvers,
+  pickupCriteriaResolvers,
+  palletLabelResolvers,
+  transportResolvers,
+  zoneResolvers,
+  binResolvers,
+  putawayRuleResolvers,
+  pickingCriteriaResolvers,
   reportResolvers,
   documentsResolvers,
   dashboardResolvers,
+  emailSettingsResolvers,
+  esResolvers,
+  whatsAppResolvers,
 ]);

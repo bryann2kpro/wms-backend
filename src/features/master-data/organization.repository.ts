@@ -199,6 +199,17 @@ export class OrganizationRepositoryClass {
   }
 
   /**
+   * Get all organization IDs (lean — no pagination, no filters).
+   * Intended for cron jobs that must iterate every tenant.
+   */
+  async getAllOrganizationIds(): Promise<string[]> {
+    const rows = await db
+      .select({ id: OrganizationsTable.organizationId })
+      .from(OrganizationsTable);
+    return rows.map((r) => r.id);
+  }
+
+  /**
    * Check if an organization code exists
    */
   async codeExists(organizationCode: string, tx?: DbTransaction): Promise<boolean> {

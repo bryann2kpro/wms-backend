@@ -8,6 +8,7 @@ import { z } from "zod";
 import { logger } from "@/util/logger";
 import { invoicesRepository } from "@/composition-root";
 import { generateProformaInvoicePdf as generateProformaInvoicePdfService } from "@/features/documents/documents.service";
+import { runBulkProformaPdfJob } from "./bulk-proforma-pdf.service";
 import type { GraphQLContext } from "@/graphql/context";
 import type { InvoiceFilter } from "./invoices.model";
 
@@ -23,6 +24,8 @@ const invoiceFilterSchema = z
     dateIssuedTo: z.string().optional(),
     createdAtFrom: z.string().optional(),
     createdAtTo: z.string().optional(),
+    deliveryDateFrom: z.string().optional(),
+    deliveryDateTo: z.string().optional(),
   })
   .transform((data): InvoiceFilter => {
     return Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)) as InvoiceFilter;
@@ -35,6 +38,7 @@ function serializeInvoice(inv: Record<string, unknown>) {
     updatedAt: (inv.updatedAt as Date)?.toISOString?.() ?? String(inv.updatedAt),
     issuedAt: inv.issuedAt ? (inv.issuedAt as Date)?.toISOString?.() ?? String(inv.issuedAt) : null,
     dateIssued: inv.dateIssued ? (inv.dateIssued as Date)?.toISOString?.() ?? String(inv.dateIssued) : null,
+    deliveryDate: inv.deliveryDate ? (inv.deliveryDate as Date)?.toISOString?.() ?? String(inv.deliveryDate) : null,
     doNo: (inv.doNo as string | null) ?? null,
   };
 }
@@ -151,6 +155,26 @@ export const resolvers = {
         throw new Error("Unauthorized");
       }
       return generateProformaInvoicePdfService(args.invoiceId, organizationId);
+    },
+
+    bulkGenerateProformaInvoicesPdf: async (
+      _: unknown,
+      args: { invoiceIds: string[] },
+      context: GraphQLContext,
+    ) => {
+      const organizationId = context.organizationId;
+      if (!organizationId) throw new Error("Unauthorized");
+      if (args.invoiceIds.length === 0) throw new Error("No invoice IDs provided");
+      if (args.invoiceIds.length > 500) throw new Error("Maximum 500 invoices per bulk export");
+
+      const jobId = crypto.randomUUID();
+
+      // Fire-and-forget — client tracks progress via Socket.IO
+      runBulkProformaPdfJob(jobId, args.invoiceIds, organizationId).catch((err) => {
+        logger.error("❌ [bulk-pdf] Unhandled job error", err);
+      });
+
+      return { jobId };
     },
   },
 };

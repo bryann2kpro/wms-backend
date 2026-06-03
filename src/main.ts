@@ -1,5 +1,6 @@
 import 'dotenv/config';
 
+import http from 'node:http';
 import express from "express";
 import ViteExpress from "vite-express";
 import path from 'path';
@@ -26,7 +27,11 @@ import { spawn } from "child_process";
 import { initAccounts } from "./scripts/init-accounts";
 import { initMasterData } from "./scripts/init-master-data";
 import { startInvoicesCron } from "./features/invoicing/invoices.cron";
+import { startDailyOpeningStockCron } from "./features/inventory/daily-opening-stock/daily-opening-stock.cron";
 import { startEmailNotificationWorker } from "./features/notifications/email-notification.job";
+import { startWhatsAppNotificationWorker } from "./features/whatsapp/whatsapp.job";
+import { whatsAppClient } from "./composition-root";
+import { initSocketServer } from "@/socket/socket-server";
 
 const app = express();
 
@@ -226,6 +231,7 @@ async function startApolloServer(): Promise<void> {
         createOutlet: 'Unable to create outlet. Please check the details (e.g. outlet code or region) and try again.',
         updateOutlet: 'Unable to update outlet. Please check the details and try again.',
         assignOutletToRegion: 'Unable to assign outlet to region. Please try again.',
+        createPurchaseOrder: 'Unable to create purchase order. Please check the details and try again.',
       };
 
       const clientMessage =
@@ -268,7 +274,10 @@ async function startApolloServer(): Promise<void> {
 // Start Apollo Server before Express
 await startApolloServer();
 
-ViteExpress.listen(app, Number(PORT), async () => {
+const server = http.createServer(app);
+initSocketServer(server);
+ViteExpress.bind(app, server);
+server.listen(Number(PORT), async () => {
   console.log(`Server is listening on port ${PORT}...`);
 
   try {
@@ -277,16 +286,24 @@ ViteExpress.listen(app, Number(PORT), async () => {
       await runMigrations();
     }
 
-    logger.info('🚀 Initializing accounts...');
-    await initAccounts();
-    logger.info('✅ Accounts initialized successfully');
+    if (env.NODE_ENV === 'test') {
+      logger.info('🚀 Initializing accounts...');
+      await initAccounts();
+      logger.info('✅ Accounts initialized successfully');
+  
+      logger.info('🚀 Initializing master data...');
+      await initMasterData();
+      logger.info('✅ Master data initialized successfully');
+    }
 
-    logger.info('🚀 Initializing master data...');
-    await initMasterData();
-    logger.info('✅ Master data initialized successfully');
 
     startInvoicesCron();
+    startDailyOpeningStockCron();
     startEmailNotificationWorker();
+    if (env.WHATSAPP_ENABLED) {
+      whatsAppClient.init();
+      startWhatsAppNotificationWorker();
+    }
   } catch (error) {
     console.error('❌ Error during initialization:', error);
   }

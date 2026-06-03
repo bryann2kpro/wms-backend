@@ -18,18 +18,37 @@ import { typeDefs as inventoryTypeDefs } from '@/features/inventory/inventory-mo
 import { typeDefs as inventoryBalanceTypeDefs } from '@/features/inventory/inventory-balance/inventory.typeDefs';
 import { typeDefs as stockCountTypeDefs } from '@/features/inventory/stock-count.typeDefs';
 import { typeDefs as stockCountSessionTypeDefs } from '@/features/inventory/stock-count-session.typeDefs';
+import { typeDefs as stockAdjustmentTypeDefs } from '@/features/inventory/stock-adjustment/stock-adjustment.typeDefs';
+import { typeDefs as stockQuantTypeDefs } from '@/features/stock-quant/stock-quant.typeDefs';
+import { typeDefs as stockQuantTransactionTypeDefs } from '@/features/stock-quant/stock-quant-transaction/stock-quant-transaction.typeDefs';
+import { typeDefs as putawayTypeDefs } from '@/features/stock-quant/putaway/putaway.typeDefs';
 // Master Data typeDefs
 import { typeDefs as organizationTypeDefs } from '@/features/master-data/organization.typeDefs';
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
 import { typeDefs as deliveryScheduleTypeDefs } from '@/features/master-data/delivery-schedule.typeDefs';
 import { typeDefs as outletsTypeDefs } from '@/features/master-data/outlets.typeDefs';
+import { typeDefs as skuAssignmentTypeDefs } from '@/features/sku-assignment/sku-assignment.typeDefs';
 import { typeDefs as suppliersTypeDefs } from '@/features/master-data/suppliers.typeDefs';
 import { typeDefs as stockUnitTypeDefs } from '@/features/master-data/stock-unit.typeDefs';
 import { typeDefs as racksTypeDefs } from '@/features/master-data/racks.typeDefs';
 import { typeDefs as warehousesTypeDefs } from '@/features/master-data/warehouses.typeDefs';
+import { typeDefs as mapTypeDefs } from '@/features/master-data/map.typeDefs';
+import { typeDefs as areaTypeDefs } from '@/features/master-data/area.typeDefs';
+import { typeDefs as setupAreaTypeDefs } from '@/features/master-data/setup-area.typeDefs';
+import { typeDefs as pickFaceStrategyTypeDefs } from '@/features/master-data/pick-face-strategy.typeDefs';
+import { typeDefs as pickupCriteriaTypeDefs } from '@/features/master-data/pickup-criteria.typeDefs';
+import { typeDefs as palletLabelTypeDefs } from '@/features/master-data/pallet-label.typeDefs';
+import { typeDefs as transportTypeDefs } from '@/features/master-data/transport.typeDefs';
+import { typeDefs as zoneTypeDefs } from '@/features/master-data/zone.typeDefs';
+import { typeDefs as binTypeDefs } from '@/features/master-data/bin.typeDefs';
+import { typeDefs as putawayRuleTypeDefs } from '@/features/master-data/putaway-rule.typeDefs';
+import { typeDefs as pickingCriteriaTypeDefs } from '@/features/master-data/picking-criteria.typeDefs';
 import { typeDefs as reportTypeDefs } from '@/features/report/report.typeDefs';
 import { typeDefs as documentsTypeDefs } from '@/features/documents/documents.typeDefs';
 import { typeDefs as dashboardTypeDefs } from '@/features/dashboard/dashboard.typeDefs';
+import { typeDefs as emailSettingsTypeDefs } from '@/features/notifications/email-settings.typeDefs';
+import { typeDefs as esTypeDefs } from '@/features/es/es.typeDefs';
+import { typeDefs as whatsAppTypeDefs } from '@/features/whatsapp/whatsapp.typeDefs';
 
 // Directive type definitions
 import { directiveTypeDefs } from './directives';
@@ -105,17 +124,36 @@ export const typeDefs = [
   inventoryBalanceTypeDefs,
   stockCountTypeDefs,
   stockCountSessionTypeDefs,
+  stockAdjustmentTypeDefs,
+  stockQuantTypeDefs,
+  stockQuantTransactionTypeDefs,
+  putawayTypeDefs,
   // Master Data
   organizationTypeDefs,
   regionTypeDefs,
   deliveryScheduleTypeDefs,
   outletsTypeDefs,
+  skuAssignmentTypeDefs,
   suppliersTypeDefs,
   stockUnitTypeDefs,
   racksTypeDefs,
   warehousesTypeDefs,
+  mapTypeDefs,
+  areaTypeDefs,
+  setupAreaTypeDefs,
+  pickFaceStrategyTypeDefs,
+  pickupCriteriaTypeDefs,
+  palletLabelTypeDefs,
+  transportTypeDefs,
+  zoneTypeDefs,
+  binTypeDefs,
+  putawayRuleTypeDefs,
+  pickingCriteriaTypeDefs,
   reportTypeDefs,
   documentsTypeDefs,
   auditLogTypeDefs,
   dashboardTypeDefs,
+  emailSettingsTypeDefs,
+  esTypeDefs,
+  whatsAppTypeDefs,
 ];

@@ -477,6 +477,223 @@
       "when": 1775015403842,
       "tag": "0067_cheerful_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1743580800000,
+      "tag": "0068_email_notification_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1775098099077,
+      "tag": "0069_mature_siren",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1775443081494,
+      "tag": "0070_tense_warhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1775446790355,
+      "tag": "0071_shiny_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1775448362229,
+      "tag": "0072_yielding_lenny_balinger",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1775448501345,
+      "tag": "0073_nostalgic_red_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1775449375529,
+      "tag": "0074_crazy_captain_britain",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1775616188300,
+      "tag": "0075_real_zaran",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1776050083924,
+      "tag": "0076_keen_guardsmen",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1776306128845,
+      "tag": "0077_classy_spacker_dave",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1776323848383,
+      "tag": "0078_flawless_reavers",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1778567560983,
+      "tag": "0079_lucky_masked_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1778567711673,
+      "tag": "0080_add_loss_adjustment_enum",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1778572543534,
+      "tag": "0081_eager_venus",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1778636868359,
+      "tag": "0082_fearless_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1778637170913,
+      "tag": "0083_rich_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1778653813313,
+      "tag": "0084_tricky_fat_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1779082793614,
+      "tag": "0085_bright_maximus",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1779241970285,
+      "tag": "0086_soft_clea",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1779244278000,
+      "tag": "0087_fearless_quentin_quire",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1779244278813,
+      "tag": "0088_numerous_madame_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1779266804320,
+      "tag": "0089_white_karma",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1779267527106,
+      "tag": "0090_faulty_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1779346178080,
+      "tag": "0091_sudden_surge",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1779696311929,
+      "tag": "0092_shocking_gravity",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1779761874323,
+      "tag": "0093_transport_storage_bin_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1779763420474,
+      "tag": "0094_redundant_kate_bishop",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1779774349184,
+      "tag": "0095_true_dragon_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1779778739208,
+      "tag": "0096_sharp_korath",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1779946942168,
+      "tag": "0097_workable_bulldozer",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1780449236158,
+      "tag": "0098_keen_patriot",
+      "breakpoints": true
     }
   ]
 }

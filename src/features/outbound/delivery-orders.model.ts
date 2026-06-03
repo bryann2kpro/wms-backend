@@ -56,6 +56,8 @@ export const DeliveryOrderItemsTable = MainSchema.table('delivery_order_items', 
   qtyRequired: numeric('qty_required', { precision: 10, scale: 2 }).notNull(),
   qtyPicked: numeric('qty_picked', { precision: 10, scale: 2 }).default('0'),
   qtyPacked: numeric('qty_packed', { precision: 10, scale: 2 }).default('0'),
+  expiryDate: timestamp('expiry_date'),
+  lotNo: text('lot_no'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -105,4 +107,9 @@ export type DeliveryOrderItemFilter = {
   id?: string | string[];
   doId?: string | string[];
   skuId?: string | string[];
+  regionId?: string;
+  /** When non-empty, outlet region must be one of these (takes precedence over regionId). */
+  regionIds?: string[];
+  scheduledDeliveryDateFrom?: string;
+  scheduledDeliveryDateTo?: string;
 };

@@ -1,0 +1,4 @@
+ALTER TABLE "main"."inventory_movements" ADD COLUMN "rack_id" uuid;--> statement-breakpoint
+ALTER TABLE "main"."stock_adjustment_items" ADD COLUMN "rack_id" uuid;--> statement-breakpoint
+ALTER TABLE "main"."inventory_movements" ADD CONSTRAINT "inventory_movements_rack_id_m_racks_rack_id_fk" FOREIGN KEY ("rack_id") REFERENCES "main"."m_racks"("rack_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "main"."stock_adjustment_items" ADD CONSTRAINT "stock_adjustment_items_rack_id_m_racks_rack_id_fk" FOREIGN KEY ("rack_id") REFERENCES "main"."m_racks"("rack_id") ON DELETE no action ON UPDATE no action;

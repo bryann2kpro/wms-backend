@@ -51,6 +51,7 @@ const createPurchaseOrderLineItemSchema = z.object({
   skuCode: z.string().min(1, "SKU code is required"),
   skuId: z.string().uuid().optional(),
   qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => Number(v)),
+  stockQuantId: z.string().uuid().optional(),
 });
 
 const createPurchaseOrderInputSchema = z.object({
@@ -63,6 +64,25 @@ const createPurchaseOrderInputSchema = z.object({
 const updateDeliveryOrderInputSchema = z.object({
   isEmergency: z.boolean().optional(),
   status: z.enum(["NEW", "PICKING", "PACKING", "SHIPPED", "DELIVERED"]).optional(),
+});
+
+const updatePurchaseOrderItemInputSchema = z.object({
+  id: z.string().uuid(),
+  qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => Number(v)),
+});
+
+const newPurchaseOrderItemInputSchema = z.object({
+  skuId: z.string().uuid(),
+  skuCode: z.string().min(1),
+  qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => Number(v)),
+});
+
+const updatePurchaseOrderInputSchema = z.object({
+  scheduledDeliveryDate: z.string().optional(),
+  outletId: z.string().uuid().optional(),
+  items: z.array(updatePurchaseOrderItemInputSchema).optional(),
+  newItems: z.array(newPurchaseOrderItemInputSchema).optional(),
+  removedItemIds: z.array(z.string().uuid()).optional(),
 });
 
 // ============================================
@@ -117,6 +137,25 @@ function getDefaultWeekRangeInBusinessTZ(): [Date, Date] {
   const endAnchor = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
   const { end } = getDayBoundsInBusinessTZ(endAnchor);
   return [start, end];
+}
+
+/** Build week entries in business TZ, newest day first; one slot per calendar day. */
+function buildPurchaseOrderWeekEntries(
+  fromDate: Date,
+  toDate: Date,
+  byDate: Map<string, PurchaseOrderType[]>
+): Array<{ date: string; orders: PurchaseOrderType[] }> {
+  const entries: Array<{ date: string; orders: PurchaseOrderType[] }> = [];
+  let dayStart = getDayBoundsInBusinessTZ(fromDate).start;
+  const lastDayStart = getDayBoundsInBusinessTZ(toDate).start;
+
+  while (dayStart.getTime() <= lastDayStart.getTime()) {
+    const key = formatDateKeyBusinessTZ(dayStart);
+    entries.unshift({ date: key, orders: byDate.get(key) ?? [] });
+    dayStart = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  }
+
+  return entries;
 }
 
 function transformDeliveryOrder(order: DeliveryOrderType) {
@@ -288,10 +327,8 @@ export const resolvers = {
         let fromDate: Date;
         let toDate: Date;
         if (filter.scheduledDeliveryDateFrom && filter.scheduledDeliveryDateTo) {
-          fromDate = new Date(filter.scheduledDeliveryDateFrom);
-          toDate = new Date(filter.scheduledDeliveryDateTo);
-          fromDate.setUTCHours(0, 0, 0, 0);
-          toDate.setUTCHours(23, 59, 59, 999);
+          fromDate = getDayBoundsInBusinessTZ(new Date(filter.scheduledDeliveryDateFrom)).start;
+          toDate = getDayBoundsInBusinessTZ(new Date(filter.scheduledDeliveryDateTo)).end;
         } else {
           [fromDate, toDate] = getDefaultWeekRangeInBusinessTZ();
         }
@@ -315,13 +352,7 @@ export const resolvers = {
           }
         }
 
-        const entries: Array<{ date: string; orders: PurchaseOrderType[] }> = [];
-        const cursor = new Date(fromDate);
-        while (cursor <= toDate) {
-          const key = formatDateKeyBusinessTZ(cursor);
-          entries.push({ date: key, orders: byDate.get(key) ?? [] });
-          cursor.setUTCDate(cursor.getUTCDate() + 1);
-        }
+        const entries = buildPurchaseOrderWeekEntries(fromDate, toDate, byDate);
 
         return entries.map((e) => ({
           date: e.date,
@@ -383,6 +414,10 @@ export const resolvers = {
           doStatus?: string;
           doStatuses?: string[];
           search?: string;
+          regionId?: string;
+          regionIds?: string[];
+          scheduledDeliveryDateFrom?: string;
+          scheduledDeliveryDateTo?: string;
         };
         pageSize?: number;
         pageNumber?: number;
@@ -407,6 +442,13 @@ export const resolvers = {
             filter.doStatus = args.filter.doStatus;
           }
           if (args.filter.search) filter.search = args.filter.search;
+          if (args.filter.regionIds?.length) {
+            filter.regionIds = args.filter.regionIds;
+          } else if (args.filter.regionId) {
+            filter.regionId = args.filter.regionId;
+          }
+          if (args.filter.scheduledDeliveryDateFrom) filter.scheduledDeliveryDateFrom = args.filter.scheduledDeliveryDateFrom;
+          if (args.filter.scheduledDeliveryDateTo) filter.scheduledDeliveryDateTo = args.filter.scheduledDeliveryDateTo;
         }
 
         const paginationParams = {
@@ -478,10 +520,78 @@ export const resolvers = {
             skuCode: item.skuCode,
             skuId: item.skuId,
             qtyRequired: item.qtyRequired,
+            stockQuantId: item.stockQuantId,
           })),
           isEmergency: data.isEmergency,
         });
         return transformPurchaseOrder(created);
+      }
+    ),
+
+    updatePurchaseOrder: withAudit<
+      unknown,
+      { id: string; input: unknown },
+      unknown
+    >(
+      {
+        entity: "PurchaseOrder",
+        action: "UPDATE",
+        getEntityId: (result) =>
+          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
+      },
+      async (_: unknown, { id, input }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to update a purchase order", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+        const parseResult = updatePurchaseOrderInputSchema.safeParse(input);
+        if (!parseResult.success) {
+          const message = prettifyError(parseResult.error);
+          throw new GraphQLError(message, {
+            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
+          });
+        }
+        const data = parseResult.data;
+        const po = await outboundServices.updatePurchaseOrder({
+          id,
+          userId,
+          organizationId: context.organizationId!,
+          scheduledDeliveryDate: data.scheduledDeliveryDate,
+          outletId: data.outletId,
+          items: data.items,
+          newItems: data.newItems,
+          removedItemIds: data.removedItemIds,
+        });
+        return transformPurchaseOrder(po);
+      }
+    ),
+
+    cancelPurchaseOrder: withAudit<
+      unknown,
+      { id: string },
+      unknown
+    >(
+      {
+        entity: "PurchaseOrder",
+        action: "UPDATE",
+        getEntityId: (result) =>
+          result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
+      },
+      async (_: unknown, { id }, context: GraphQLContext) => {
+        const userId = context.user?.id ?? null;
+        if (!userId) {
+          throw new GraphQLError("Authentication required to cancel a purchase order", {
+            extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+          });
+        }
+        const po = await outboundServices.cancelPurchaseOrder({
+          id,
+          userId,
+          organizationId: context.organizationId!,
+        });
+        return transformPurchaseOrder(po);
       }
     ),
 

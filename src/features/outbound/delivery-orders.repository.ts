@@ -24,6 +24,8 @@ import { GrnItemsTable } from "@/features/inbound/grns.model";
 import { GrnsTable } from "@/features/inbound/grns.model";
 import { InventoryBalancesTable } from "@/features/inventory/inventory-balance/inventory.model";
 import { RacksTable } from "@/features/master-data/racks.model";
+import { PurchaseOrdersTable } from "./purchase-orders.model";
+import { OutletsTable } from "@/features/master-data/outlets.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
@@ -315,6 +317,33 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
+  /**
+   * Fetch all delivery order items for a purchase order, joined with SkuTable to return skuCode.
+   * Used in updatePurchaseOrder to match PO items (by skuCode) to DO items (by skuId).
+   */
+  async getDeliveryOrderItemsForPo(
+    purchaseOrderId: string,
+    tx?: DbTransaction
+  ): Promise<Array<{ id: string; skuId: string; skuCode: string | null; qtyRequired: string }>> {
+    try {
+      const dbClient = tx ?? db;
+      const rows = await dbClient
+        .select({
+          id: DeliveryOrderItemsTable.id,
+          skuId: DeliveryOrderItemsTable.skuId,
+          skuCode: SkuTable.skuCode,
+          qtyRequired: DeliveryOrderItemsTable.qtyRequired,
+        })
+        .from(DeliveryOrderItemsTable)
+        .leftJoin(SkuTable, eq(DeliveryOrderItemsTable.skuId, SkuTable.skuId))
+        .where(eq(DeliveryOrderItemsTable.purchaseOrderId, purchaseOrderId));
+      return rows;
+    } catch (error) {
+      logger.error("❌ [DeliveryOrdersRepository.getDeliveryOrderItemsForPo] Error:", error);
+      throw error;
+    }
+  }
+
   async deleteDeliveryOrderItem(id: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx ?? db;
@@ -344,8 +373,8 @@ export class DeliveryOrdersRepositoryClass {
    * Joins with SKU table, delivery orders table, and inventory balances table.
    */
   async getDeliveryOrderItemsWithDetails(
-    filter: DeliveryOrderItemFilter & { 
-      purchaseOrderNo?: string; 
+    filter: DeliveryOrderItemFilter & {
+      purchaseOrderNo?: string;
       doNo?: string;
       doStatus?: string | string[];
       search?: string;
@@ -388,6 +417,22 @@ export class DeliveryOrdersRepositoryClass {
         );
       }
 
+      if (filter.regionIds && filter.regionIds.length > 0) {
+        whereConditions.push(inArray(OutletsTable.regionId, filter.regionIds));
+      } else if (filter.regionId) {
+        whereConditions.push(eq(OutletsTable.regionId, filter.regionId));
+      }
+
+      if (filter.scheduledDeliveryDateFrom) {
+        whereConditions.push(gte(PurchaseOrdersTable.scheduledDeliveryDate, new Date(filter.scheduledDeliveryDateFrom)));
+      }
+
+      if (filter.scheduledDeliveryDateTo) {
+        const toDate = new Date(filter.scheduledDeliveryDateTo);
+        toDate.setUTCHours(23, 59, 59, 999);
+        whereConditions.push(lte(PurchaseOrdersTable.scheduledDeliveryDate, toDate));
+      }
+
       const baseQuery = db
         .select({
           id: DeliveryOrderItemsTable.id,
@@ -414,6 +459,8 @@ export class DeliveryOrdersRepositoryClass {
         .leftJoin(SkuTable, eq(DeliveryOrderItemsTable.skuId, SkuTable.skuId))
         .leftJoin(DeliveryOrdersTable, eq(DeliveryOrderItemsTable.purchaseOrderId, DeliveryOrdersTable.purchaseOrderId))
         .leftJoin(InventoryBalancesTable, eq(DeliveryOrderItemsTable.skuId, InventoryBalancesTable.skuId))
+        .leftJoin(PurchaseOrdersTable, eq(DeliveryOrderItemsTable.purchaseOrderId, PurchaseOrdersTable.id))
+        .leftJoin(OutletsTable, eq(PurchaseOrdersTable.outletId, OutletsTable.outletId))
         .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
 
       const pageSize = paginationParams.pageSize ?? 10;

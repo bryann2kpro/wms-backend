@@ -3,6 +3,9 @@ FROM node:22-slim AS builder
 
 WORKDIR /app
 
+# Skip puppeteer Chrome download in builder — runner uses system Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
 # Ensure pnpm is available (corepack-managed)
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
@@ -30,11 +33,21 @@ RUN pnpm i
 RUN pnpm build
 
 
-# ─── Stage 2: Runtime with Chromium for puppeteer-core ────────
+# ─── Stage 2: Runtime with Chromium for puppeteer ────────
 FROM node:22-slim AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
+
+# Install system Chromium — handles all shared library deps automatically
+# and tell puppeteer to use it instead of its bundled Chrome
+RUN apt-get update && apt-get install -y \
+    chromium \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
@@ -44,6 +57,10 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/postgres ./postgres
 COPY --from=builder /app/drizzle.migrate.config.ts ./drizzle.migrate.config.ts
+
+# HTML templates — not bundled by esbuild, must be copied alongside dist/
+COPY --from=builder /app/src/features/report/html ./dist/html
+COPY --from=builder /app/src/features/documents/html ./dist/html
 
 EXPOSE 7777
 

@@ -17,6 +17,13 @@ const router = Router();
 router.get('/preview/movement', reportController.getMovementReport.bind(reportController));
 
 router.get('/preview/proforma', reportController.getProformaInvoices.bind(reportController));
+
+/**
+ * GET /preview/stock-balance
+ * Query: type (optional, WITHOUT_RACK|WITH_RACK), orgId (optional, defaults to default org UUID)
+ * Returns: text/html – rendered stock-balance.html with live data.
+ */
+router.get('/preview/stock-balance', reportController.getStockBalancePreview.bind(reportController));
 //   try {
 //     const schema = z.object({
 //       dateFrom: z.string().optional(),

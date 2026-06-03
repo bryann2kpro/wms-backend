@@ -23,14 +23,14 @@ import {
   DeliveryOrderItemsTable,
   type DeliveryOrderType,
 } from "@/features/outbound/delivery-orders.model";
-import { PurchaseOrdersTable } from "@/features/outbound/purchase-orders.model";
+import { PurchaseOrdersTable, PurchaseOrderItemsTable } from "@/features/outbound/purchase-orders.model";
 import { OutletsTable } from "@/features/master-data/outlets.model";
 import { RegionPricingTable } from "@/features/master-data/region.model";
 import { SkuTable } from "@/features/master-data/sku.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
-import { eq, and, like, inArray, gte, lte, or, sql, isNull, count } from "drizzle-orm";
+import { eq, and, like, inArray, gte, lte, or, sql, isNull, count, notInArray } from "drizzle-orm";
 import { RunningNoRepositoryClass } from "@/features/running-no/running-no.repository";
 
 /** Db or transaction client for methods that can run in or out of a transaction */
@@ -252,6 +252,12 @@ export class InvoicesRepositoryClass {
       if (filter.createdAtTo) {
         conditions.push(lte(InvoicesTable.createdAt, new Date(filter.createdAtTo)));
       }
+      if (filter.deliveryDateFrom) {
+        conditions.push(gte(PurchaseOrdersTable.scheduledDeliveryDate, new Date(filter.deliveryDateFrom)));
+      }
+      if (filter.deliveryDateTo) {
+        conditions.push(lte(PurchaseOrdersTable.scheduledDeliveryDate, new Date(filter.deliveryDateTo)));
+      }
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -259,11 +265,12 @@ export class InvoicesRepositoryClass {
       const pageNumber = paginationParams.pageNumber ?? 1;
       const offset = (pageNumber - 1) * pageSize;
 
-      // Count query
+      // Count query (must join PO table when delivery date filter is active)
       const [countRow] = await db
         .select({ total: count() })
         .from(InvoicesTable)
         .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
+        .leftJoin(PurchaseOrdersTable, eq(InvoicesTable.poId, PurchaseOrdersTable.id))
         .where(whereClause);
       const totalCount = countRow?.total ?? 0;
 
@@ -296,6 +303,7 @@ export class InvoicesRepositoryClass {
           createdBy: InvoicesTable.createdBy,
           updatedBy: InvoicesTable.updatedBy,
           doNo: DeliveryOrdersTable.doNo,
+          deliveryDate: PurchaseOrdersTable.scheduledDeliveryDate,
         })
         .from(InvoicesTable)
         .leftJoin(DeliveryOrdersTable, eq(InvoicesTable.doId, DeliveryOrdersTable.id))
@@ -466,11 +474,15 @@ export class InvoicesRepositoryClass {
         .where(eq(DeliveryOrderItemsTable.purchaseOrderId, doRow.purchaseOrderId));
 
       // Resolve region pricing via PO → Outlet → Region → RegionPricing
+      // Also fetch outletId, scheduledDeliveryDate, organizationId for group QOM lookup
       const [regionPricingRow] = await dbClient
         .select({
           rate: RegionPricingTable.rate,
           minQty: RegionPricingTable.minQty,
           sstRate: RegionPricingTable.sstRate,
+          outletId: PurchaseOrdersTable.outletId,
+          scheduledDeliveryDate: PurchaseOrdersTable.scheduledDeliveryDate,
+          organizationId: PurchaseOrdersTable.organizationId,
         })
         .from(PurchaseOrdersTable)
         .innerJoin(OutletsTable, eq(PurchaseOrdersTable.outletId, OutletsTable.outletId))
@@ -485,12 +497,63 @@ export class InvoicesRepositoryClass {
       const minQty = regionPricingRow ? parseFloat(regionPricingRow.minQty) : 5;
       const sstRate = regionPricingRow ? parseFloat(regionPricingRow.sstRate) : 0.06;
 
+      // --- Group QOM: sum PO item quantities across all non-cancelled POs for same outlet + delivery date ---
+      // combinedQty must cover the whole group so the min-surcharge is applied once per group,
+      // not once per individual PO. Fall back to thisPOQty only when we have no delivery date to
+      // anchor the group (legacy POs with null scheduledDeliveryDate).
+      const thisPOQty = doItems.reduce((sum, item) => sum + parseFloat(item.qtyRequired), 0);
+      let combinedQty = thisPOQty;
+
+      if (regionPricingRow?.outletId && regionPricingRow.organizationId) {
+        if (regionPricingRow.scheduledDeliveryDate) {
+          // Normal path: group by outlet + calendar day
+          const deliveryDate = new Date(regionPricingRow.scheduledDeliveryDate);
+          const startOfDay = new Date(deliveryDate);
+          startOfDay.setUTCHours(0, 0, 0, 0);
+          const endOfDay = new Date(deliveryDate);
+          endOfDay.setUTCHours(23, 59, 59, 999);
+
+          const [groupQtyRow] = await dbClient
+            .select({
+              combinedQty: sql<string>`COALESCE(SUM(${PurchaseOrderItemsTable.qtyRequired}::numeric), '0')`,
+            })
+            .from(PurchaseOrdersTable)
+            .leftJoin(
+              PurchaseOrderItemsTable,
+              eq(PurchaseOrdersTable.purchaseOrderNo, PurchaseOrderItemsTable.purchaseOrderNo)
+            )
+            .where(
+              and(
+                eq(PurchaseOrdersTable.outletId, regionPricingRow.outletId),
+                eq(PurchaseOrdersTable.organizationId, regionPricingRow.organizationId),
+                gte(PurchaseOrdersTable.scheduledDeliveryDate, startOfDay),
+                lte(PurchaseOrdersTable.scheduledDeliveryDate, endOfDay),
+                notInArray(PurchaseOrdersTable.status, ['CANCELLED', 'REJECTED']),
+              )
+            );
+
+          if (groupQtyRow) {
+            combinedQty = parseFloat(groupQtyRow.combinedQty);
+          }
+        } else {
+          // Fallback for POs without a scheduled delivery date: use this PO's total qty.
+          // Min-surcharge is still applied at PO level (all items summed), not per item.
+          logger.warn(
+            `⚠️ [InvoicesRepository.createInvoiceFromDeliveryOrder] PO ${doRow.purchaseOrderId} has no scheduledDeliveryDate — group QOM lookup skipped, using thisPOQty=${thisPOQty}`
+          );
+        }
+      }
+
+      // Apply the group minimum once: each item's effective share = item.qty × (combinedEffectiveQty / combinedQty)
+      const combinedEffectiveQty = combinedQty > 0 ? Math.max(combinedQty, minQty) : 0;
+      const effectiveFactor = combinedQty > 0 ? combinedEffectiveQty / combinedQty : 1;
+
       const invoiceNo = await this.generateInvoiceNo(dbClient);
 
-      // Compute per-item pricing with min-qty enforcement
+      // Compute per-item pricing using the group-level effective factor
       const pricedItems = doItems.map((item) => {
         const qty = parseFloat(item.qtyRequired);
-        const effectiveQty = Math.max(qty, minQty);
+        const effectiveQty = qty * effectiveFactor;
         const unitPrice = regionRate;
         const subTotal = effectiveQty * unitPrice;
         return { ...item, effectiveQty, unitPrice, subTotal };

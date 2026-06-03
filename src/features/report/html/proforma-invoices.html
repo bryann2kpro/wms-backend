@@ -162,12 +162,43 @@
             table-layout: fixed;
         }
 
+        /* Fixed widths for compact code columns — prevents overlap when Outlet wraps */
+        thead th:nth-child(1),
+        tbody tr:not(.tr-subtotal,.tr-grand-total) td:nth-child(1) {
+            width: 11rem;
+            min-width: 11rem;
+            white-space: nowrap;
+            text-align: left;
+        }
+
         thead th:nth-child(2),
         tbody tr:not(.tr-subtotal,.tr-grand-total) td:nth-child(2) {
             width: 7rem;
             min-width: 7rem;
             white-space: nowrap;
             text-align: left;
+        }
+
+        thead th:nth-child(3),
+        tbody tr:not(.tr-subtotal,.tr-grand-total) td:nth-child(3),
+        thead th:nth-child(4),
+        tbody tr:not(.tr-subtotal,.tr-grand-total) td:nth-child(4) {
+            width: 8.75rem;
+            min-width: 8.75rem;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+        /*
+         * Outlet: no %-width — in fixed-layout table it absorbs remaining space after
+         * other columns; allow multi-line wrapping for long mall names.
+         */
+        thead th:nth-child(5),
+        tbody tr:not(.tr-subtotal,.tr-grand-total) td:nth-child(5) {
+            white-space: normal;
+            vertical-align: top;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
 
         thead th:nth-child(6),
@@ -335,7 +366,7 @@
     <div class="report-wrap">
         <header class="doc-header">
             <div class="brand-wrap">
-                {{logoImgHtml}}
+                <img class="logo" alt="SME logo" src="https://smee-bucket-348170387599-ap-southeast-5-an.s3.ap-southeast-5.amazonaws.com/sme-edaran/sme-logo.jpg">
                 <div class="brand-text">
                     <div class="brand">SME EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
                     <div class="brand-sub">

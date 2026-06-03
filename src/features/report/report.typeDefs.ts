@@ -14,6 +14,14 @@ export const typeDefs = `#graphql
   }
 
   """
+  Sort direction for invoice summary delivery dates.
+  """
+  enum DeliveryDateSortOrder {
+    ASC
+    DESC
+  }
+
+  """
   Input for generating a report
   """
   input GenerateReportInput {
@@ -25,6 +33,8 @@ export const typeDefs = `#graphql
     dateTo: String!
     """Region ID to filter or display (e.g. for movement report header) (required)"""
     regionId: ID!
+    """Optional delivery date sort order for invoice summary reports"""
+    deliveryDateSortOrder: DeliveryDateSortOrder
     """If true, upload the generated PDF to S3 and return s3Url"""
     saveToS3: Boolean
   }
@@ -51,6 +61,78 @@ export const typeDefs = `#graphql
     filename: String!
   }
 
+  """
+  Optional filter for DO picking list generation
+  """
+  input DoPickingListFilterInput {
+    "Filter by outlet region ID (uuid)"
+    regionId: ID
+    "Filter by any of these outlet region IDs (when non-empty, used instead of regionId)"
+    regionIds: [ID!]
+    "Filter by item search text (SKU, description, DO, or PO)"
+    search: String
+    "Filter by expected delivery date range start (ISO date string, inclusive)"
+    scheduledDeliveryDateFrom: String
+    "Filter by expected delivery date range end (ISO date string, inclusive)"
+    scheduledDeliveryDateTo: String
+  }
+
+  """
+  Row item for Proforma Invoice Summary export data.
+  """
+  type InvoiceSummaryReportRow {
+    proformaId: String!
+    invoiceDate: String!
+    deliveryDate: String!
+    poNumber: String!
+    doNumber: String!
+    outlet: String!
+    region: String!
+    ctn: Int!
+    beforeTaxAmount: Float!
+    afterTaxAmount: Float!
+    amount: Float!
+  }
+
+  """
+  Variant for Stock Balance report — without or with rack locations.
+  """
+  enum InventoryBalanceReportType {
+    WITHOUT_RACK
+    WITH_RACK
+  }
+
+  """
+  A single row in the Stock Balance report.
+  rackLocations is empty for WITHOUT_RACK variant.
+  """
+  type InventoryBalanceReportRow {
+    skuCode: String!
+    skuDescription: String!
+    unitCode: String!
+    onHandQty: Float!
+    rackLocations: [String!]!
+  }
+
+  extend type Query {
+    """
+    Fetch Proforma Invoice Summary rows for Excel export.
+    """
+    invoiceSummaryReportData(
+      dateFrom: String!
+      dateTo: String!
+      regionId: ID!
+      deliveryDateSortOrder: DeliveryDateSortOrder
+    ): [InvoiceSummaryReportRow!]! @auth
+
+    """
+    Fetch Stock Balance rows for Excel export.
+    WITHOUT_RACK: SKU Code, Description, UOM, On-Hand Qty.
+    WITH_RACK: same plus rack location labels.
+    """
+    inventoryBalanceReportData(type: InventoryBalanceReportType!): [InventoryBalanceReportRow!]! @auth
+  }
+
   extend type Mutation {
     """
     Generate a report PDF. Returns base64-encoded PDF and filename for download.
@@ -66,8 +148,15 @@ export const typeDefs = `#graphql
 
     """
     Generate a DO Picking List PDF — SKU-grouped summary of all active delivery orders.
+    Optionally filter by region and/or expected delivery date range.
     Returns a printable picking reference for the storekeeper.
     """
-    generateDoPickingList: GenerateChecklistPayload! @auth
+    generateDoPickingList(filter: DoPickingListFilterInput): GenerateChecklistPayload! @auth
+
+    """
+    Generate a Stock Balance PDF. Returns base64-encoded PDF and suggested filename.
+    WITHOUT_RACK: principal-facing summary. WITH_RACK: includes rack location labels.
+    """
+    generateStockBalanceReport(type: InventoryBalanceReportType!): GenerateReportPayload! @auth
   }
 `;

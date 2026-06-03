@@ -111,6 +111,7 @@ export const typeDefs = `#graphql
     displayName: String!
     password: String!
     roleId: ID!
+    organizationId: ID!
     contactNo: String
   }
 

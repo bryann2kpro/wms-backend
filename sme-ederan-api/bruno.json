@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "name": "sme-ederan-api",
+  "name": "sme-edaran-api",
   "type": "collection",
   "ignore": [
     "node_modules",

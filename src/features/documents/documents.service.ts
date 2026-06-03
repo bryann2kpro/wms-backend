@@ -6,6 +6,9 @@
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { eq } from 'drizzle-orm';
 import {
   deliveryOrdersRepository,
@@ -73,6 +76,21 @@ export async function renderDeliveryOrderPreviewHtml(doId: string): Promise<stri
     logoDataUrl,
     rows: itemRows,
   });
+}
+
+/**
+ * Generate Delivery Order PDF and return the raw buffer + filename (no S3 upload).
+ * Used by the bulk zip export job.
+ */
+export async function generateDeliveryOrderPdfData(doId: string): Promise<{ pdfBase64: string; filename: string }> {
+  const html = await renderDeliveryOrderPreviewHtml(doId);
+  const pdfBuffer = await htmlToPdf(html);
+  const doRow = await deliveryOrdersRepository.getDeliveryOrderById(doId);
+  if (!doRow) throw new Error(`Delivery order not found: ${doId}`);
+  const dateStr = new Date().toISOString().split('T')[0];
+  const safeDoNo = String(doRow.doNo ?? 'DO').replace(/[^a-zA-Z0-9-_]/g, '_');
+  const filename = `Delivery_Order_${safeDoNo}_${dateStr}.pdf`;
+  return { pdfBase64: pdfBuffer.toString('base64'), filename };
 }
 
 /**
@@ -148,14 +166,7 @@ let cachedProformaInvoiceTemplatePromise: Promise<string> | null = null;
 async function getProformaInvoiceTemplate(): Promise<string> {
   if (!cachedProformaInvoiceTemplatePromise) {
     cachedProformaInvoiceTemplatePromise = (async () => {
-      const templatePath = path.resolve(
-        process.cwd(),
-        'src',
-        'features',
-        'documents',
-        'html',
-        'proforma-invoice.html',
-      );
+      const templatePath = path.join(__dirname, 'html', 'proforma-invoice.html');
       return readFile(templatePath, 'utf8');
     })();
   }
@@ -341,14 +352,19 @@ export async function generateProformaInvoicePdf(
   invoiceId: string,
   organizationId: string,
 ): Promise<{ pdfBase64: string; filename: string }> {
+  try {
   logger.info('ℹ️ [documents.service.generateProformaInvoicePdf] Generating proforma PDF for invoice %s', invoiceId);
-  const row = await loadInvoiceForPdfOrThrow(invoiceId, organizationId);
-  const html = await buildProformaInvoiceHtml(row);
-  const pdfBuffer = await htmlToPdf(html, { preferCSSPageSize: true });
-  const safeNo = String(row.invoiceNo ?? 'invoice').replace(/[^a-zA-Z0-9-_]/g, '_');
-  const dateStr = new Date().toISOString().split('T')[0];
-  const filename = `Proforma_${safeNo}_${dateStr}.pdf`;
-  return { pdfBase64: pdfBuffer.toString('base64'), filename };
+    const row = await loadInvoiceForPdfOrThrow(invoiceId, organizationId);
+    const html = await buildProformaInvoiceHtml(row);
+    const pdfBuffer = await htmlToPdf(html, { preferCSSPageSize: true });
+    const safeNo = String(row.invoiceNo ?? 'invoice').replace(/[^a-zA-Z0-9-_]/g, '_');
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `Proforma_${safeNo}_${dateStr}.pdf`;
+    return { pdfBase64: pdfBuffer.toString('base64'), filename };
+  } catch (error) {
+    logger.error('🚨 [documents.service.generateProformaInvoicePdf]', error);
+    throw error;
+  }
 }
 
 /**
@@ -402,8 +418,9 @@ function formatDateDMY(d: Date): string {
 
 function normalizeMultilineAddress(address: string | null): string {
   if (!address) return '—';
-  return address
-    .split(/\r?\n|,/)
+  const normalized = address.replace(/\\n|\/n/g, '\n');
+  return normalized
+    .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
     .map(escapeHtml)
@@ -492,6 +509,8 @@ async function buildDeliveryOrderHtml(input: {
           .join('\n')
       : `<tr><td class="empty" colspan="4">No items</td></tr>`;
 
+  const totalQty = input.rows.reduce((sum, r) => sum + (parseInt(r.qty, 10) || 0), 0);
+
   const template = await getDeliveryOrderTemplate();
 
   const logoImgHtml = input.logoDataUrl ? `<img class="logo" alt="SME logo" src="${input.logoDataUrl}" />` : '';
@@ -512,6 +531,7 @@ async function buildDeliveryOrderHtml(input: {
 
     logoImgHtml,
     tableRowsHtml: tableRows,
+    totalQtyEscaped: totalQty.toFixed(2),
   });
 }
 
@@ -534,7 +554,7 @@ let cachedDeliveryOrderTemplatePromise: Promise<string> | null = null;
 async function getDeliveryOrderTemplate(): Promise<string> {
   if (!cachedDeliveryOrderTemplatePromise) {
     cachedDeliveryOrderTemplatePromise = (async () => {
-      const templatePath = path.resolve(process.cwd(), 'src', 'features', 'documents', 'html', 'delivery-order.html');
+      const templatePath = path.join(__dirname, 'html', 'delivery-order.html');
       return readFile(templatePath, 'utf8');
     })();
   }

@@ -1,5 +1,7 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, varchar, timestamp } from "drizzle-orm/pg-core";
+import { CountriesTable } from "@/features/master-data/country.model";
+import { RegionTable } from "@/features/master-data/region.model";
 
 /**
  * Organizations Table (Master Data)
@@ -14,6 +16,8 @@ import { uuid, text, varchar, timestamp } from "drizzle-orm/pg-core";
  */
 export const OrganizationsTable = MainSchema.table("m_organizations", {
   organizationId: uuid("organization_id").defaultRandom().notNull().primaryKey(),
+  countryId: uuid("country_id").references(() => CountriesTable.countryId),
+  regionId: uuid("region_id").references(() => RegionTable.regionId),
   organizationName: text("organization_name").notNull(),
   organizationCode: text("organization_code").unique().notNull(),
   status: varchar("status", { length: 20 }).notNull().default("active"),

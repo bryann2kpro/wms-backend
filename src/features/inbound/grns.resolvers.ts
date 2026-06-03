@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService, esAdvanceNoticeRepository } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService, esRepository, grnPutawayService } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -18,6 +18,7 @@ import { GrnFilter } from './grns.repository';
 import type { GrnItemsType } from './grns-items.repository';
 import { inArray } from 'drizzle-orm';
 import { InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
+import { recordGrnApprovalStockQuants } from './grn-stock-quant.service';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -30,6 +31,7 @@ function transformGrn(grn: GrnType) {
         grnNo: grn.grnNo,
         supplierId: grn.supplierId,
         supplierDeliveryId: grn.supplierDeliveryId,
+        advanceNoticeId: grn.advanceNoticeId ?? null,
         poNo: grn.poNo,
         status: grn.status,
         receivedAt: grn.receivedAt,
@@ -39,7 +41,7 @@ function transformGrn(grn: GrnType) {
         proofUrl: grn.proofUrl ?? null,
         warehouseId: grn.warehouseId ?? null,
         nsError: grn.nsError ? JSON.stringify(grn.nsError) : null,
-        nsSentAt: grn.nsSentAt ? (grn.nsSentAt instanceof Date ? grn.nsSentAt.toISOString() : grn.nsSentAt) : null,
+        nsSentAt: grn.nsSentAt ?? null,
         createdAt: grn.createdAt,
         updatedAt: grn.updatedAt,
         createdBy: grn.createdBy,
@@ -73,6 +75,107 @@ function transformGrnItem(
         createdBy: item.createdBy,
         updatedBy: item.updatedBy,
     };
+}
+
+type CreateInboundResolverItemInput = {
+    skuId?: string | null;
+    skuCode?: string | null;
+    lotNo?: string | null;
+    expiryDate?: string | null;
+};
+
+async function assertSkuLotExpiryControls(
+    items: CreateInboundResolverItemInput[] | null | undefined,
+    organizationId?: string,
+) {
+    if (!items?.length) return;
+
+    for (const item of items) {
+        let sku: Awaited<ReturnType<typeof skuRepository.getSkuById>> | null = null;
+        if (item.skuId) {
+            sku = await skuRepository.getSkuById(item.skuId, undefined, organizationId);
+        } else if (item.skuCode?.trim()) {
+            const result = await skuRepository.getSku(
+                { skuCode: item.skuCode.trim() },
+                { pageSize: 1, pageNumber: 1 },
+                undefined,
+                organizationId,
+            );
+            sku = result.query[0] ?? null;
+        }
+        if (!sku) continue;
+
+        const label = sku.skuCode ?? item.skuCode ?? 'SKU';
+        if (sku.isLotControlled && !(item.lotNo ?? '').trim()) {
+            throw new GraphQLError(`${label} requires a lot number.`, {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+        if (sku.isExpiryControlled && !(item.expiryDate ?? '').trim()) {
+            throw new GraphQLError(`${label} requires an expiry date.`, {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+    }
+}
+
+type GrnItemRackInput = { rackId?: string | null; rackIds?: string[] | null };
+
+function assertSingleRackPerGrnItem(items: GrnItemRackInput[] | null | undefined) {
+    if (!items?.length) return;
+    for (const item of items) {
+        const rackIds = (item.rackIds ?? []).filter((id): id is string => Boolean(id?.trim()));
+        if (rackIds.length > 1) {
+            throw new GraphQLError('Each GRN line item may have only one rack.', {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+    }
+}
+
+async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
+    advanceNoticeId?: string | null;
+    items?: CreateInboundResolverItemInput[] | null;
+}) {
+    if (!input.advanceNoticeId) return;
+
+    const asn = await esRepository.findById(input.advanceNoticeId);
+    if (!asn) {
+        throw new GraphQLError('Advance notice not found.', {
+            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+        });
+    }
+
+    const payload = asn.payload as {
+        lines?: Array<{ itemid?: string; islotitem?: string }>;
+    } | null;
+    const lotTrackedItemIds = new Set(
+        (payload?.lines ?? [])
+            .filter((line) => (line.islotitem ?? '').trim().toUpperCase() === 'T')
+            .map((line) => (line.itemid ?? '').trim())
+            .filter(Boolean),
+    );
+    if (lotTrackedItemIds.size === 0) return;
+
+    const itemList = input.items ?? [];
+    const invalidLotTrackedSkus = [...lotTrackedItemIds].filter((itemId) => {
+        const matchingItems = itemList.filter(
+            (item) => (item.skuCode ?? '').trim() === itemId,
+        );
+        if (matchingItems.length === 0) return true;
+        return matchingItems.some(
+            (item) => !(item.lotNo ?? '').trim() || !(item.expiryDate ?? '').trim(),
+        );
+    });
+
+    if (invalidLotTrackedSkus.length > 0) {
+        throw new GraphQLError(
+            `Lot-tracked ASN items require both lotNo and expiryDate: ${invalidLotTrackedSkus.join(', ')}`,
+            {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            },
+        );
+    }
 }
 
 export const resolvers = {
@@ -143,7 +246,7 @@ export const resolvers = {
         },
         listPendingAdvanceNotices: async () => {
             try {
-                const records = await esAdvanceNoticeRepository.findPending();
+                const records = await esRepository.findPending();
                 return records.map((r) => {
                     const p = r.payload as {
                         tranid: string;
@@ -156,6 +259,12 @@ export const resolvers = {
                             quantity: number;
                             units: string;
                             custrecord_r2o_order_code?: string;
+                            islotitem?: string;
+                            lots?: Array<{
+                                serialNumbers: string;
+                                quantity: number;
+                                expiryDate: string;
+                            }>;
                         }>;
                     };
                     return {
@@ -164,14 +273,32 @@ export const resolvers = {
                         entity: p.entity ?? '',
                         duedate: p.duedate ?? '',
                         receivedAt: r.receivedAt instanceof Date ? r.receivedAt.toISOString() : r.receivedAt,
-                        lines: (p.lines ?? []).map((l) => ({
-                            lineuniquekey: l.lineuniquekey,
-                            itemid: l.itemid,
-                            displayname: l.displayname ?? null,
-                            quantity: l.quantity,
-                            units: l.units,
-                            custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
-                        })),
+                        lines: (p.lines ?? []).map((l) => {
+                            const firstLot = l.lots?.[0];
+                            const lotSerial =
+                                firstLot &&
+                                typeof firstLot.serialNumbers === 'string' &&
+                                firstLot.serialNumbers.trim()
+                                    ? firstLot.serialNumbers.trim()
+                                    : null;
+                            const lotExpiry =
+                                firstLot &&
+                                typeof firstLot.expiryDate === 'string' &&
+                                firstLot.expiryDate.trim()
+                                    ? firstLot.expiryDate.trim()
+                                    : null;
+                            return {
+                                lineuniquekey: l.lineuniquekey,
+                                itemid: l.itemid,
+                                displayname: l.displayname ?? null,
+                                quantity: l.quantity,
+                                units: l.units,
+                                custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
+                                islotitem: l.islotitem ?? null,
+                                lotNo: lotSerial,
+                                expiryDate: lotExpiry,
+                            };
+                        }),
                     };
                 });
             } catch (error) {
@@ -274,12 +401,16 @@ export const resolvers = {
             proofUrl?: string | null;
             warehouseId?: string | null;
             status?: string | null;
-            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
-            inboundQty?: number | null;
-            skuId?: string | null;
+            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             advanceNoticeId?: string | null;
         } }, context: GraphQLContext) => {
             try {
+                await assertLotTrackedAsnItemsHaveLotAndExpiry({
+                    advanceNoticeId: input.advanceNoticeId,
+                    items: input.items,
+                });
+                assertSingleRackPerGrnItem(input.items);
+                await assertSkuLotExpiryControls(input.items, context.organizationId ?? undefined);
                 const result = await inboundServices.createInbound({
                     userId: input.userId,
                     organizationId: context.organizationId!,
@@ -294,8 +425,6 @@ export const resolvers = {
                     warehouseId: input.warehouseId,
                     status: input.status,
                     items: input.items ?? undefined,
-                    inboundQty: input.inboundQty ?? undefined,
-                    skuId: input.skuId ?? undefined,
                     advanceNoticeId: input.advanceNoticeId ?? undefined,
                 });
                 return result;
@@ -354,6 +483,12 @@ export const resolvers = {
                         });
                     }
 
+                    assertSingleRackPerGrnItem(input.items);
+                    await assertSkuLotExpiryControls(
+                        input.items,
+                        context.organizationId ?? undefined,
+                    );
+
                     if (input.supplierDeliveryNo) {
                         const existingDo = await supplierDeliveriesRepository.getSupplierDeliveries(
                             { supplierDeliveryNo: input.supplierDeliveryNo },
@@ -393,8 +528,6 @@ export const resolvers = {
                                         const newSku = await skuRepository.createSku({
                                             skuCode: item.skuCode,
                                             skuDescription: item.skuDescription,
-                                            cartonQuantity: '0',
-                                            lossQuantity: '0',
                                             skuUom: item.skuUom,
                                             isActive: true,
                                             createdBy,
@@ -450,8 +583,6 @@ export const resolvers = {
                                     const newSku = await skuRepository.createSku({
                                         skuCode: item.skuCode,
                                         skuDescription: item.skuDescription,
-                                        cartonQuantity: '0',
-                                        lossQuantity: '0',
                                         skuUom: item.skuUom,
                                         isActive: true,
                                         createdBy,
@@ -560,6 +691,14 @@ export const resolvers = {
                         return false;
                     }
 
+                    if (input.items?.length) {
+                        assertSingleRackPerGrnItem(input.items);
+                        await assertSkuLotExpiryControls(
+                            input.items,
+                            context.organizationId ?? undefined,
+                        );
+                    }
+
                     if (input.grnNo != null && input.grnNo !== existingGrn.grnNo) {
                         const existingResult = await grnsRepository.getGrns(
                             { grnNo: input.grnNo },
@@ -635,8 +774,6 @@ export const resolvers = {
                                     const newSku = await skuRepository.createSku({
                                         skuCode: item.skuCode,
                                         skuDescription: item.skuDescription,
-                                        cartonQuantity: '0',
-                                        lossQuantity: '0',
                                         skuUom: item.skuUom,
                                         isActive: true,
                                         createdBy,
@@ -718,42 +855,16 @@ export const resolvers = {
                     const grn = await grnsRepository.updateGrn(id, updateData, context.tx);
                     if (!grn) return false;
 
-                    // When status is set to Approved: add GRN item qty (net) and lossQty to SKU inventory
-                    if (updateData.status === 'Approved') {
+                    // First approval only (Submitted → Approved): record inbound movement and stock quants.
+                    if (
+                        updateData.status === 'Approved' &&
+                        existingGrn.status === 'Submitted'
+                    ) {
                         const grnItems = await grnItemsRepository.getGrnItems({ grnId: id }, context.tx);
                         if (grnItems === false) {
                             logger.error('[grns.resolvers]: Failed to get GRN items');
                             throw new Error('Failed to get GRN items for approval');
                         }
-                    //     // Aggregate per SKU: net received (qty - lossQty) → cartonQuantity, lossQty → lossQuantity
-                    //     const addQtyBySkuId = new Map<string, number>();
-                    //     const addLossBySkuId = new Map<string, number>();
-                    //     for (const item of grnItems) {
-                    //         const qty = Number(item.qty ?? 0);
-                    //         const lossQty = Number((item as { lossQty?: string }).lossQty ?? 0);
-                    //         const netQty = qty - lossQty;
-                    //         addQtyBySkuId.set(item.skuId, (addQtyBySkuId.get(item.skuId) ?? 0) + netQty);
-                    //         addLossBySkuId.set(item.skuId, (addLossBySkuId.get(item.skuId) ?? 0) + lossQty);
-                    //     }
-                    //     const skuIds = [...new Set([...addQtyBySkuId.keys(), ...addLossBySkuId.keys()])];
-                    //     if (skuIds.length > 0) {
-                    //         const { query: skus } = await skuRepository.getSku({ skuId: skuIds }, undefined, context.tx);
-                    //         const skuMap = new Map(skus.map((s) => [s.skuId, s]));
-                    //         const updates = skuIds.map(async (skuId) => {
-                    //             const sku = skuMap.get(skuId);
-                    //             if (!sku) throw new Error(`SKU not found: ${skuId}`);
-                    //             const currentQty = Number(sku.cartonQuantity ?? 0);
-                    //             const currentLoss = Number(sku.lossQuantity ?? 0);
-                    //             const addQty = addQtyBySkuId.get(skuId) ?? 0;
-                    //             const addLoss = addLossBySkuId.get(skuId) ?? 0;
-                    //             const newQty = (currentQty + addQty).toFixed(2);
-                    //             const newLoss = (currentLoss + addLoss).toFixed(2);
-                    //             const updated = await skuRepository.updateSku(skuId, { cartonQuantity: newQty, lossQuantity: newLoss }, context.tx);
-                    //             if (!updated) throw new Error(`Failed to update SKU quantity: ${skuId}`);
-                    //             return updated;
-                    //         });
-                    //         await Promise.all(updates);
-                    //     }
 
                         await inventoryMovementRepository.createInventoryMovement(grnItems.map(item => ({
                             skuId: item.skuId,
@@ -764,6 +875,13 @@ export const resolvers = {
                             updatedBy: updatedBy,
                             movementType: InventoryMovementType.INBOUND,
                         })), updatedBy, context.organizationId!, context.tx);
+
+                        await recordGrnApprovalStockQuants({
+                            organizationId: context.organizationId!,
+                            userId: updatedBy,
+                            items: grnItems,
+                            tx: context.tx!,
+                        });
 
                         return transformGrn(grn);
                     }
@@ -784,7 +902,7 @@ export const resolvers = {
                     return transformGrn(grn);
                 } catch (error) {
                     logger.error('[grns.resolvers] Error:', error);
-                    return false;
+                    throw error;
                 }
             }
         ),
@@ -832,5 +950,14 @@ export const resolvers = {
                 }
             }
         ),
+
+        assignPutawayBins: async (_: unknown, { grnId }: { grnId: string }, context: GraphQLContext) => {
+            if (!context.organizationId) {
+                throw new GraphQLError('Organization context is required', {
+                    extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                });
+            }
+            return await grnPutawayService.assignBinsForGrn(grnId, context.organizationId);
+        },
     },
 };

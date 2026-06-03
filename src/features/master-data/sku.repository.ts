@@ -8,6 +8,7 @@ import { db } from '@/db';
 import { SkuTable } from './sku.model';
 import { SuppliersTable } from './suppliers.model';
 import { InventoryBalancesTable } from '@/features/inventory/inventory-balance/inventory.model';
+import { InventoryMovementsTable } from '@/features/inventory/inventory-movement/inventory.model';
 import { eq, and, like, inArray, asc, desc } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -190,7 +191,7 @@ export class SkuRepositoryClass {
    * Create a new SKU
    * @param tx - Optional transaction for atomic operations
    */
-  async createSku(data: Omit<SkuInsertType, 'skuId' | 'createdAt' | 'updatedAt'> & { organizationId: string }, tx?: DbTransaction): Promise<SkuType> {
+  async createSku(data: Omit<SkuInsertType, 'skuId' | 'createdAt' | 'updatedAt'> & { organizationId: string; initialOnHandQty?: number }, tx?: DbTransaction): Promise<SkuType> {
     try {
       logger.info('ℹ️ [SkuRepository.createSku] Creating SKU...');
 
@@ -210,17 +211,36 @@ export class SkuRepositoryClass {
         throw new Error('SKU insert did not return the created row');
       }
 
-      // Create initial inventory balance record with zero on-hand quantity
+      const initialQty = data.initialOnHandQty ?? 0;
+
+      // Create initial inventory balance record
       logger.info('ℹ️ [SkuRepository.createSku] Creating initial inventory balance...');
       await client
         .insert(InventoryBalancesTable)
         .values({
           skuId: sku.skuId,
-          onHandQty: '0',
+          organizationId: data.organizationId,
+          onHandQty: String(initialQty),
           lossQty: '0',
           reservedQty: '0',
         });
       logger.info('✅ [SkuRepository.createSku] Initial inventory balance created');
+
+      // Create inventory movement for audit trail when initial stock is provided
+      if (initialQty > 0) {
+        logger.info('ℹ️ [SkuRepository.createSku] Creating stock initialization movement...');
+        await client
+          .insert(InventoryMovementsTable)
+          .values({
+            skuId: sku.skuId,
+            movementType: 'ADJUSTMENT',
+            quantity: String(initialQty),
+            balanceAfter: String(initialQty),
+            reason: 'Stock Initialization',
+            createdBy: data.createdBy ?? 'system',
+          });
+        logger.info('✅ [SkuRepository.createSku] Stock initialization movement created');
+      }
 
       logger.info('✅ [SkuRepository.createSku] SKU created successfully');
       return sku;

@@ -11,13 +11,22 @@ import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../
 import { OutletsRepositoryClass } from "../master-data/outlets.repository";
 import { DeliveryOrderType } from "./delivery-orders.model";
 import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
-import { PurchaseOrderType } from "./purchase-orders.model";
+import { PurchaseOrderType, PurchaseOrderItemsTable } from "./purchase-orders.model";
 import { DocumentsRepository } from "../documents/documents.repository";
+import { PickFaceStrategyRepositoryClass } from "../master-data/pick-face-strategy.repository";
 
 import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
+import {
+    assertSufficientStockQuantForLines,
+    releaseStockQuantForPurchaseOrder,
+    releaseStockQuantPartialForSku,
+    reserveStockQuantForPurchaseOrderLine,
+    shipStockQuantForPurchaseOrder,
+} from "../stock-quant/stock-quant-reservation.service";
 import { RegionPricingTable } from "../master-data/region.model";
 import { and, eq } from "drizzle-orm";
+import { env } from "@/env";
 
 /** Line item input: must have qtyRequired and either skuId or skuCode. */
 export type CreateDeliveryOrderItemInput = {
@@ -35,6 +44,7 @@ export type CreatePurchaseOrderItemInput = {
   skuCode: string;
   skuId?: string;
   qtyRequired: number;
+  stockQuantId?: string;
 };
 
 export type CreatePurchaseOrderData = {
@@ -56,6 +66,7 @@ export class OutboundServices {
         private readonly purchaseOrdersRepository: PurchaseOrdersRepositoryClass,
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
         private readonly documentsRepository: DocumentsRepository,
+        private readonly pickFaceStrategyRepository?: PickFaceStrategyRepositoryClass,
     ) {}
 
     /**
@@ -80,6 +91,7 @@ export class OutboundServices {
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 1: Check if skus are in stock...');
                 const resolvedLines = await this.resolveAndValidateLineItems(data.items, tx);
                 await this.assertSufficientStock(resolvedLines, tx);
+                await assertSufficientStockQuantForLines(organizationId, resolvedLines, tx);
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 2: Compute the next delivery date...');
                 const outlet = await this.outletsRepository.getOutletById(data.outletId);
@@ -115,9 +127,63 @@ export class OutboundServices {
                 const rate = regionPricing ? parseFloat(regionPricing.rate) : 0;
                 const minQty = regionPricing ? parseFloat(regionPricing.minQty) : 5;
                 const sstRate = regionPricing ? parseFloat(regionPricing.sstRate) : 0.06;
-                const totalQty = resolvedLines.reduce((sum, line) => sum + (parseFloat(line.qtyRequired) || 0), 0);
-                const effectiveQty = Math.max(totalQty, minQty);
-                const amount = effectiveQty * rate * (1 + sstRate);
+                const newPOQty = resolvedLines.reduce((sum, line) => sum + (parseFloat(String(line.qtyRequired)) || 0), 0);
+
+                // --- Group QOM: consolidate with sibling POs for same outlet + delivery date ---
+                const siblings = await this.purchaseOrdersRepository.getSiblingPurchaseOrdersWithQty(
+                    data.outletId,
+                    nextDelivery.deliveryDate,
+                    organizationId,
+                    data.purchaseOrderNo,
+                    tx
+                );
+                const combinedQty = siblings.reduce((sum, s) => sum + s.totalQty, 0) + newPOQty;
+                const combinedEffectiveQty = combinedQty > 0 ? Math.max(combinedQty, minQty) : 0;
+                const groupTotalCharge = combinedEffectiveQty * rate * (1 + sstRate);
+
+                const getShareAmount = (qty: number) =>
+                    combinedQty > 0 ? (groupTotalCharge * qty) / combinedQty : 0;
+
+                // Update sibling PO amounts to reflect the new group calculation
+                for (const sibling of siblings) {
+                    const siblingAmount = getShareAmount(sibling.totalQty);
+                    await this.purchaseOrdersRepository.updatePurchaseOrder(
+                        sibling.id,
+                        {
+                            amount: siblingAmount.toFixed(2),
+                            amountCalcSnapshot: {
+                                rate,
+                                minQty,
+                                sstRate,
+                                poQty: sibling.totalQty,
+                                combinedQty,
+                                combinedEffectiveQty,
+                                groupTotalCharge: groupTotalCharge.toFixed(2),
+                                minApplied: combinedQty < minQty,
+                                deliveryDate: nextDelivery.deliveryDate.toISOString().split('T')[0],
+                                siblingPONos: [...siblings.filter(s => s.id !== sibling.id).map(s => s.purchaseOrderNo), data.purchaseOrderNo],
+                                updatedByGrouping: true,
+                            },
+                            updatedBy: data.userId,
+                        },
+                        organizationId,
+                        tx
+                    );
+                }
+
+                const amount = getShareAmount(newPOQty);
+                const amountCalcSnapshot = {
+                    rate,
+                    minQty,
+                    sstRate,
+                    poQty: newPOQty,
+                    combinedQty,
+                    combinedEffectiveQty,
+                    groupTotalCharge: groupTotalCharge.toFixed(2),
+                    minApplied: combinedQty < minQty,
+                    deliveryDate: nextDelivery.deliveryDate.toISOString().split('T')[0],
+                    siblingPONos: siblings.map(s => s.purchaseOrderNo),
+                };
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 3: Create Purchase Order...');
                 created = await this.purchaseOrdersRepository.createPurchaseOrder(
@@ -125,6 +191,7 @@ export class OutboundServices {
                         purchaseOrderNo: data.purchaseOrderNo,
                         outletId: data.outletId,
                         amount: amount.toFixed(2),
+                        amountCalcSnapshot,
                         status: "NEW",
                         scheduledDeliveryDate: nextDelivery.deliveryDate,
                         createdBy: data.userId,
@@ -150,11 +217,25 @@ export class OutboundServices {
                     regionId: outlet.regionId,
                     quantity: line.qtyRequired,
                     movementType: InventoryMovementType.RESERVED,
+                    referenceNo: data.purchaseOrderNo,
                     createdBy: data.userId,
                     updatedBy: data.userId,
                 }));
 
                 await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, data.userId, organizationId, tx);
+
+                for (const line of resolvedLines) {
+                    await reserveStockQuantForPurchaseOrderLine({
+                        organizationId,
+                        userId: data.userId,
+                        referenceNo: data.purchaseOrderNo,
+                        skuId: line.skuId,
+                        skuCode: line.skuCode,
+                        qtyRequired: line.qtyRequired,
+                        stockQuantId: line.stockQuantId,
+                        tx,
+                    });
+                }
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 6: Automatically Create Delivery Order...');
                 const doNo = data.purchaseOrderNo.startsWith('PO') 
@@ -188,6 +269,20 @@ export class OutboundServices {
             return created;
         } catch (error) {
             logger.error("❌ [OutboundServices.createPurchaseOrder] Error:", error);
+            // Drizzle wraps PostgreSQL errors so the PG code/detail lives on error.cause,
+            // not on the error itself. Detect unique-constraint violations and convert
+            // them into a clean message before the raw SQL leaks to the client.
+            const cause = error instanceof Error
+                ? (error as unknown as { cause?: { code?: string; constraint?: string } }).cause
+                : undefined;
+            const isDuplicatePo =
+                cause?.code === '23505' &&
+                cause?.constraint?.includes('purchase_order_no');
+            if (isDuplicatePo) {
+                throw new Error(
+                    `Purchase order number "${data.purchaseOrderNo}" already exists.`
+                );
+            }
             throw error;
         }
     }
@@ -305,8 +400,40 @@ export class OutboundServices {
                 throw new Error('Delivery order is SHIPPED — upload proof of delivery to mark as DELIVERED.');
             }
             const nextStatus = flow[currentIndex + 1];
-            // const updateTime = new Date();
-            const updateTime = new Date('2026-03-30');
+
+            let shipmentMovements: InventoryMovementsInsertType[] = [];
+            if (nextStatus === 'SHIPPED') {
+                const poResult = await this.purchaseOrdersRepository.getPurchaseOrders(
+                    { id: existing.purchaseOrderId },
+                    { pageSize: 1, pageNumber: 1 },
+                );
+                const po = poResult.query[0];
+                if (!po) throw new Error('Purchase order not found');
+
+                const outlet = await this.outletsRepository.getOutletById(po.outletId);
+
+                const doItemsResult = await this.deliveryOrderRepository.getDeliveryOrderItemsWithDetails(
+                    { purchaseOrderNo: existing.poNo },
+                    { pageSize: 1000, pageNumber: 1 },
+                );
+
+                shipmentMovements = doItemsResult.query.map((item) => ({
+                    skuId: item.skuId as string,
+                    regionId: outlet?.regionId ?? undefined,
+                    quantity: item.qtyRequired ?? item.qtyPicked,
+                    movementType: InventoryMovementType.SHIPMENT,
+                    referenceNo: existing.poNo,
+                    createdBy: data.userId,
+                }));
+            }
+
+            let updateTime: Date;
+            if (env.NODE_ENV === 'production') {
+                updateTime = new Date();
+            } else {
+                // for testing purposes
+                updateTime = new Date('2026-03-30');
+            }
 
             const updated = await db.transaction(async (tx) => {
                 const updatedDo = await this.deliveryOrderRepository.updateDeliveryOrder(
@@ -330,6 +457,20 @@ export class OutboundServices {
                         tx,
                     );
                     logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] PO updated to SHIPPED');
+
+                    await this.inventoryMovementRepository.createInventoryMovement(
+                        shipmentMovements,
+                        data.userId,
+                        existing.organizationId,
+                        tx,
+                    );
+                    await shipStockQuantForPurchaseOrder({
+                        organizationId: existing.organizationId,
+                        userId: data.userId,
+                        referenceNo: existing.poNo,
+                        tx,
+                    });
+                    logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] Inventory movement created for SHIPPED');
                 }
 
                 if ((nextStatus === "SHIPPED" || nextStatus === "DELIVERED") && isWithinMonthEndWindow(updateTime, { timeZone: "Asia/Kuala_Lumpur", daysFromEndInclusive: 2 })) {
@@ -350,6 +491,472 @@ export class OutboundServices {
             return updated;
         } catch (error) {
             logger.error('❌ [OutboundServices.advanceDeliveryOrderStatus] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Updates editable fields of an existing purchase order.
+     * Editable: notes, scheduledDeliveryDate, outletId, item quantities.
+     * PO status, DO status, and createdBy are not touched.
+     */
+    async updatePurchaseOrder(data: {
+        id: string;
+        userId: string;
+        organizationId: string;
+        scheduledDeliveryDate?: string;
+        outletId?: string;
+        items?: Array<{ id: string; qtyRequired: number }>;
+        newItems?: Array<{ skuId: string; skuCode: string; qtyRequired: number }>;
+        removedItemIds?: string[];
+    }): Promise<PurchaseOrderType> {
+        logger.info('ℹ️ [OutboundServices.updatePurchaseOrder] Updating purchase order...');
+        try {
+            const poResult = await this.purchaseOrdersRepository.getPurchaseOrders(
+                { id: data.id },
+                { pageSize: 1, pageNumber: 1 }
+            );
+            const po = poResult.query[0];
+            if (!po) throw new Error('Purchase order not found');
+
+            const updated = await db.transaction(async (tx) => {
+                const poUpdates: Record<string, unknown> = { updatedBy: data.userId };
+                if (data.outletId !== undefined) poUpdates.outletId = data.outletId;
+                if (data.scheduledDeliveryDate !== undefined) {
+                    poUpdates.scheduledDeliveryDate = new Date(data.scheduledDeliveryDate);
+                }
+
+                const updatedPo = await this.purchaseOrdersRepository.updatePurchaseOrder(
+                    data.id,
+                    poUpdates as any,
+                    undefined,
+                    tx
+                );
+
+                const hasItemChanges =
+                    (data.items?.length ?? 0) +
+                    (data.newItems?.length ?? 0) +
+                    (data.removedItemIds?.length ?? 0) > 0;
+
+                if (hasItemChanges) {
+                    // Guard: block item changes if DO is already being picked/packed/shipped
+                    const doRow = await this.deliveryOrderRepository.getDeliveryOrderByPurchaseOrderId(po.id);
+                    const blockedStatuses = ['PICKING', 'PACKING', 'SHIPPED', 'DELIVERED'];
+                    if (doRow && blockedStatuses.includes(doRow.status)) {
+                        throw new Error(`Cannot edit items: delivery order is already in status "${doRow.status}"`);
+                    }
+
+                    // Resolve outlet for regionId (required for inventory movements)
+                    const effectiveOutletId = data.outletId ?? po.outletId;
+                    const outlet = await this.outletsRepository.getOutletById(effectiveOutletId);
+                    if (!outlet?.regionId) throw new Error('Outlet not found or has no region assigned');
+
+                    // Fetch current PO items (need old qtyRequired to compute delta)
+                    const currentPoItems = await tx
+                        .select()
+                        .from(PurchaseOrderItemsTable)
+                        .where(eq(PurchaseOrderItemsTable.purchaseOrderNo, po.purchaseOrderNo));
+
+                    // Fetch DO items with skuCode for matching
+                    const doItems = doRow
+                        ? await this.deliveryOrderRepository.getDeliveryOrderItemsForPo(po.id, tx)
+                        : [];
+
+                    const movementsToCreate: InventoryMovementsInsertType[] = [];
+
+                    // Update existing item quantities
+                    for (const itemUpdate of data.items ?? []) {
+                        const currentPoItem = currentPoItems.find(i => i.id === itemUpdate.id);
+                        if (!currentPoItem) throw new Error(`PO item ${itemUpdate.id} not found`);
+
+                        await this.purchaseOrdersRepository.updatePurchaseOrderItem(
+                            itemUpdate.id,
+                            { qtyRequired: String(itemUpdate.qtyRequired), updatedBy: data.userId },
+                            tx
+                        );
+
+                        const doItem = doItems.find(d => d.skuCode === currentPoItem.skuCode);
+                        if (doItem) {
+                            await this.deliveryOrderRepository.updateDeliveryOrderItem(
+                                doItem.id,
+                                { qtyRequired: String(itemUpdate.qtyRequired), updatedBy: data.userId },
+                                tx
+                            );
+                            const delta = itemUpdate.qtyRequired - parseFloat(currentPoItem.qtyRequired);
+                            if (delta !== 0) {
+                                movementsToCreate.push({
+                                    skuId: doItem.skuId,
+                                    regionId: outlet.regionId,
+                                    quantity: String(delta),
+                                    movementType: InventoryMovementType.RESERVED,
+                                    referenceNo: po.purchaseOrderNo,
+                                    createdBy: data.userId,
+                                });
+                            }
+                        }
+                    }
+
+                    // Remove items: delete PO item + DO item, release reservation
+                    for (const removedPoItemId of data.removedItemIds ?? []) {
+                        const currentPoItem = currentPoItems.find(i => i.id === removedPoItemId);
+                        if (!currentPoItem) continue;
+
+                        await tx
+                            .delete(PurchaseOrderItemsTable)
+                            .where(eq(PurchaseOrderItemsTable.id, removedPoItemId));
+
+                        const doItem = doItems.find(d => d.skuCode === currentPoItem.skuCode);
+                        if (doItem) {
+                            await this.deliveryOrderRepository.deleteDeliveryOrderItem(doItem.id, tx);
+                            movementsToCreate.push({
+                                skuId: doItem.skuId,
+                                regionId: outlet.regionId,
+                                quantity: String(-parseFloat(currentPoItem.qtyRequired)),
+                                movementType: InventoryMovementType.RESERVED,
+                                referenceNo: po.purchaseOrderNo,
+                                createdBy: data.userId,
+                            });
+                        }
+                    }
+
+                    // Add new items to PO, DO, and create RESERVED movements
+                    if (data.newItems?.length) {
+                        await this.purchaseOrdersRepository.createPurchaseOrderItems(
+                            data.newItems.map(item => ({
+                                purchaseOrderNo: po.purchaseOrderNo,
+                                skuCode: item.skuCode,
+                                qtyRequired: String(item.qtyRequired),
+                                createdBy: data.userId,
+                                updatedBy: data.userId,
+                            })),
+                            tx
+                        );
+
+                        if (doRow) {
+                            await this.deliveryOrderRepository.createDeliveryOrderItems(
+                                data.newItems.map(item => ({
+                                    purchaseOrderId: po.id,
+                                    purchaseOrderNo: po.purchaseOrderNo,
+                                    skuId: item.skuId,
+                                    qtyRequired: String(item.qtyRequired),
+                                    createdBy: data.userId,
+                                    updatedBy: data.userId,
+                                })),
+                                tx
+                            );
+                        }
+
+                        for (const item of data.newItems) {
+                            movementsToCreate.push({
+                                skuId: item.skuId,
+                                regionId: outlet.regionId,
+                                quantity: String(item.qtyRequired),
+                                movementType: InventoryMovementType.RESERVED,
+                                referenceNo: po.purchaseOrderNo,
+                                createdBy: data.userId,
+                            });
+                        }
+                    }
+
+                    // Batch-create all inventory movements
+                    if (movementsToCreate.length > 0) {
+                        await this.inventoryMovementRepository.createInventoryMovement(
+                            movementsToCreate,
+                            data.userId,
+                            data.organizationId,
+                            tx
+                        );
+
+                        for (const movement of movementsToCreate) {
+                            const qty = parseFloat(String(movement.quantity));
+                            if (!Number.isFinite(qty) || qty === 0) continue;
+                            if (qty > 0) {
+                                await reserveStockQuantForPurchaseOrderLine({
+                                    organizationId: data.organizationId,
+                                    userId: data.userId,
+                                    referenceNo: po.purchaseOrderNo,
+                                    skuId: movement.skuId,
+                                    qtyRequired: String(qty),
+                                    tx,
+                                });
+                            } else {
+                                await releaseStockQuantPartialForSku({
+                                    organizationId: data.organizationId,
+                                    userId: data.userId,
+                                    referenceNo: po.purchaseOrderNo,
+                                    skuId: movement.skuId,
+                                    qtyToRelease: String(Math.abs(qty)),
+                                    tx,
+                                });
+                            }
+                        }
+                    }
+
+                    // Recalculate group QOM amounts for this PO and all siblings.
+                    // Must run AFTER all item mutations so the DB reflects the new quantities.
+                    const effectiveDeliveryDate = updatedPo.scheduledDeliveryDate
+                        ? new Date(updatedPo.scheduledDeliveryDate)
+                        : null;
+
+                    if (effectiveDeliveryDate) {
+                        const [regionPricing] = await tx
+                            .select({
+                                rate: RegionPricingTable.rate,
+                                minQty: RegionPricingTable.minQty,
+                                sstRate: RegionPricingTable.sstRate,
+                            })
+                            .from(RegionPricingTable)
+                            .where(and(
+                                eq(RegionPricingTable.regionId, outlet.regionId),
+                                eq(RegionPricingTable.isActive, true),
+                            ))
+                            .limit(1);
+
+                        const rate = regionPricing ? parseFloat(regionPricing.rate) : 0;
+                        const minQty = regionPricing ? parseFloat(regionPricing.minQty) : 5;
+                        const sstRate = regionPricing ? parseFloat(regionPricing.sstRate) : 0.06;
+
+                        // Re-query this PO's items from DB (reflects all mutations above)
+                        const freshPoItems = await tx
+                            .select({ qtyRequired: PurchaseOrderItemsTable.qtyRequired })
+                            .from(PurchaseOrderItemsTable)
+                            .where(eq(PurchaseOrderItemsTable.purchaseOrderNo, po.purchaseOrderNo));
+                        const updatedPoQty = freshPoItems.reduce(
+                            (sum, i) => sum + (parseFloat(i.qtyRequired) || 0), 0
+                        );
+
+                        const allSiblings = await this.purchaseOrdersRepository.getSiblingPurchaseOrdersWithQty(
+                            effectiveOutletId,
+                            effectiveDeliveryDate,
+                            data.organizationId,
+                            po.purchaseOrderNo,
+                            tx
+                        );
+                        const combinedQty = allSiblings.reduce((sum, s) => sum + s.totalQty, 0) + updatedPoQty;
+                        const combinedEffectiveQty = combinedQty > 0 ? Math.max(combinedQty, minQty) : 0;
+                        const groupTotalCharge = combinedEffectiveQty * rate * (1 + sstRate);
+                        const getShare = (qty: number) =>
+                            combinedQty > 0 ? (groupTotalCharge * qty) / combinedQty : 0;
+
+                        // Update this PO's amount
+                        await this.purchaseOrdersRepository.updatePurchaseOrder(
+                            po.id,
+                            {
+                                amount: getShare(updatedPoQty).toFixed(2),
+                                amountCalcSnapshot: {
+                                    rate, minQty, sstRate,
+                                    poQty: updatedPoQty,
+                                    combinedQty, combinedEffectiveQty,
+                                    groupTotalCharge: groupTotalCharge.toFixed(2),
+                                    minApplied: combinedQty < minQty,
+                                    deliveryDate: effectiveDeliveryDate.toISOString().split('T')[0],
+                                    siblingPONos: allSiblings.map(s => s.purchaseOrderNo),
+                                    updatedByGrouping: true,
+                                },
+                                updatedBy: data.userId,
+                            },
+                            data.organizationId,
+                            tx
+                        );
+
+                        // Update sibling amounts
+                        for (const sibling of allSiblings) {
+                            await this.purchaseOrdersRepository.updatePurchaseOrder(
+                                sibling.id,
+                                {
+                                    amount: getShare(sibling.totalQty).toFixed(2),
+                                    amountCalcSnapshot: {
+                                        rate, minQty, sstRate,
+                                        poQty: sibling.totalQty,
+                                        combinedQty, combinedEffectiveQty,
+                                        groupTotalCharge: groupTotalCharge.toFixed(2),
+                                        minApplied: combinedQty < minQty,
+                                        deliveryDate: effectiveDeliveryDate.toISOString().split('T')[0],
+                                        siblingPONos: [
+                                            ...allSiblings.filter(s => s.id !== sibling.id).map(s => s.purchaseOrderNo),
+                                            po.purchaseOrderNo,
+                                        ],
+                                        updatedByGrouping: true,
+                                    },
+                                    updatedBy: data.userId,
+                                },
+                                data.organizationId,
+                                tx
+                            );
+                        }
+                    }
+                }
+
+                return updatedPo;
+            });
+
+            logger.info(`✅ [OutboundServices.updatePurchaseOrder] Purchase order updated`);
+            return updated;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.updatePurchaseOrder] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Cancels a purchase order and its linked delivery order.
+     * Releases all inventory reservations and recalculates the QOM group charge
+     * for any sibling POs (same outlet + delivery date) that remain active.
+     *
+     * Guard: POs in SHIPPED or DELIVERED status cannot be cancelled.
+     */
+    async cancelPurchaseOrder(data: {
+        id: string;
+        userId: string;
+        organizationId: string;
+    }): Promise<PurchaseOrderType> {
+        logger.info('ℹ️ [OutboundServices.cancelPurchaseOrder] Cancelling purchase order...');
+        try {
+            const poResult = await this.purchaseOrdersRepository.getPurchaseOrders(
+                { id: data.id },
+                { pageSize: 1, pageNumber: 1 }
+            );
+            const po = poResult.query[0];
+            if (!po) throw new Error('Purchase order not found');
+
+            if (['SHIPPED', 'DELIVERED'].includes(po.status)) {
+                throw new Error(`Purchase order cannot be cancelled: current status is "${po.status}"`);
+            }
+
+            const cancelled = await db.transaction(async (tx) => {
+                // 1. Resolve region pricing (needed for sibling recalculation)
+                const outlet = await this.outletsRepository.getOutletById(po.outletId);
+                if (!outlet?.regionId) throw new Error('Outlet not found or has no region assigned');
+
+                const [regionPricing] = await tx
+                    .select({
+                        rate: RegionPricingTable.rate,
+                        minQty: RegionPricingTable.minQty,
+                        sstRate: RegionPricingTable.sstRate,
+                    })
+                    .from(RegionPricingTable)
+                    .where(and(
+                        eq(RegionPricingTable.regionId, outlet.regionId),
+                        eq(RegionPricingTable.isActive, true),
+                    ))
+                    .limit(1);
+
+                const rate = regionPricing ? parseFloat(regionPricing.rate) : 0;
+                const minQty = regionPricing ? parseFloat(regionPricing.minQty) : 5;
+                const sstRate = regionPricing ? parseFloat(regionPricing.sstRate) : 0.06;
+
+                // 2. Cancel the PO
+                const cancelledPo = await this.purchaseOrdersRepository.updatePurchaseOrder(
+                    po.id,
+                    { status: 'CANCELLED', updatedBy: data.userId },
+                    data.organizationId,
+                    tx
+                );
+
+                // 3. Cancel the linked DO (bypass service-level status flow guard)
+                const doRow = await this.deliveryOrderRepository.getDeliveryOrderByPurchaseOrderId(po.id);
+                if (doRow && !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(doRow.status)) {
+                    await this.deliveryOrderRepository.updateDeliveryOrder(
+                        doRow.id,
+                        { status: 'CANCELLED', updatedBy: data.userId },
+                        data.organizationId,
+                        tx
+                    );
+                }
+
+                // 4. Release inventory reservations for all PO items
+                const poItems = await tx
+                    .select()
+                    .from(PurchaseOrderItemsTable)
+                    .where(eq(PurchaseOrderItemsTable.purchaseOrderNo, po.purchaseOrderNo));
+
+                if (poItems.length > 0 && doRow) {
+                    const doItems = await this.deliveryOrderRepository.getDeliveryOrderItemsForPo(po.id, tx);
+                    const releaseMovements: InventoryMovementsInsertType[] = [];
+
+                    for (const poItem of poItems) {
+                        const doItem = doItems.find(d => d.skuCode === poItem.skuCode);
+                        if (doItem) {
+                            releaseMovements.push({
+                                skuId: doItem.skuId,
+                                regionId: outlet.regionId,
+                                quantity: String(-parseFloat(poItem.qtyRequired)),
+                                movementType: InventoryMovementType.RESERVED,
+                                referenceNo: po.purchaseOrderNo,
+                                createdBy: data.userId,
+                            });
+                        }
+                    }
+
+                    if (releaseMovements.length > 0) {
+                        await this.inventoryMovementRepository.createInventoryMovement(
+                            releaseMovements,
+                            data.userId,
+                            data.organizationId,
+                            tx
+                        );
+                    }
+
+                    await releaseStockQuantForPurchaseOrder({
+                        organizationId: data.organizationId,
+                        userId: data.userId,
+                        referenceNo: po.purchaseOrderNo,
+                        tx,
+                    });
+                }
+
+                // 5. Recalculate sibling PO amounts — the cancelled PO is now excluded
+                //    automatically by the status filter in getSiblingPurchaseOrdersWithQty
+                if (po.scheduledDeliveryDate) {
+                    const siblings = await this.purchaseOrdersRepository.getSiblingPurchaseOrdersWithQty(
+                        po.outletId,
+                        new Date(po.scheduledDeliveryDate),
+                        data.organizationId,
+                        undefined,
+                        tx
+                    );
+
+                    if (siblings.length > 0) {
+                        const combinedQty = siblings.reduce((sum, s) => sum + s.totalQty, 0);
+                        const combinedEffectiveQty = combinedQty > 0 ? Math.max(combinedQty, minQty) : 0;
+                        const groupTotalCharge = combinedEffectiveQty * rate * (1 + sstRate);
+                        const getShareAmount = (qty: number) =>
+                            combinedQty > 0 ? (groupTotalCharge * qty) / combinedQty : 0;
+
+                        for (const sibling of siblings) {
+                            await this.purchaseOrdersRepository.updatePurchaseOrder(
+                                sibling.id,
+                                {
+                                    amount: getShareAmount(sibling.totalQty).toFixed(2),
+                                    amountCalcSnapshot: {
+                                        rate,
+                                        minQty,
+                                        sstRate,
+                                        poQty: sibling.totalQty,
+                                        combinedQty,
+                                        combinedEffectiveQty,
+                                        groupTotalCharge: groupTotalCharge.toFixed(2),
+                                        minApplied: combinedQty < minQty,
+                                        deliveryDate: new Date(po.scheduledDeliveryDate!).toISOString().split('T')[0],
+                                        siblingPONos: siblings.filter(s => s.id !== sibling.id).map(s => s.purchaseOrderNo),
+                                        updatedByGrouping: true,
+                                    },
+                                    updatedBy: data.userId,
+                                },
+                                data.organizationId,
+                                tx
+                            );
+                        }
+                    }
+                }
+
+                return cancelledPo;
+            });
+
+            logger.info(`✅ [OutboundServices.cancelPurchaseOrder] Purchase order ${po.purchaseOrderNo} cancelled`);
+            return cancelled;
+        } catch (error) {
+            logger.error('❌ [OutboundServices.cancelPurchaseOrder] Error:', error);
             throw error;
         }
     }
@@ -501,6 +1108,14 @@ export class OutboundServices {
                     const sku = skuResult?.query?.[0];
                     const strategy: string = (sku as (typeof sku & { pickingStrategy?: string }))?.pickingStrategy ?? 'FIFO';
 
+                    // Look up pick face strategy for this SKU — FIXED_BIN overrides batch rack
+                    const pickFaceStrategy = this.pickFaceStrategyRepository
+                        ? await this.pickFaceStrategyRepository.getActiveBySkuId(doItem.skuId, doRow.organizationId, tx)
+                        : null;
+                    const pickFaceRackId = pickFaceStrategy?.binType === 'FIXED_BIN'
+                        ? pickFaceStrategy.storageBinId
+                        : null;
+
                     // Get GRN batches for this SKU with available qty
                     const grnBatches = await this.deliveryOrderRepository.getGrnItemsWithAvailableQty(
                         doItem.skuId,
@@ -551,7 +1166,7 @@ export class OutboundServices {
                         allInserts.push({
                             doItemId: doItem.id,
                             grnItemId: batch.id,
-                            rackId: batch.rackId ?? undefined,
+                            rackId: pickFaceRackId ?? batch.rackId ?? undefined,
                             qtyAllocated: String(take),
                         });
                         remaining -= take;
@@ -589,14 +1204,16 @@ export class OutboundServices {
      * Returns list of { skuId, qtyRequired, skuCode? } for stock check and downstream use.
      */
     private async resolveAndValidateLineItems(
-        items: (DeliveryOrderItemInsertType | CreateDeliveryOrderItemInput)[],
+        items: (DeliveryOrderItemInsertType | CreateDeliveryOrderItemInput | CreatePurchaseOrderItemInput)[],
         tx?: DbTransaction
-    ): Promise<{ skuId: string; qtyRequired: string; skuCode?: string }[]> {
-        const resolved: { skuId: string; qtyRequired: string; skuCode?: string }[] = [];
+    ): Promise<{ skuId: string; qtyRequired: string; skuCode?: string; stockQuantId?: string }[]> {
+        const resolved: { skuId: string; qtyRequired: string; skuCode?: string; stockQuantId?: string }[] = [];
         for (const item of items) {
             const qtyRequired = String(item.qtyRequired ?? "0");
             let skuId: string | null = "skuId" in item && item.skuId ? item.skuId : null;
             const skuCode = "skuCode" in item ? item.skuCode : undefined;
+            const stockQuantId =
+                "stockQuantId" in item && item.stockQuantId ? item.stockQuantId : undefined;
 
             if (!skuId && skuCode) {
                 const skuResult = await this.skuRepository.getSku(
@@ -613,7 +1230,7 @@ export class OutboundServices {
                     `Line item missing or invalid SKU: provide either skuId or skuCode. ${skuCode ? `skuCode="${skuCode}" not found.` : ""}`
                 );
             }
-            resolved.push({ skuId, qtyRequired, skuCode });
+            resolved.push({ skuId, qtyRequired, skuCode, stockQuantId });
         }
         return resolved;
     }
