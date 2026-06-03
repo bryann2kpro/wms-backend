@@ -26,6 +26,7 @@ export const typeDefs = gql`
     skuId: ID
     storageBinId: ID
     binType: String
+    itemCode: String
   }
 
   input PickFaceStrategySortInput {

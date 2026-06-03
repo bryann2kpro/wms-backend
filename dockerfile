@@ -26,7 +26,8 @@ COPY ./tsconfig.json ./tsconfig.json
 # CMD ["./start.sh"]
 # RUN sh ./start.sh
 
-RUN pnpm i
+RUN pnpm i --ignore-scripts
+RUN pnpm approve-builds
 # RUN pnpm run migrate
 
 # Build the application

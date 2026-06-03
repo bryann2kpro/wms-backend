@@ -8,7 +8,7 @@ import { db } from '@/db';
 import { PickFaceStrategyTable, PickFaceStrategyType, PickFaceStrategyInsertType } from './pick-face-strategy.model';
 import { SkuTable } from './sku.model';
 import { RacksTable } from './racks.model';
-import { eq, and, inArray, asc, desc } from 'drizzle-orm';
+import { eq, and, inArray, asc, desc, like } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -23,6 +23,7 @@ export type PickFaceStrategyFilter = {
   skuId?: string;
   storageBinId?: string;
   binType?: string;
+  itemCode?: string;
   sortBy?: string;
   sortOrder?: string;
 };
@@ -62,6 +63,10 @@ export class PickFaceStrategyRepositoryClass {
 
       if (filter.binType) {
         whereCondition.push(eq(PickFaceStrategyTable.binType, filter.binType));
+      }
+
+      if (filter.itemCode) {
+        whereCondition.push(like(PickFaceStrategyTable.itemCode, `%${filter.itemCode}%`));
       }
 
       const sortOrderFn = filter.sortOrder?.toUpperCase() === 'ASC' ? asc : desc;
