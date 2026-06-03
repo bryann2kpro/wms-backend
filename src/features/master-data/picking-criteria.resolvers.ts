@@ -79,7 +79,7 @@ export const resolvers = {
   Query: {
     pickingCriterias: async (
       _: unknown,
-      args: { filter?: PickingCriteriaFilter; pageSize?: number; pageNumber?: number },
+      args: { filter?: PickingCriteriaFilter; sort?: { sortBy?: string; sortOrder?: string }; pageSize?: number; pageNumber?: number },
       context: GraphQLContext,
     ) => {
       const filter: PickingCriteriaFilter = {};
@@ -90,6 +90,11 @@ export const resolvers = {
           throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
         }
         Object.assign(filter, data);
+      }
+
+      if (args.sort) {
+        if (args.sort.sortBy) filter.sortBy = args.sort.sortBy;
+        if (args.sort.sortOrder) filter.sortOrder = args.sort.sortOrder;
       }
 
       const result = await pickingCriteriaRepository.getPickingCriterias(

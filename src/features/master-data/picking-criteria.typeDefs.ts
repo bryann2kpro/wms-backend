@@ -24,6 +24,11 @@ export const typeDefs = `#graphql
     pagination: Pagination!
   }
 
+  input PickingCriteriaSortInput {
+    sortBy: String
+    sortOrder: String
+  }
+
   input PickingCriteriaFilterInput {
     id: ID
     userId: String
@@ -73,7 +78,7 @@ export const typeDefs = `#graphql
   }
 
   extend type Query {
-    pickingCriterias(filter: PickingCriteriaFilterInput, pageSize: Int, pageNumber: Int): PickingCriteriaPaginatedResponse! @auth
+    pickingCriterias(filter: PickingCriteriaFilterInput, sort: PickingCriteriaSortInput, pageSize: Int, pageNumber: Int): PickingCriteriaPaginatedResponse! @auth
     pickingCriteria(id: ID!): PickingCriteria @auth
   }
 
