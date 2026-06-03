@@ -32,6 +32,14 @@ const rackFilterSchema = z.object({
   rackLevels: data.rackLevel ? [data.rackLevel] : data.rackLevels,
 }));
 
+const numericFieldSchema = z
+  .union([z.string(), z.number(), z.null()])
+  .optional()
+  .transform((v) => {
+    if (v === null || v === undefined || v === '') return undefined;
+    return String(v);
+  });
+
 const createRackSchema = z.object({
   zoneId: z.string().uuid().optional().nullable(),
   areaId: z.string().uuid().optional().nullable(),
@@ -41,6 +49,11 @@ const createRackSchema = z.object({
   binCode: z.string().optional().nullable(),
   barCode: z.string().optional().nullable(),
   binType: z.string().optional(),
+  length: numericFieldSchema,
+  width: numericFieldSchema,
+  height: numericFieldSchema,
+  weight: numericFieldSchema,
+  maxPallet: numericFieldSchema,
   isActive: z.boolean().optional(),
   createdBy: z.string().min(1),
   updatedBy: z.string().min(1),
@@ -55,6 +68,11 @@ const updateRackSchema = z.object({
   binCode: z.string().optional().nullable(),
   barCode: z.string().optional().nullable(),
   binType: z.string().optional(),
+  length: numericFieldSchema,
+  width: numericFieldSchema,
+  height: numericFieldSchema,
+  weight: numericFieldSchema,
+  maxPallet: numericFieldSchema,
   isActive: z.boolean().optional(),
   updatedBy: z.string().min(1),
 });
@@ -73,6 +91,11 @@ function transformRack(rack: {
   binCode?: string | null;
   barCode?: string | null;
   binType: string;
+  length?: string | null;
+  width?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  maxPallet?: string | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -89,6 +112,11 @@ function transformRack(rack: {
     binCode: rack.binCode ?? null,
     barCode: rack.barCode ?? null,
     binType: rack.binType,
+    length: rack.length ?? null,
+    width: rack.width ?? null,
+    height: rack.height ?? null,
+    weight: rack.weight ?? null,
+    maxPallet: rack.maxPallet ?? null,
     isActive: rack.isActive,
     createdAt: rack.createdAt.toISOString(),
     updatedAt: rack.updatedAt.toISOString(),
@@ -193,6 +221,11 @@ export const resolvers = {
           binCode: data.binCode ?? undefined,
           barCode: data.barCode ?? undefined,
           binType: data.binType ?? 'FIXED',
+          length: data.length,
+          width: data.width,
+          height: data.height,
+          weight: data.weight,
+          maxPallet: data.maxPallet,
           isActive: data.isActive ?? true,
           createdBy: data.createdBy,
           updatedBy: data.updatedBy,
@@ -232,6 +265,11 @@ export const resolvers = {
           binCode: uData.binCode ?? undefined,
           barCode: uData.barCode ?? undefined,
           binType: uData.binType,
+          length: uData.length,
+          width: uData.width,
+          height: uData.height,
+          weight: uData.weight,
+          maxPallet: uData.maxPallet,
           isActive: uData.isActive,
           updatedBy: uData.updatedBy,
         }, id, context.organizationId || undefined, context.tx);
