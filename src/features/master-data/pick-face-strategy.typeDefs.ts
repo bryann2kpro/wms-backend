@@ -28,6 +28,11 @@ export const typeDefs = gql`
     binType: String
   }
 
+  input PickFaceStrategySortInput {
+    sortBy: String
+    sortOrder: String
+  }
+
   input CreatePickFaceStrategyInput {
     skuId: ID!
     storageBinId: ID!
@@ -46,7 +51,7 @@ export const typeDefs = gql`
   }
 
   extend type Query {
-    pickFaceStrategies(filter: PickFaceStrategyFilterInput, pageSize: Int, pageNumber: Int): PickFaceStrategyPaginatedResponse! @auth
+    pickFaceStrategies(filter: PickFaceStrategyFilterInput, sort: PickFaceStrategySortInput, pageSize: Int, pageNumber: Int): PickFaceStrategyPaginatedResponse! @auth
     pickFaceStrategy(id: ID!): PickFaceStrategy @auth
   }
 

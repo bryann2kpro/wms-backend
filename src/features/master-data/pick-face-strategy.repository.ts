@@ -8,7 +8,7 @@ import { db } from '@/db';
 import { PickFaceStrategyTable, PickFaceStrategyType, PickFaceStrategyInsertType } from './pick-face-strategy.model';
 import { SkuTable } from './sku.model';
 import { RacksTable } from './racks.model';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, asc, desc } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -23,6 +23,8 @@ export type PickFaceStrategyFilter = {
   skuId?: string;
   storageBinId?: string;
   binType?: string;
+  sortBy?: string;
+  sortOrder?: string;
 };
 
 export class PickFaceStrategyRepositoryClass {
@@ -62,6 +64,15 @@ export class PickFaceStrategyRepositoryClass {
         whereCondition.push(eq(PickFaceStrategyTable.binType, filter.binType));
       }
 
+      const sortOrderFn = filter.sortOrder?.toUpperCase() === 'ASC' ? asc : desc;
+      const sortByField = filter.sortBy?.toUpperCase() ?? 'UPDATED_AT';
+      const orderByCol =
+        sortByField === 'ITEM_CODE'    ? PickFaceStrategyTable.itemCode    :
+        sortByField === 'BIN_TYPE'     ? PickFaceStrategyTable.binType     :
+        sortByField === 'STORAGE_BIN'  ? RacksTable.binCode                :
+        sortByField === 'CREATED_AT'   ? PickFaceStrategyTable.createdAt   :
+        PickFaceStrategyTable.updatedAt;
+
       const baseQuery = db
         .select({
           id: PickFaceStrategyTable.id,
@@ -83,7 +94,8 @@ export class PickFaceStrategyRepositoryClass {
         .from(PickFaceStrategyTable)
         .leftJoin(RacksTable, eq(PickFaceStrategyTable.storageBinId, RacksTable.rackId))
         .leftJoin(SkuTable, eq(PickFaceStrategyTable.skuId, SkuTable.skuId))
-        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+        .orderBy(sortOrderFn(orderByCol));
 
       const pageSize = paginationParams.pageSize || 10;
       const pageNumber = paginationParams.pageNumber || 1;

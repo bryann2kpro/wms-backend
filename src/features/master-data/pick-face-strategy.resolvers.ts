@@ -94,6 +94,10 @@ export const resolvers = {
         storageBinId?: string;
         binType?: string;
       };
+      sort?: {
+        sortBy?: string;
+        sortOrder?: string;
+      };
       pageSize?: number;
       pageNumber?: number;
     }, context: GraphQLContext) => {
@@ -108,6 +112,11 @@ export const resolvers = {
         if (data.skuId) filter.skuId = data.skuId;
         if (data.storageBinId) filter.storageBinId = data.storageBinId;
         if (data.binType) filter.binType = data.binType;
+      }
+
+      if (args.sort) {
+        if (args.sort.sortBy) filter.sortBy = args.sort.sortBy;
+        if (args.sort.sortOrder) filter.sortOrder = args.sort.sortOrder;
       }
 
       const result = await pickFaceStrategiesRepository.getPickFaceStrategies(filter, {

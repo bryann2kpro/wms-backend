@@ -117,6 +117,10 @@ export const resolvers = {
         rackLevel?: string;
         rackLevels?: string[];
       };
+      sort?: {
+        sortBy?: string;
+        sortOrder?: string;
+      };
       pageSize?: number;
       pageNumber?: number;
     }, context: GraphQLContext) => {
@@ -134,6 +138,11 @@ export const resolvers = {
         if (data.binCode) filter.binCode = data.binCode;
         if (data.binType) filter.binType = data.binType;
         if (data.isActive !== undefined) filter.isActive = data.isActive;
+      }
+
+      if (args.sort) {
+        if (args.sort.sortBy) filter.sortBy = args.sort.sortBy;
+        if (args.sort.sortOrder) filter.sortOrder = args.sort.sortOrder;
       }
 
       const result = await racksRepository.getRack(filter, {
