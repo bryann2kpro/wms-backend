@@ -163,6 +163,22 @@ export const typeDefs = `#graphql
         grns(filter: GrnFilterInput, pageSize: Int, pageNumber: Int): GrnPaginatedResponse
     }
 
+    """
+    Rack suggestion for inbound putaway (pick-face default with capacity check).
+    """
+    type InboundRackSuggestion {
+        rackId: ID
+        rackLabel: String
+        """DEFAULT = pick-face bin; FALLBACK_EMPTY = alternate empty rack; NONE = no suggestion"""
+        source: String!
+        defaultRackId: ID
+        isDefaultFull: Boolean!
+        maxCapacity: Float
+        currentQuantity: Float
+        availableCapacity: Float
+        message: String
+    }
+
     extend type Query {
         """
         List advance notices from NetSuite that have not yet been linked to a GRN.
@@ -194,6 +210,15 @@ export const typeDefs = `#graphql
         The format is GRN-YYYYMMDD-0001 and increments within the same day.
         """
         nextGrnNumber(date: String): String!
+    }
+
+    extend type Query {
+        """
+        Suggest a rack for inbound putaway for a SKU and quantity.
+        Uses pick-face strategy default rack; falls back to an empty rack when full.
+        Requires authentication.
+        """
+        suggestInboundRack(skuId: ID, skuCode: String, quantity: Float!): InboundRackSuggestion! @auth
     }
 
     type GrnPaginatedResponse {

@@ -389,4 +389,33 @@ export class StockQuantRepositoryClass {
       throw error;
     }
   }
+
+  /** Sum on-hand quantity for a SKU in a rack (all lots/expiry rows). */
+  async sumQuantityByRackAndSku(
+    organizationId: string,
+    rackId: string,
+    skuId: string,
+    tx?: DbTransaction,
+  ): Promise<number> {
+    try {
+      const client = tx ?? db;
+      const [row] = await client
+        .select({
+          total: sql<string>`coalesce(sum(${StockQuantTable.quantity}::numeric), 0)::text`,
+        })
+        .from(StockQuantTable)
+        .where(
+          and(
+            eq(StockQuantTable.organizationId, organizationId),
+            eq(StockQuantTable.rackId, rackId),
+            eq(StockQuantTable.skuId, skuId),
+          ),
+        );
+      const n = Number(row?.total ?? 0);
+      return Number.isFinite(n) ? n : 0;
+    } catch (error) {
+      logger.error("❌ [StockQuantRepository.sumQuantityByRackAndSku]", error);
+      throw error;
+    }
+  }
 }
