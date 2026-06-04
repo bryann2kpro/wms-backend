@@ -14,8 +14,12 @@ import { RacksRepositoryClass } from "../master-data/racks.repository";
 import { StockQuantRepositoryClass } from "../stock-quant/stock-quant.repository";
 import { StockQuantTable } from "../stock-quant/stock-quant.model";
 import {
+  capacityForSkuOnRack,
   maxCasesForSkuInRack,
+  rackHasCapacityForIncomingSku,
   rackHasCapacityForQty,
+  type RackOccupant,
+  type SkuCaseDimensions,
 } from "./rack-capacity.util";
 
 export type InboundRackSuggestionSource = "DEFAULT" | "FALLBACK_EMPTY" | "NONE";
@@ -117,18 +121,20 @@ export class InboundPutawaySuggestionService {
       );
     }
 
-    const maxCapacity = maxCasesForSkuInRack(defaultRack, sku);
-    const currentQty = await this.stockQuantRepository.sumQuantityByRackAndSku(
+    const defaultOccupants = await this.loadRackOccupants(
       organizationId,
       defaultRackId,
-      sku.skuId,
       tx,
     );
-    const availableCapacity =
-      maxCapacity != null ? Math.max(0, maxCapacity - currentQty) : null;
+    const defaultCapacity = capacityForSkuOnRack(defaultRack, sku, defaultOccupants);
     const defaultLabel = formatRackLabel(defaultRack);
 
-    const defaultFits = rackHasCapacityForQty(maxCapacity, currentQty, incomingQty);
+    const defaultFits = rackHasCapacityForIncomingSku(
+      defaultRack,
+      sku,
+      defaultOccupants,
+      incomingQty,
+    );
     if (defaultFits) {
       return {
         rackId: defaultRackId,
@@ -136,9 +142,9 @@ export class InboundPutawaySuggestionService {
         source: "DEFAULT",
         defaultRackId,
         isDefaultFull: false,
-        maxCapacity,
-        currentQuantity: currentQty,
-        availableCapacity,
+        maxCapacity: defaultCapacity.maxCapacity,
+        currentQuantity: defaultCapacity.currentQuantity,
+        availableCapacity: defaultCapacity.availableCapacity,
         message: "Default pick-face rack has available capacity.",
         capacityForRack,
       };
@@ -172,9 +178,9 @@ export class InboundPutawaySuggestionService {
       source: "DEFAULT",
       defaultRackId,
       isDefaultFull: true,
-      maxCapacity,
-      currentQuantity: currentQty,
-      availableCapacity,
+      maxCapacity: defaultCapacity.maxCapacity,
+      currentQuantity: defaultCapacity.currentQuantity,
+      availableCapacity: defaultCapacity.availableCapacity,
       message:
         "Default rack is at capacity and no suitable empty rack was found. Review manually.",
       capacityForRack,
@@ -198,22 +204,31 @@ export class InboundPutawaySuggestionService {
     const rack = await this.racksRepository.getRackById(rackId, organizationId);
     if (!rack) return null;
 
-    const maxCapacity = maxCasesForSkuInRack(rack, sku);
-    const currentQty = await this.stockQuantRepository.sumQuantityByRackAndSku(
-      organizationId,
-      rackId,
-      sku.skuId,
-      tx,
-    );
-    const availableCapacity =
-      maxCapacity != null ? Math.max(0, maxCapacity - currentQty) : null;
+    const occupants = await this.loadRackOccupants(organizationId, rackId, tx);
+    const capacity = capacityForSkuOnRack(rack, sku, occupants);
 
     return {
       rackId,
-      maxCapacity,
-      currentQuantity: currentQty,
-      availableCapacity,
+      maxCapacity: capacity.maxCapacity,
+      currentQuantity: capacity.currentQuantity,
+      availableCapacity: capacity.availableCapacity,
     };
+  }
+
+  private async loadRackOccupants(
+    organizationId: string,
+    rackId: string,
+    tx?: DbTransaction,
+  ): Promise<RackOccupant[]> {
+    const rows = await this.stockQuantRepository.listRackOccupancyByRack(
+      organizationId,
+      rackId,
+      tx,
+    );
+    return rows.map((row) => ({
+      quantity: row.quantity,
+      sku: toSkuCaseDimensions(row),
+    }));
   }
 
   private async resolveSku(
@@ -307,6 +322,24 @@ export class InboundPutawaySuggestionService {
 
     return null;
   }
+}
+
+function toSkuCaseDimensions(row: {
+  caseExtLengthMm: string | null;
+  caseExtWidthMm: string | null;
+  caseExtHeightMm: string | null;
+  caseGrossWeightKg: string | null;
+  casesPerLayer: string | null;
+  noOfLayers: string | null;
+}): SkuCaseDimensions {
+  return {
+    caseExtLengthMm: row.caseExtLengthMm,
+    caseExtWidthMm: row.caseExtWidthMm,
+    caseExtHeightMm: row.caseExtHeightMm,
+    caseGrossWeightKg: row.caseGrossWeightKg,
+    casesPerLayer: row.casesPerLayer,
+    noOfLayers: row.noOfLayers,
+  };
 }
 
 function formatRackLabel(rack: {

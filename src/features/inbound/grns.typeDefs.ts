@@ -165,6 +165,7 @@ export const typeDefs = `#graphql
 
     """
     Capacity of a rack for a specific SKU (cartons / cases).
+    currentQuantity reflects all SKUs on the rack, converted to equivalent cartons of this SKU using case volume/weight.
     """
     type RackSkuCapacity {
         rackId: ID!

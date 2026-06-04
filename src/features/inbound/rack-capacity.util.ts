@@ -58,6 +58,15 @@ export function maxCasesForSkuInRack(
     if (casesPerLayer > 0 && layers > 0) {
       maxByVolume = casesPerLayer * layers;
     }
+
+    const rackVol = rackL * rackW * rackH;
+    const caseVol = caseL * caseW * caseH;
+    const maxByTotalVolume = floorFit(rackVol, caseVol);
+    if (maxByVolume != null) {
+      maxByVolume = Math.min(maxByVolume, maxByTotalVolume);
+    } else if (maxByTotalVolume > 0) {
+      maxByVolume = maxByTotalVolume;
+    }
   }
 
   let maxByWeight: number | null = null;
@@ -71,6 +80,103 @@ export function maxCasesForSkuInRack(
   return maxByVolume ?? maxByWeight;
 }
 
+export type RackOccupant = {
+  quantity: number;
+  sku: SkuCaseDimensions;
+};
+
+export function caseVolumeMm3(sku: SkuCaseDimensions): number | null {
+  const caseL = positiveNum(sku.caseExtLengthMm);
+  const caseW = positiveNum(sku.caseExtWidthMm);
+  const caseH = positiveNum(sku.caseExtHeightMm);
+  if (!caseL || !caseW || !caseH) return null;
+  return caseL * caseW * caseH;
+}
+
+export function rackVolumeMm3(rack: RackDimensions): number | null {
+  const rackL = positiveNum(rack.length);
+  const rackW = positiveNum(rack.width);
+  const rackH = positiveNum(rack.height);
+  if (!rackL || !rackW || !rackH) return null;
+  return rackL * rackW * rackH;
+}
+
+/** Sum volume (mm³) and weight (kg) used on a rack across all SKUs. */
+export function computeRackUsage(occupants: RackOccupant[]): {
+  usedVolumeMm3: number;
+  usedWeightKg: number;
+  totalCartons: number;
+} {
+  let usedVolumeMm3 = 0;
+  let usedWeightKg = 0;
+  let totalCartons = 0;
+
+  for (const { quantity, sku } of occupants) {
+    const qty = Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
+    if (qty <= 0) continue;
+
+    totalCartons += qty;
+    const caseVol = caseVolumeMm3(sku);
+    if (caseVol) usedVolumeMm3 += qty * caseVol;
+    const caseWt = positiveNum(sku.caseGrossWeightKg);
+    if (caseWt) usedWeightKg += qty * caseWt;
+  }
+
+  return { usedVolumeMm3, usedWeightKg, totalCartons };
+}
+
+export type RackSkuCapacityResult = {
+  maxCapacity: number | null;
+  /** Equivalent cartons of the target SKU consumed by all SKUs on the rack. */
+  currentQuantity: number;
+  availableCapacity: number | null;
+};
+
+/**
+ * Capacity for putting away a target SKU on a rack that may already hold other SKUs.
+ * Uses per-carton dimensions/weight from m_skus and stock_quant quantities on the rack.
+ */
+export function capacityForSkuOnRack(
+  rack: RackDimensions,
+  targetSku: SkuCaseDimensions,
+  occupants: RackOccupant[],
+): RackSkuCapacityResult {
+  const maxCapacity = maxCasesForSkuInRack(rack, targetSku);
+  const { usedVolumeMm3, usedWeightKg } = computeRackUsage(occupants);
+
+  const rackVol = rackVolumeMm3(rack);
+  const rackWt = positiveNum(rack.weight);
+  const targetCaseVol = caseVolumeMm3(targetSku);
+  const targetCaseWt = positiveNum(targetSku.caseGrossWeightKg);
+
+  let usedEquivalent = 0;
+  if (targetCaseVol && usedVolumeMm3 > 0) {
+    usedEquivalent = Math.max(usedEquivalent, usedVolumeMm3 / targetCaseVol);
+  }
+  if (targetCaseWt && usedWeightKg > 0) {
+    usedEquivalent = Math.max(usedEquivalent, usedWeightKg / targetCaseWt);
+  }
+  const currentQuantity = Math.ceil(usedEquivalent);
+
+  let availableCapacity: number | null = null;
+  if (maxCapacity != null) {
+    availableCapacity = Math.max(0, maxCapacity - currentQuantity);
+  } else {
+    const availCandidates: number[] = [];
+    if (rackVol != null && targetCaseVol) {
+      availCandidates.push(Math.floor((rackVol - usedVolumeMm3) / targetCaseVol));
+    }
+    if (rackWt != null && targetCaseWt) {
+      availCandidates.push(Math.floor((rackWt - usedWeightKg) / targetCaseWt));
+    }
+    if (availCandidates.length > 0) {
+      availableCapacity = Math.max(0, Math.min(...availCandidates));
+    }
+  }
+
+  return { maxCapacity, currentQuantity, availableCapacity };
+}
+
 export function rackHasCapacityForQty(
   maxCapacity: number | null,
   currentQty: number,
@@ -79,4 +185,17 @@ export function rackHasCapacityForQty(
   if (maxCapacity == null) return true;
   if (!Number.isFinite(incomingQty) || incomingQty <= 0) return true;
   return currentQty + incomingQty <= maxCapacity;
+}
+
+/** Whether incoming cartons of targetSku fit given all SKUs already on the rack. */
+export function rackHasCapacityForIncomingSku(
+  rack: RackDimensions,
+  targetSku: SkuCaseDimensions,
+  occupants: RackOccupant[],
+  incomingQty: number,
+): boolean {
+  if (!Number.isFinite(incomingQty) || incomingQty <= 0) return true;
+  const { availableCapacity } = capacityForSkuOnRack(rack, targetSku, occupants);
+  if (availableCapacity == null) return true;
+  return incomingQty <= availableCapacity;
 }

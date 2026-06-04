@@ -390,6 +390,59 @@ export class StockQuantRepositoryClass {
     }
   }
 
+  /** All SKUs with on-hand quantity on a rack (for rack capacity / occupancy). */
+  async listRackOccupancyByRack(
+    organizationId: string,
+    rackId: string,
+    tx?: DbTransaction,
+  ): Promise<
+    Array<{
+      quantity: number;
+      caseExtLengthMm: string | null;
+      caseExtWidthMm: string | null;
+      caseExtHeightMm: string | null;
+      caseGrossWeightKg: string | null;
+      casesPerLayer: string | null;
+      noOfLayers: string | null;
+    }>
+  > {
+    try {
+      const client = tx ?? db;
+      const rows = await client
+        .select({
+          quantity: StockQuantTable.quantity,
+          caseExtLengthMm: SkuTable.caseExtLengthMm,
+          caseExtWidthMm: SkuTable.caseExtWidthMm,
+          caseExtHeightMm: SkuTable.caseExtHeightMm,
+          caseGrossWeightKg: SkuTable.caseGrossWeightKg,
+          casesPerLayer: SkuTable.casesPerLayer,
+          noOfLayers: SkuTable.noOfLayers,
+        })
+        .from(StockQuantTable)
+        .innerJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
+        .where(
+          and(
+            eq(StockQuantTable.organizationId, organizationId),
+            eq(StockQuantTable.rackId, rackId),
+            sql`${StockQuantTable.quantity}::numeric > 0`,
+          ),
+        );
+
+      return rows.map((row) => ({
+        quantity: Number(row.quantity ?? 0),
+        caseExtLengthMm: row.caseExtLengthMm,
+        caseExtWidthMm: row.caseExtWidthMm,
+        caseExtHeightMm: row.caseExtHeightMm,
+        caseGrossWeightKg: row.caseGrossWeightKg,
+        casesPerLayer: row.casesPerLayer,
+        noOfLayers: row.noOfLayers,
+      }));
+    } catch (error) {
+      logger.error("❌ [StockQuantRepository.listRackOccupancyByRack]", error);
+      throw error;
+    }
+  }
+
   /** Sum on-hand quantity for a SKU in a rack (all lots/expiry rows). */
   async sumQuantityByRackAndSku(
     organizationId: string,
