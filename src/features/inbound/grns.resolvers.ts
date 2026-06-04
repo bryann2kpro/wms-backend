@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService, esRepository, grnPutawayService } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService, esRepository, grnPutawayService, inboundPutawaySuggestionService } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -305,6 +305,30 @@ export const resolvers = {
                 logger.error('[grns.resolvers] listPendingAdvanceNotices Error:', error);
                 throw error;
             }
+        },
+        suggestInboundRack: async (
+            _: unknown,
+            args: {
+                skuId?: string | null;
+                skuCode?: string | null;
+                quantity: number;
+                forRackId?: string | null;
+            },
+            context: GraphQLContext,
+        ) => {
+            if (!context.organizationId) {
+                throw new GraphQLError('Organization context is required', {
+                    extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                });
+            }
+            const suggestion = await inboundPutawaySuggestionService.suggestRack({
+                organizationId: context.organizationId,
+                skuId: args.skuId,
+                skuCode: args.skuCode,
+                quantity: args.quantity,
+                forRackId: args.forRackId,
+            });
+            return suggestion;
         },
     },
     Grn: {

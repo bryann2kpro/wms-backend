@@ -163,6 +163,35 @@ export const typeDefs = `#graphql
         grns(filter: GrnFilterInput, pageSize: Int, pageNumber: Int): GrnPaginatedResponse
     }
 
+    """
+    Capacity of a rack for a specific SKU (cartons / cases).
+    currentQuantity reflects all SKUs on the rack, converted to equivalent cartons of this SKU using case volume/weight.
+    """
+    type RackSkuCapacity {
+        rackId: ID!
+        maxCapacity: Float
+        currentQuantity: Float!
+        availableCapacity: Float
+    }
+
+    """
+    Rack suggestion for inbound putaway (pick-face default with capacity check).
+    """
+    type InboundRackSuggestion {
+        rackId: ID
+        rackLabel: String
+        """DEFAULT = pick-face bin; FALLBACK_EMPTY = alternate empty rack; NONE = no suggestion"""
+        source: String!
+        defaultRackId: ID
+        isDefaultFull: Boolean!
+        maxCapacity: Float
+        currentQuantity: Float
+        availableCapacity: Float
+        message: String
+        """When forRackId is passed to suggestInboundRack, capacity for that selected rack."""
+        capacityForRack: RackSkuCapacity
+    }
+
     extend type Query {
         """
         List advance notices from NetSuite that have not yet been linked to a GRN.
@@ -194,6 +223,15 @@ export const typeDefs = `#graphql
         The format is GRN-YYYYMMDD-0001 and increments within the same day.
         """
         nextGrnNumber(date: String): String!
+    }
+
+    extend type Query {
+        """
+        Suggest a rack for inbound putaway for a SKU and quantity.
+        Uses pick-face strategy default rack; falls back to an empty rack when full.
+        Requires authentication.
+        """
+        suggestInboundRack(skuId: ID, skuCode: String, quantity: Float!, forRackId: ID): InboundRackSuggestion! @auth
     }
 
     type GrnPaginatedResponse {

@@ -2,18 +2,17 @@ import { db } from '@/db';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { GrnItemsRepositoryClass } from './grns-items.repository';
-import { PickFaceStrategyRepositoryClass } from '../master-data/pick-face-strategy.repository';
+import { InboundPutawaySuggestionService } from './inbound-putaway-suggestion.service';
 
 export class GrnPutawayService {
     constructor(
         private readonly grnItemsRepository: GrnItemsRepositoryClass,
-        private readonly pickFaceStrategyRepository: PickFaceStrategyRepositoryClass,
+        private readonly putawaySuggestionService: InboundPutawaySuggestionService,
     ) {}
 
     /**
      * Assigns pick face bins to all items in a GRN.
-     * For each item, looks up the SKU's active FIXED_BIN pick face strategy
-     * and updates grn_items.rackId to the designated bin.
+     * Uses pick-face default rack when it has capacity; otherwise an empty rack.
      * Returns the count of items updated.
      */
     async assignBinsForGrn(grnId: string, organizationId: string): Promise<number> {
@@ -31,17 +30,24 @@ export class GrnPutawayService {
                 for (const item of grnItems) {
                     if (!item.skuId) continue;
 
-                    const strategy = await this.pickFaceStrategyRepository.getActiveBySkuId(
-                        item.skuId,
-                        organizationId,
-                        tx
+                    const grossQty = Number(item.qty ?? 0);
+                    const lossQty = Number(item.lossQty ?? 0);
+                    const netQty = Math.max(0, grossQty - lossQty);
+
+                    const suggestion = await this.putawaySuggestionService.suggestRack(
+                        {
+                            organizationId,
+                            skuId: item.skuId,
+                            quantity: netQty,
+                        },
+                        tx,
                     );
 
-                    if (!strategy || strategy.binType !== 'FIXED_BIN') continue;
+                    if (!suggestion.rackId) continue;
 
                     await this.grnItemsRepository.updateGrnItem(item.id, {
                         ...item,
-                        rackId: strategy.storageBinId,
+                        rackId: suggestion.rackId,
                     });
                     updatedCount++;
                 }

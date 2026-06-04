@@ -19,6 +19,11 @@ export const typeDefs = `#graphql
     binCode: String
     barCode: String
     binType: String!
+    length: String
+    width: String
+    height: String
+    weight: String
+    maxPallet: String
     isActive: Boolean!
     createdAt: String!
     updatedAt: String!
@@ -67,6 +72,11 @@ export const typeDefs = `#graphql
     binCode: String
     barCode: String
     binType: String
+    length: String
+    width: String
+    height: String
+    weight: String
+    maxPallet: String
     isActive: Boolean
     createdBy: String!
     updatedBy: String!
@@ -84,6 +94,11 @@ export const typeDefs = `#graphql
     binCode: String
     barCode: String
     binType: String
+    length: String
+    width: String
+    height: String
+    weight: String
+    maxPallet: String
     isActive: Boolean
     updatedBy: String!
   }
