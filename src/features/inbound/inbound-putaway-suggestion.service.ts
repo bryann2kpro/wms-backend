@@ -20,6 +20,13 @@ import {
 
 export type InboundRackSuggestionSource = "DEFAULT" | "FALLBACK_EMPTY" | "NONE";
 
+export type RackSkuCapacity = {
+  rackId: string;
+  maxCapacity: number | null;
+  currentQuantity: number;
+  availableCapacity: number | null;
+};
+
 export type InboundRackSuggestion = {
   rackId: string | null;
   rackLabel: string | null;
@@ -30,6 +37,7 @@ export type InboundRackSuggestion = {
   currentQuantity: number | null;
   availableCapacity: number | null;
   message: string | null;
+  capacityForRack: RackSkuCapacity | null;
 };
 
 export type SuggestInboundRackInput = {
@@ -37,6 +45,8 @@ export type SuggestInboundRackInput = {
   skuId?: string | null;
   skuCode?: string | null;
   quantity: number;
+  /** When set, response includes capacity for this rack (selected bin). */
+  forRackId?: string | null;
 };
 
 export class InboundPutawaySuggestionService {
@@ -58,6 +68,10 @@ export class InboundPutawaySuggestionService {
     if (!sku) {
       return emptySuggestion(null, "SKU not found — cannot suggest a rack.");
     }
+
+    const capacityForRack = input.forRackId
+      ? await this.getRackSkuCapacity(organizationId, input.forRackId, sku, tx)
+      : null;
 
     const strategy = await this.pickFaceStrategyRepository.getActiveBySkuId(
       sku.skuId,
@@ -85,9 +99,10 @@ export class InboundPutawaySuggestionService {
           currentQuantity: 0,
           availableCapacity: fallback.availableCapacity,
           message: "No pick-face strategy configured; suggested an empty rack.",
+          capacityForRack,
         };
       }
-      return emptySuggestion(null, "No default rack configured for this SKU.");
+      return emptySuggestion(null, "No default rack configured for this SKU.", capacityForRack);
     }
 
     const defaultRack = await this.racksRepository.getRackById(
@@ -95,7 +110,11 @@ export class InboundPutawaySuggestionService {
       organizationId,
     );
     if (!defaultRack) {
-      return emptySuggestion(defaultRackId, "Default rack from pick-face strategy was not found.");
+      return emptySuggestion(
+        defaultRackId,
+        "Default rack from pick-face strategy was not found.",
+        capacityForRack,
+      );
     }
 
     const maxCapacity = maxCasesForSkuInRack(defaultRack, sku);
@@ -121,6 +140,7 @@ export class InboundPutawaySuggestionService {
         currentQuantity: currentQty,
         availableCapacity,
         message: "Default pick-face rack has available capacity.",
+        capacityForRack,
       };
     }
 
@@ -142,6 +162,7 @@ export class InboundPutawaySuggestionService {
         currentQuantity: 0,
         availableCapacity: fallback.availableCapacity,
         message: "Default rack is at capacity; suggested an empty rack.",
+        capacityForRack,
       };
     }
 
@@ -156,6 +177,42 @@ export class InboundPutawaySuggestionService {
       availableCapacity,
       message:
         "Default rack is at capacity and no suitable empty rack was found. Review manually.",
+      capacityForRack,
+    };
+  }
+
+  async getRackSkuCapacity(
+    organizationId: string,
+    rackId: string,
+    sku: {
+      skuId: string;
+      caseExtLengthMm?: string | null;
+      caseExtWidthMm?: string | null;
+      caseExtHeightMm?: string | null;
+      caseGrossWeightKg?: string | null;
+      casesPerLayer?: string | null;
+      noOfLayers?: string | null;
+    },
+    tx?: DbTransaction,
+  ): Promise<RackSkuCapacity | null> {
+    const rack = await this.racksRepository.getRackById(rackId, organizationId);
+    if (!rack) return null;
+
+    const maxCapacity = maxCasesForSkuInRack(rack, sku);
+    const currentQty = await this.stockQuantRepository.sumQuantityByRackAndSku(
+      organizationId,
+      rackId,
+      sku.skuId,
+      tx,
+    );
+    const availableCapacity =
+      maxCapacity != null ? Math.max(0, maxCapacity - currentQty) : null;
+
+    return {
+      rackId,
+      maxCapacity,
+      currentQuantity: currentQty,
+      availableCapacity,
     };
   }
 
@@ -266,6 +323,7 @@ function formatRackLabel(rack: {
 function emptySuggestion(
   defaultRackId: string | null,
   message: string,
+  capacityForRack: RackSkuCapacity | null = null,
 ): InboundRackSuggestion {
   return {
     rackId: null,
@@ -277,5 +335,6 @@ function emptySuggestion(
     currentQuantity: null,
     availableCapacity: null,
     message,
+    capacityForRack,
   };
 }

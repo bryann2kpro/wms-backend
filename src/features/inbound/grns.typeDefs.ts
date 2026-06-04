@@ -164,6 +164,16 @@ export const typeDefs = `#graphql
     }
 
     """
+    Capacity of a rack for a specific SKU (cartons / cases).
+    """
+    type RackSkuCapacity {
+        rackId: ID!
+        maxCapacity: Float
+        currentQuantity: Float!
+        availableCapacity: Float
+    }
+
+    """
     Rack suggestion for inbound putaway (pick-face default with capacity check).
     """
     type InboundRackSuggestion {
@@ -177,6 +187,8 @@ export const typeDefs = `#graphql
         currentQuantity: Float
         availableCapacity: Float
         message: String
+        """When forRackId is passed to suggestInboundRack, capacity for that selected rack."""
+        capacityForRack: RackSkuCapacity
     }
 
     extend type Query {
@@ -218,7 +230,7 @@ export const typeDefs = `#graphql
         Uses pick-face strategy default rack; falls back to an empty rack when full.
         Requires authentication.
         """
-        suggestInboundRack(skuId: ID, skuCode: String, quantity: Float!): InboundRackSuggestion! @auth
+        suggestInboundRack(skuId: ID, skuCode: String, quantity: Float!, forRackId: ID): InboundRackSuggestion! @auth
     }
 
     type GrnPaginatedResponse {

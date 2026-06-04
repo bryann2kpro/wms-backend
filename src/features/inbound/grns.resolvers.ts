@@ -308,7 +308,12 @@ export const resolvers = {
         },
         suggestInboundRack: async (
             _: unknown,
-            args: { skuId?: string | null; skuCode?: string | null; quantity: number },
+            args: {
+                skuId?: string | null;
+                skuCode?: string | null;
+                quantity: number;
+                forRackId?: string | null;
+            },
             context: GraphQLContext,
         ) => {
             if (!context.organizationId) {
@@ -321,6 +326,7 @@ export const resolvers = {
                 skuId: args.skuId,
                 skuCode: args.skuCode,
                 quantity: args.quantity,
+                forRackId: args.forRackId,
             });
             return suggestion;
         },
