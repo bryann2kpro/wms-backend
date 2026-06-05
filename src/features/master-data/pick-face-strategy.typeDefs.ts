@@ -30,6 +30,11 @@ export const typeDefs = gql`
     search: String
   }
 
+  input PickFaceStrategySortInput {
+    sortBy: String
+    sortOrder: String
+  }
+
   input CreatePickFaceStrategyInput {
     skuId: ID!
     storageBinId: ID!
