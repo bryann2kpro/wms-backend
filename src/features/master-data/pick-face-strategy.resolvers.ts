@@ -95,6 +95,10 @@ export const resolvers = {
         storageBinId?: string;
         binType?: string;
       };
+      sort?: {
+        sortBy?: string;
+        sortOrder?: string;
+      };
       pageSize?: number;
       pageNumber?: number;
     }, context: GraphQLContext) => {

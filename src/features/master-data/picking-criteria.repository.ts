@@ -1,6 +1,6 @@
 import { db } from '@/db';
 import { PickingCriteriaInsertType, PickingCriteriaTable, PickingCriteriaType } from './picking-criteria.model';
-import { eq, and, like } from 'drizzle-orm';
+import { eq, and, like, asc, desc } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -19,6 +19,8 @@ export type PickingCriteriaFilter = {
   itemCategory?: string;
   manufacturer?: string;
   item?: string;
+  sortBy?: string;
+  sortOrder?: string;
 };
 
 export class PickingCriteriaRepositoryClass {
@@ -74,10 +76,22 @@ export class PickingCriteriaRepositoryClass {
         whereCondition.push(like(PickingCriteriaTable.item, `%${filter.item}%`));
       }
 
+      const sortOrderFn = filter.sortOrder?.toUpperCase() === 'ASC' ? asc : desc;
+      const sortByField = filter.sortBy?.toUpperCase() ?? 'UPDATED_AT';
+      const orderByCol =
+        sortByField === 'USER_ID'       ? PickingCriteriaTable.userId       :
+        sortByField === 'CATEGORY'      ? PickingCriteriaTable.category      :
+        sortByField === 'CHAIN'         ? PickingCriteriaTable.chain         :
+        sortByField === 'CHANNEL'       ? PickingCriteriaTable.channel       :
+        sortByField === 'ITEM'          ? PickingCriteriaTable.item          :
+        sortByField === 'CREATED_AT'    ? PickingCriteriaTable.createdAt     :
+        PickingCriteriaTable.updatedAt;
+
       const baseQuery = db
         .select()
         .from(PickingCriteriaTable)
-        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+        .orderBy(sortOrderFn(orderByCol));
 
       const pageSize = paginationParams.pageSize || 10;
       const pageNumber = paginationParams.pageNumber || 1;

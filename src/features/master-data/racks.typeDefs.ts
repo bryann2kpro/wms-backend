@@ -40,6 +40,14 @@ export const typeDefs = `#graphql
   }
 
   """
+  Input for sorting racks
+  """
+  input RackSortInput {
+    sortBy: String
+    sortOrder: String
+  }
+
+  """
   Input for filtering racks
   """
   input RackFilterInput {
@@ -102,7 +110,7 @@ export const typeDefs = `#graphql
     Get racks with optional filtering and pagination.
     Requires authentication.
     """
-    racks(filter: RackFilterInput, pageSize: Int, pageNumber: Int): RackPaginatedResponse! @auth
+    racks(filter: RackFilterInput, sort: RackSortInput, pageSize: Int, pageNumber: Int): RackPaginatedResponse! @auth
     
     """
     Get a single rack by ID.
