@@ -17,6 +17,7 @@ const pickFaceStrategyFilterSchema = z.object({
   skuId: z.string().uuid().optional(),
   storageBinId: z.string().uuid().optional(),
   binType: z.string().optional(),
+  search: z.string().optional(),
 });
 
 const createPickFaceStrategySchema = z.object({
@@ -108,6 +109,7 @@ export const resolvers = {
         if (data.skuId) filter.skuId = data.skuId;
         if (data.storageBinId) filter.storageBinId = data.storageBinId;
         if (data.binType) filter.binType = data.binType;
+        if (data.search?.trim()) filter.search = data.search.trim();
       }
 
       const result = await pickFaceStrategiesRepository.getPickFaceStrategies(filter, {

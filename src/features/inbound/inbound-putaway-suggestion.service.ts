@@ -24,6 +24,29 @@ import {
 
 export type InboundRackSuggestionSource = "DEFAULT" | "FALLBACK_EMPTY" | "NONE";
 
+export type InboundPutawayAllocationSource =
+  | "DEFAULT"
+  | "UNASSIGNED_EMPTY"
+  | "FALLBACK";
+
+export type InboundPutawayAllocation = {
+  rackId: string;
+  rackLabel: string;
+  quantity: number;
+  maxCapacity: number | null;
+  availableCapacity: number | null;
+  source: InboundPutawayAllocationSource;
+};
+
+export type InboundPutawayPlan = {
+  allocations: InboundPutawayAllocation[];
+  totalAllocated: number;
+  remainingQty: number;
+  message: string | null;
+  defaultRackId: string | null;
+  capacityForRack: RackSkuCapacity | null;
+};
+
 export type RackSkuCapacity = {
   rackId: string;
   maxCapacity: number | null;
@@ -185,6 +208,255 @@ export class InboundPutawaySuggestionService {
         "Default rack is at capacity and no suitable empty rack was found. Review manually.",
       capacityForRack,
     };
+  }
+
+  async suggestPutawayPlan(
+    input: SuggestInboundRackInput,
+    tx?: DbTransaction,
+  ): Promise<InboundPutawayPlan> {
+    const { organizationId } = input;
+    const incomingQty = Number.isFinite(input.quantity) && input.quantity > 0
+      ? input.quantity
+      : 0;
+
+    const sku = await this.resolveSku(input, organizationId, tx);
+    if (!sku) {
+      return emptyPutawayPlan(null, "SKU not found — cannot suggest racks.");
+    }
+
+    const capacityForRack = input.forRackId
+      ? await this.getRackSkuCapacity(organizationId, input.forRackId, sku, tx)
+      : null;
+
+    if (incomingQty <= 0) {
+      return {
+        allocations: [],
+        totalAllocated: 0,
+        remainingQty: 0,
+        message: "Enter a quantity to suggest rack locations.",
+        defaultRackId: null,
+        capacityForRack,
+      };
+    }
+
+    const strategy = await this.pickFaceStrategyRepository.getActiveBySkuId(
+      sku.skuId,
+      organizationId,
+      tx,
+    );
+    const defaultRackId = strategy?.storageBinId ?? null;
+    const pickFaceBinIds = await this.pickFaceStrategyRepository.listStorageBinIds(
+      organizationId,
+      tx,
+    );
+
+    const allocations: InboundPutawayAllocation[] = [];
+    const usedRackIds = new Set<string>();
+    let remaining = incomingQty;
+
+    if (defaultRackId) {
+      remaining = await this.allocateFromRack(
+        organizationId,
+        sku,
+        defaultRackId,
+        remaining,
+        usedRackIds,
+        allocations,
+        "DEFAULT",
+        tx,
+      );
+    }
+
+    if (remaining > 0) {
+      const unassignedEmpty = await this.listCandidateRacks(
+        organizationId,
+        usedRackIds,
+        { emptyOnly: true, excludePickFaceBins: true, pickFaceBinIds },
+        tx,
+      );
+      remaining = await this.allocateAcrossRacks(
+        organizationId,
+        sku,
+        remaining,
+        usedRackIds,
+        allocations,
+        unassignedEmpty,
+        "UNASSIGNED_EMPTY",
+        tx,
+      );
+    }
+
+    if (remaining > 0) {
+      const fallbackRacks = await this.listCandidateRacks(
+        organizationId,
+        usedRackIds,
+        { emptyOnly: false, excludePickFaceBins: false, pickFaceBinIds },
+        tx,
+      );
+      remaining = await this.allocateAcrossRacks(
+        organizationId,
+        sku,
+        remaining,
+        usedRackIds,
+        allocations,
+        fallbackRacks,
+        "FALLBACK",
+        tx,
+      );
+    }
+
+    const totalAllocated = roundAllocated(incomingQty - remaining);
+    let message: string | null = null;
+    if (allocations.length === 0) {
+      message = defaultRackId
+        ? "No rack with available capacity was found. Review manually."
+        : "No pick-face strategy configured and no suitable rack was found.";
+    } else if (remaining > 0) {
+      message = `Allocated ${totalAllocated} of ${incomingQty} CTN across ${allocations.length} rack(s). ${remaining} CTN still need a location.`;
+    } else if (allocations.length === 1) {
+      message =
+        allocations[0].source === "DEFAULT"
+          ? "Default pick-face rack has available capacity."
+          : "Suggested rack location for putaway.";
+    } else {
+      message = `Split across ${allocations.length} rack locations based on capacity.`;
+    }
+
+    return {
+      allocations,
+      totalAllocated,
+      remainingQty: remaining,
+      message,
+      defaultRackId,
+      capacityForRack,
+    };
+  }
+
+  private availableQtyForAllocation(capacity: {
+    maxCapacity: number | null;
+    currentQuantity: number;
+    availableCapacity: number | null;
+  }): number {
+    if (capacity.availableCapacity != null) {
+      return Math.max(0, capacity.availableCapacity);
+    }
+    if (capacity.maxCapacity != null) {
+      return Math.max(0, capacity.maxCapacity - capacity.currentQuantity);
+    }
+    return 0;
+  }
+
+  private async allocateFromRack(
+    organizationId: string,
+    sku: Awaited<ReturnType<InboundPutawaySuggestionService["resolveSku"]>> & object,
+    rackId: string,
+    remaining: number,
+    usedRackIds: Set<string>,
+    allocations: InboundPutawayAllocation[],
+    source: InboundPutawayAllocationSource,
+    tx?: DbTransaction,
+  ): Promise<number> {
+    if (remaining <= 0 || usedRackIds.has(rackId)) return remaining;
+
+    const rack = await this.racksRepository.getRackById(rackId, organizationId);
+    if (!rack) return remaining;
+
+    const occupants = await this.loadRackOccupants(organizationId, rackId, tx);
+    const capacity = capacityForSkuOnRack(rack, sku, occupants);
+    const available = this.availableQtyForAllocation(capacity);
+    if (available <= 0) return remaining;
+
+    const take = Math.min(remaining, available);
+    if (take <= 0) return remaining;
+
+    allocations.push({
+      rackId,
+      rackLabel: formatRackLabel(rack),
+      quantity: take,
+      maxCapacity: capacity.maxCapacity,
+      availableCapacity: capacity.availableCapacity,
+      source,
+    });
+    usedRackIds.add(rackId);
+    return roundAllocated(remaining - take);
+  }
+
+  private async allocateAcrossRacks(
+    organizationId: string,
+    sku: NonNullable<Awaited<ReturnType<InboundPutawaySuggestionService["resolveSku"]>>>,
+    remaining: number,
+    usedRackIds: Set<string>,
+    allocations: InboundPutawayAllocation[],
+    racks: Array<{
+      rackId: string;
+      rackRow?: string | null;
+      rackLevel?: string | null;
+      rackColumn?: string | null;
+    }>,
+    source: InboundPutawayAllocationSource,
+    tx?: DbTransaction,
+  ): Promise<number> {
+    let left = remaining;
+    for (const rack of racks) {
+      if (left <= 0) break;
+      if (!rack?.rackId || usedRackIds.has(rack.rackId)) continue;
+      left = await this.allocateFromRack(
+        organizationId,
+        sku,
+        rack.rackId,
+        left,
+        usedRackIds,
+        allocations,
+        source,
+        tx,
+      );
+    }
+    return left;
+  }
+
+  private async listCandidateRacks(
+    organizationId: string,
+    usedRackIds: Set<string>,
+    options: {
+      emptyOnly: boolean;
+      excludePickFaceBins: boolean;
+      pickFaceBinIds: Set<string>;
+    },
+    tx?: DbTransaction,
+  ) {
+    const client = tx ?? db;
+    let occupied = new Set<string>();
+    if (options.emptyOnly) {
+      const occupiedRows = await client
+        .select({ rackId: StockQuantTable.rackId })
+        .from(StockQuantTable)
+        .where(
+          and(
+            eq(StockQuantTable.organizationId, organizationId),
+            gt(sql`${StockQuantTable.quantity}::numeric`, 0),
+          ),
+        );
+      occupied = new Set(occupiedRows.map((row) => row.rackId));
+    }
+
+    const racksResult = await this.racksRepository.getRack(
+      { isActive: true },
+      { pageSize: 50000, pageNumber: 1 },
+      organizationId,
+    );
+
+    return (racksResult.query ?? [])
+      .filter((rack) => rack.rackId && !usedRackIds.has(rack.rackId))
+      .filter((rack) => !options.emptyOnly || !occupied.has(rack.rackId))
+      .filter(
+        (rack) =>
+          !options.excludePickFaceBins || !options.pickFaceBinIds.has(rack.rackId),
+      )
+      .sort((a, b) =>
+        formatRackLabel(a).localeCompare(formatRackLabel(b), undefined, {
+          numeric: true,
+        }),
+      );
   }
 
   async getRackSkuCapacity(
@@ -370,4 +642,23 @@ function emptySuggestion(
     message,
     capacityForRack,
   };
+}
+
+function emptyPutawayPlan(
+  defaultRackId: string | null,
+  message: string,
+  capacityForRack: RackSkuCapacity | null = null,
+): InboundPutawayPlan {
+  return {
+    allocations: [],
+    totalAllocated: 0,
+    remainingQty: 0,
+    message,
+    defaultRackId,
+    capacityForRack,
+  };
+}
+
+function roundAllocated(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }

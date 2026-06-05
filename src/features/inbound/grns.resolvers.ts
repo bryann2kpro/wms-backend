@@ -19,6 +19,13 @@ import type { GrnItemsType } from './grns-items.repository';
 import { inArray } from 'drizzle-orm';
 import { InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
 import { recordGrnApprovalStockQuants } from './grn-stock-quant.service';
+import {
+    assertGrnItemRackAllocations,
+    buildGrnItemRackRows,
+    primaryRackIdFromAllocations,
+    resolveGrnItemRackAllocations,
+    type GrnItemRackInput,
+} from './grn-rack-allocation.util';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -52,10 +59,19 @@ function transformGrn(grn: GrnType) {
 function transformGrnItem(
     item: GrnItemsType,
     skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>,
-    rackMap?: Map<string, string[]>
+    rackMap?: Map<string, Array<{ rackId: string; quantity: number | null }>>,
 ) {
     const sku = skuMap?.get(item.skuId);
-    const rackIds = rackMap?.get(item.id) ?? (item.rackId ? [item.rackId] : []);
+    const rackLinks = rackMap?.get(item.id) ?? [];
+    const rackIds = rackLinks.length > 0
+        ? rackLinks.map((link) => link.rackId)
+        : (item.rackId ? [item.rackId] : []);
+    const rackAllocations = rackLinks
+        .filter((link) => link.quantity != null && link.quantity > 0)
+        .map((link) => ({
+            rackId: link.rackId,
+            quantity: link.quantity as number,
+        }));
     const primaryRackId = rackIds[0] ?? null;
     return {
         id: item.id,
@@ -68,6 +84,7 @@ function transformGrnItem(
         remarks: item.remarks,
         rackId: primaryRackId,
         rackIds,
+        rackAllocations,
         expiryDate: (item as any).expiryDate?.toISOString?.() ?? (item as any).expiryDate ?? null,
         lotNo: (item as any).lotNo ?? null,
         createdAt: item.createdAt?.toISOString?.() ?? item.createdAt,
@@ -119,17 +136,19 @@ async function assertSkuLotExpiryControls(
     }
 }
 
-type GrnItemRackInput = { rackId?: string | null; rackIds?: string[] | null };
-
-function assertSingleRackPerGrnItem(items: GrnItemRackInput[] | null | undefined) {
-    if (!items?.length) return;
-    for (const item of items) {
-        const rackIds = (item.rackIds ?? []).filter((id): id is string => Boolean(id?.trim()));
-        if (rackIds.length > 1) {
-            throw new GraphQLError('Each GRN line item may have only one rack.', {
-                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
-            });
-        }
+async function insertGrnItemRackRows(
+    createdItems: GrnItemsType[],
+    sourceItems: GrnItemRackInput[],
+    tx: import('@/types/db-transaction').DbTransaction,
+): Promise<void> {
+    const rackRows: Array<{ grnItemId: string; rackId: string; quantity: string }> = [];
+    createdItems.forEach((createdItem, index) => {
+        const source = sourceItems[index];
+        if (!source) return;
+        rackRows.push(...buildGrnItemRackRows(createdItem.id, source));
+    });
+    if (rackRows.length > 0) {
+        await tx.insert(GrnItemRacksTable).values(rackRows);
     }
 }
 
@@ -330,6 +349,29 @@ export const resolvers = {
             });
             return suggestion;
         },
+        suggestInboundPutawayPlan: async (
+            _: unknown,
+            args: {
+                skuId?: string | null;
+                skuCode?: string | null;
+                quantity: number;
+                forRackId?: string | null;
+            },
+            context: GraphQLContext,
+        ) => {
+            if (!context.organizationId) {
+                throw new GraphQLError('Organization context is required', {
+                    extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                });
+            }
+            return inboundPutawaySuggestionService.suggestPutawayPlan({
+                organizationId: context.organizationId,
+                skuId: args.skuId,
+                skuCode: args.skuCode,
+                quantity: args.quantity,
+                forRackId: args.forRackId,
+            });
+        },
     },
     Grn: {
         createdByUser: async (parent: { createdBy?: string | null }) => {
@@ -379,7 +421,7 @@ export const resolvers = {
             }
 
             const grnItemIds = result.map((r) => r.id);
-            let rackMap = new Map<string, string[]>();
+            let rackMap = new Map<string, Array<{ rackId: string; quantity: number | null }>>();
             if (grnItemIds.length > 0) {
                 const rackLinks = await db
                     .select()
@@ -387,7 +429,10 @@ export const resolvers = {
                     .where(inArray(GrnItemRacksTable.grnItemId, grnItemIds));
                 for (const link of rackLinks) {
                     const current = rackMap.get(link.grnItemId) ?? [];
-                    current.push(link.rackId);
+                    current.push({
+                        rackId: link.rackId,
+                        quantity: link.quantity != null ? Number(link.quantity) : null,
+                    });
                     rackMap.set(link.grnItemId, current);
                 }
             }
@@ -433,7 +478,7 @@ export const resolvers = {
                     advanceNoticeId: input.advanceNoticeId,
                     items: input.items,
                 });
-                assertSingleRackPerGrnItem(input.items);
+                assertGrnItemRackAllocations(input.items);
                 await assertSkuLotExpiryControls(input.items, context.organizationId ?? undefined);
                 const result = await inboundServices.createInbound({
                     userId: input.userId,
@@ -507,7 +552,7 @@ export const resolvers = {
                         });
                     }
 
-                    assertSingleRackPerGrnItem(input.items);
+                    assertGrnItemRackAllocations(input.items);
                     await assertSkuLotExpiryControls(
                         input.items,
                         context.organizationId ?? undefined,
@@ -621,16 +666,14 @@ export const resolvers = {
                                 logger.error('[grns.resolvers]: SKU not found and cannot create', { item });
                                 continue;
                             }
-                            const rackIds = item.rackIds && item.rackIds.length > 0
-                                ? item.rackIds
-                                : (item.rackId ? [item.rackId] : []);
+                            const allocations = resolveGrnItemRackAllocations(item);
                             grnItemRows.push({
                                 grnId: grn.id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
                                 remarks: item.remarks ?? undefined,
-                                rackId: rackIds[0] ?? undefined,
+                                rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                                 expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                                 lotNo: item.lotNo ?? null,
                                 createdBy,
@@ -640,22 +683,8 @@ export const resolvers = {
                         const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
                         if (createdItems === false) {
                             logger.error('[grns.resolvers]: Failed to create GRN items batch');
-                        } else if (createdItems.length && input.items) {
-                            const rackRows: { grnItemId: string; rackId: string }[] = [];
-                            createdItems.forEach((createdItem, index) => {
-                                const source = input.items![index];
-                                const rackIds = (source.rackIds && source.rackIds.length > 0)
-                                    ? source.rackIds
-                                    : (source.rackId ? [source.rackId] : []);
-                                for (const rackId of rackIds) {
-                                    if (rackId) {
-                                        rackRows.push({ grnItemId: createdItem.id, rackId });
-                                    }
-                                }
-                            });
-                            if (rackRows.length > 0) {
-                                await db.insert(GrnItemRacksTable).values(rackRows);
-                            }
+                        } else if (createdItems.length && input.items && context.tx) {
+                            await insertGrnItemRackRows(createdItems, input.items, context.tx);
                         }
                     }
 
@@ -716,7 +745,7 @@ export const resolvers = {
                     }
 
                     if (input.items?.length) {
-                        assertSingleRackPerGrnItem(input.items);
+                        assertGrnItemRackAllocations(input.items);
                         await assertSkuLotExpiryControls(
                             input.items,
                             context.organizationId ?? undefined,
@@ -812,16 +841,14 @@ export const resolvers = {
                                 logger.error('[grns.resolvers]: SKU not found and cannot create', { item });
                                 continue;
                             }
-                            const rackIds = item.rackIds && item.rackIds.length > 0
-                                ? item.rackIds
-                                : (item.rackId ? [item.rackId] : []);
+                            const allocations = resolveGrnItemRackAllocations(item);
                             grnItemRows.push({
                                 grnId: id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
                                 remarks: item.remarks ?? undefined,
-                                rackId: rackIds[0] ?? undefined,
+                                rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                                 expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                                 lotNo: item.lotNo ?? null,
                                 createdBy,
@@ -841,22 +868,8 @@ export const resolvers = {
                         await grnItemsRepository.deleteGrnItem({ grnId: id }, context.tx);
                         if (grnItemRows.length > 0) {
                             const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
-                            if (createdItems !== false && input.items) {
-                                const rackRows: { grnItemId: string; rackId: string }[] = [];
-                                createdItems.forEach((createdItem, index) => {
-                                    const source = input.items![index];
-                                    const rackIds = (source.rackIds && source.rackIds.length > 0)
-                                        ? source.rackIds
-                                        : (source.rackId ? [source.rackId] : []);
-                                    for (const rackId of rackIds) {
-                                        if (rackId) {
-                                            rackRows.push({ grnItemId: createdItem.id, rackId });
-                                        }
-                                    }
-                                });
-                                if (rackRows.length > 0) {
-                                    await db.insert(GrnItemRacksTable).values(rackRows);
-                                }
+                            if (createdItems !== false && input.items && context.tx) {
+                                await insertGrnItemRackRows(createdItems, input.items, context.tx);
                             }
                         }
 

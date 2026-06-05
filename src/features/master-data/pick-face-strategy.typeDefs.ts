@@ -26,6 +26,8 @@ export const typeDefs = gql`
     skuId: ID
     storageBinId: ID
     binType: String
+    """Partial match on item code, SKU description, or storage bin."""
+    search: String
   }
 
   input CreatePickFaceStrategyInput {

@@ -7,7 +7,7 @@
 import { db } from '@/db';
 import { OutletsTable, OutletType, OutletInsertType } from './outlets.model';
 import { RegionTable } from './region.model';
-import { eq, and, like, inArray } from 'drizzle-orm';
+import { eq, and, like, inArray, or, ilike, asc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -27,6 +27,8 @@ export type RackFilter = {
   binCode?: string;
   binType?: string;
   isActive?: boolean;
+  /** Partial match on row, level, column, bin code, or `row-level-column` label. */
+  search?: string;
 };
 
 export class RacksRepositoryClass {
@@ -82,6 +84,20 @@ export class RacksRepositoryClass {
         whereCondition.push(eq(RacksTable.isActive, filter.isActive));
       }
 
+      const searchTerm = filter.search?.trim();
+      if (searchTerm) {
+        const pattern = `%${searchTerm}%`;
+        whereCondition.push(
+          or(
+            ilike(RacksTable.rackRow, pattern),
+            ilike(RacksTable.rackColumn, pattern),
+            ilike(RacksTable.rackLevel, pattern),
+            ilike(RacksTable.binCode, pattern),
+            sql`(${RacksTable.rackRow} || '-' || ${RacksTable.rackLevel} || '-' || ${RacksTable.rackColumn}) ilike ${pattern}`,
+          )!,
+        );
+      }
+
       const baseQuery = db
         .select({
           rackId: RacksTable.rackId,
@@ -105,7 +121,12 @@ export class RacksRepositoryClass {
           updatedBy: RacksTable.updatedBy,
         })
         .from(RacksTable)
-        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+        .orderBy(
+          asc(RacksTable.rackRow),
+          asc(RacksTable.rackLevel),
+          asc(RacksTable.rackColumn),
+        );
 
       const pageSize = paginationParams.pageSize || 10;
       const pageNumber = paginationParams.pageNumber || 1;
