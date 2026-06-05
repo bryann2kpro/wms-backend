@@ -7,7 +7,7 @@
 import { db } from '@/db';
 import { OutletsTable, OutletType, OutletInsertType } from './outlets.model';
 import { RegionTable } from './region.model';
-import { eq, and, like, inArray, asc, desc } from 'drizzle-orm';
+import { eq, and, like, inArray, or, ilike, asc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -27,8 +27,8 @@ export type RackFilter = {
   binCode?: string;
   binType?: string;
   isActive?: boolean;
-  sortBy?: string;
-  sortOrder?: string;
+  /** Partial match on row, level, column, bin code, or `row-level-column` label. */
+  search?: string;
 };
 
 export class RacksRepositoryClass {
@@ -84,16 +84,19 @@ export class RacksRepositoryClass {
         whereCondition.push(eq(RacksTable.isActive, filter.isActive));
       }
 
-      const sortOrderFn = filter.sortOrder?.toUpperCase() === 'ASC' ? asc : desc;
-      const sortByField = filter.sortBy?.toUpperCase() ?? 'UPDATED_AT';
-      const orderByCol =
-        sortByField === 'BIN_CODE'    ? RacksTable.binCode    :
-        sortByField === 'RACK_ROW'    ? RacksTable.rackRow    :
-        sortByField === 'RACK_COLUMN' ? RacksTable.rackColumn :
-        sortByField === 'RACK_LEVEL'  ? RacksTable.rackLevel  :
-        sortByField === 'BIN_TYPE'    ? RacksTable.binType    :
-        sortByField === 'CREATED_AT'  ? RacksTable.createdAt  :
-        RacksTable.updatedAt;
+      const searchTerm = filter.search?.trim();
+      if (searchTerm) {
+        const pattern = `%${searchTerm}%`;
+        whereCondition.push(
+          or(
+            ilike(RacksTable.rackRow, pattern),
+            ilike(RacksTable.rackColumn, pattern),
+            ilike(RacksTable.rackLevel, pattern),
+            ilike(RacksTable.binCode, pattern),
+            sql`(${RacksTable.rackRow} || '-' || ${RacksTable.rackLevel} || '-' || ${RacksTable.rackColumn}) ilike ${pattern}`,
+          )!,
+        );
+      }
 
       const baseQuery = db
         .select({
@@ -119,7 +122,11 @@ export class RacksRepositoryClass {
         })
         .from(RacksTable)
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
-        .orderBy(sortOrderFn(orderByCol));
+        .orderBy(
+          asc(RacksTable.rackRow),
+          asc(RacksTable.rackLevel),
+          asc(RacksTable.rackColumn),
+        );
 
       const pageSize = paginationParams.pageSize || 10;
       const pageNumber = paginationParams.pageNumber || 1;

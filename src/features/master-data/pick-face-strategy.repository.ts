@@ -8,7 +8,7 @@ import { db } from '@/db';
 import { PickFaceStrategyTable, PickFaceStrategyType, PickFaceStrategyInsertType } from './pick-face-strategy.model';
 import { SkuTable } from './sku.model';
 import { RacksTable } from './racks.model';
-import { eq, and, inArray, asc, desc, like } from 'drizzle-orm';
+import { eq, and, or, ilike, asc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -23,9 +23,8 @@ export type PickFaceStrategyFilter = {
   skuId?: string;
   storageBinId?: string;
   binType?: string;
-  itemCode?: string;
-  sortBy?: string;
-  sortOrder?: string;
+  /** Partial match on item code, SKU description, or storage bin label. */
+  search?: string;
 };
 
 export class PickFaceStrategyRepositoryClass {
@@ -65,18 +64,18 @@ export class PickFaceStrategyRepositoryClass {
         whereCondition.push(eq(PickFaceStrategyTable.binType, filter.binType));
       }
 
-      if (filter.itemCode) {
-        whereCondition.push(like(PickFaceStrategyTable.itemCode, `%${filter.itemCode}%`));
+      const searchTerm = filter.search?.trim();
+      if (searchTerm) {
+        const pattern = `%${searchTerm}%`;
+        whereCondition.push(
+          or(
+            ilike(PickFaceStrategyTable.itemCode, pattern),
+            ilike(SkuTable.skuDescription, pattern),
+            ilike(RacksTable.binCode, pattern),
+            sql`(${RacksTable.rackRow} || '-' || ${RacksTable.rackLevel} || '-' || ${RacksTable.rackColumn}) ilike ${pattern}`,
+          )!,
+        );
       }
-
-      const sortOrderFn = filter.sortOrder?.toUpperCase() === 'ASC' ? asc : desc;
-      const sortByField = filter.sortBy?.toUpperCase() ?? 'UPDATED_AT';
-      const orderByCol =
-        sortByField === 'ITEM_CODE'    ? PickFaceStrategyTable.itemCode    :
-        sortByField === 'BIN_TYPE'     ? PickFaceStrategyTable.binType     :
-        sortByField === 'STORAGE_BIN'  ? RacksTable.binCode                :
-        sortByField === 'CREATED_AT'   ? PickFaceStrategyTable.createdAt   :
-        PickFaceStrategyTable.updatedAt;
 
       const baseQuery = db
         .select({
@@ -100,7 +99,7 @@ export class PickFaceStrategyRepositoryClass {
         .leftJoin(RacksTable, eq(PickFaceStrategyTable.storageBinId, RacksTable.rackId))
         .leftJoin(SkuTable, eq(PickFaceStrategyTable.skuId, SkuTable.skuId))
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
-        .orderBy(sortOrderFn(orderByCol));
+        .orderBy(asc(PickFaceStrategyTable.itemCode));
 
       const pageSize = paginationParams.pageSize || 10;
       const pageNumber = paginationParams.pageNumber || 1;
@@ -258,5 +257,18 @@ export class PickFaceStrategyRepositoryClass {
       logger.error('❌ [PickFaceStrategyRepository.getActiveBySkuId] Error:', error);
       throw error;
     }
+  }
+
+  /** All rack IDs used as storage_bin_id for any SKU in the organization. */
+  async listStorageBinIds(
+    organizationId: string,
+    tx?: DbTransaction,
+  ): Promise<Set<string>> {
+    const dbClient = tx ?? db;
+    const rows = await dbClient
+      .select({ storageBinId: PickFaceStrategyTable.storageBinId })
+      .from(PickFaceStrategyTable)
+      .where(eq(PickFaceStrategyTable.organizationId, organizationId));
+    return new Set(rows.map((row) => row.storageBinId).filter(Boolean));
   }
 }

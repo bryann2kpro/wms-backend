@@ -26,12 +26,8 @@ export const typeDefs = gql`
     skuId: ID
     storageBinId: ID
     binType: String
-    itemCode: String
-  }
-
-  input PickFaceStrategySortInput {
-    sortBy: String
-    sortOrder: String
+    """Partial match on item code, SKU description, or storage bin."""
+    search: String
   }
 
   input CreatePickFaceStrategyInput {

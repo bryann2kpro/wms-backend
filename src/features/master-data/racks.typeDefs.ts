@@ -58,6 +58,8 @@ export const typeDefs = `#graphql
     binCode: String
     binType: String
     isActive: Boolean
+    """Partial match on rack row/level/column, bin code, or row-level-column label."""
+    search: String
   }
 
   """

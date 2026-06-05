@@ -56,6 +56,8 @@ export const typeDefs = `#graphql
         rack: Rack
         """All rack IDs associated with this GRN item."""
         rackIds: [ID!]
+        """Per-rack carton allocations for this GRN item."""
+        rackAllocations: [GrnRackAllocation!]
         """Optional expiry date for this GRN item."""
         expiryDate: String
         """Lot number assigned by supplier/manufacturer to identify this production batch."""
@@ -79,6 +81,8 @@ export const typeDefs = `#graphql
         rackId: ID
         """All rack IDs associated with this GRN item."""
         rackIds: [ID!]
+        """Per-rack carton allocations (preferred over rackIds when splitting putaway)."""
+        rackAllocations: [GrnRackAllocationInput!]
         """Optional expiry date for this GRN item."""
         expiryDate: String
         """Lot number assigned by supplier/manufacturer to identify this production batch."""
@@ -192,6 +196,44 @@ export const typeDefs = `#graphql
         capacityForRack: RackSkuCapacity
     }
 
+    """
+    One rack location in a multi-rack inbound putaway plan.
+    """
+    type InboundPutawayAllocation {
+        rackId: ID!
+        rackLabel: String!
+        quantity: Float!
+        maxCapacity: Float
+        availableCapacity: Float
+        """DEFAULT | UNASSIGNED_EMPTY | FALLBACK"""
+        source: String!
+    }
+
+    """
+    Multi-rack putaway plan when received quantity exceeds a single rack capacity.
+    """
+    type InboundPutawayPlan {
+        allocations: [InboundPutawayAllocation!]!
+        totalAllocated: Float!
+        remainingQty: Float!
+        message: String
+        defaultRackId: ID
+        capacityForRack: RackSkuCapacity
+    }
+
+    """
+    Rack allocation for a GRN line (rack + carton qty).
+    """
+    type GrnRackAllocation {
+        rackId: ID!
+        quantity: Float!
+    }
+
+    input GrnRackAllocationInput {
+        rackId: ID!
+        quantity: Float!
+    }
+
     extend type Query {
         """
         List advance notices from NetSuite that have not yet been linked to a GRN.
@@ -232,6 +274,12 @@ export const typeDefs = `#graphql
         Requires authentication.
         """
         suggestInboundRack(skuId: ID, skuCode: String, quantity: Float!, forRackId: ID): InboundRackSuggestion! @auth
+
+        """
+        Suggest multiple rack locations for inbound putaway when quantity exceeds one rack.
+        Fills pick-face default first, then empty racks not assigned in pick-face table, then any rack with capacity.
+        """
+        suggestInboundPutawayPlan(skuId: ID, skuCode: String, quantity: Float!, forRackId: ID): InboundPutawayPlan! @auth
     }
 
     type GrnPaginatedResponse {

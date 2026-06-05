@@ -24,6 +24,7 @@ const rackFilterSchema = z.object({
   binCode: z.string().optional(),
   binType: z.string().optional(),
   isActive: z.boolean().optional(),
+  search: z.string().optional(),
 }).transform((data) => ({
   ...data,
   rackIds: data.rackId ? [data.rackId] : data.rackIds,
@@ -166,6 +167,7 @@ export const resolvers = {
         if (data.binCode) filter.binCode = data.binCode;
         if (data.binType) filter.binType = data.binType;
         if (data.isActive !== undefined) filter.isActive = data.isActive;
+        if (data.search?.trim()) filter.search = data.search.trim();
       }
 
       if (args.sort) {
