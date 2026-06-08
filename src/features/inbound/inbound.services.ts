@@ -9,6 +9,11 @@ import type { DbTransaction } from "@/types/db-transaction";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
 import { GrnItemRacksTable } from "./grns.model";
+import {
+  buildGrnItemRackRows,
+  primaryRackIdFromAllocations,
+  resolveGrnItemRackAllocations,
+} from "./grn-rack-allocation.util";
 import { OrganizationRepositoryClass } from "../master-data/organization.repository";
 import { EsAdvanceNoticeRepositoryClass } from "../es/es.repository";
 import { SuppliersRepositoryClass } from "../master-data/suppliers.repository";
@@ -25,6 +30,7 @@ export type CreateInboundItemInput = {
     remarks?: string | null;
     rackId?: string | null;
     rackIds?: string[] | null;
+    rackAllocations?: Array<{ rackId: string; quantity: string | number }> | null;
     expiryDate?: string | null;
     lotNo?: string | null;
     skuCode?: string | null;
@@ -157,16 +163,14 @@ export class InboundServices {
                     for (const item of data.items) {
                         const skuIdToUse = await this.resolveOrCreateSkuForItem(item, createdBy, updatedBy, tx);
                         if (!skuIdToUse) continue;
-                        const rackIds = item.rackIds && item.rackIds.length > 0
-                            ? item.rackIds
-                            : (item.rackId ? [item.rackId] : []);
+                        const allocations = resolveGrnItemRackAllocations(item);
                         grnItemRows.push({
                             grnId: grn.id,
                             skuId: skuIdToUse,
                             qty: item.qty,
                             lossQty: item.lossQty ?? '0',
                             remarks: item.remarks ?? undefined,
-                            rackId: rackIds[0] ?? undefined,
+                            rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                             expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                             lotNo: item.lotNo ?? null,
                             createdBy,
@@ -179,17 +183,10 @@ export class InboundServices {
                             logger.error('[InboundServices] Failed to create GRN items batch');
                             throw new Error('Failed to create GRN items');
                         } else if (createdItems.length && data.items) {
-                            const rackRows: { grnItemId: string; rackId: string }[] = [];
-                            createdItems.forEach((createdItem, index) => {
+                            const rackRows = createdItems.flatMap((createdItem, index) => {
                                 const source = data.items![index];
-                                const rackIds = (source.rackIds && source.rackIds.length > 0)
-                                    ? source.rackIds
-                                    : (source.rackId ? [source.rackId] : []);
-                                for (const rackId of rackIds) {
-                                    if (rackId) {
-                                        rackRows.push({ grnItemId: createdItem.id, rackId });
-                                    }
-                                }
+                                if (!source) return [];
+                                return buildGrnItemRackRows(createdItem.id, source);
                             });
                             if (rackRows.length > 0) {
                                 await tx.insert(GrnItemRacksTable).values(rackRows);

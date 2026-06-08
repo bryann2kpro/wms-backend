@@ -53,6 +53,8 @@ import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplie
 import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
 import { InboundServices } from './features/inbound/inbound.services';
 import { GrnPutawayService } from './features/inbound/grn-putaway.service';
+import { InboundPutawaySuggestionService } from './features/inbound/inbound-putaway-suggestion.service';
+import { StockQuantRepositoryClass } from './features/stock-quant/stock-quant.repository';
 // Outbound Repositories & Services
 import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
@@ -204,12 +206,21 @@ export const inboundServices = new InboundServices(
 export const apiKeysRepository = new ApiKeysRepositoryClass();
 export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
 
-export const grnPutawayService = new GrnPutawayService(grnItemsRepository, pickFaceStrategiesRepository);
+export const stockQuantRepository = new StockQuantRepositoryClass();
+export const inboundPutawaySuggestionService = new InboundPutawaySuggestionService(
+  pickFaceStrategiesRepository,
+  skuRepository,
+  racksRepository,
+  stockQuantRepository,
+);
+
+export const grnPutawayService = new GrnPutawayService(grnItemsRepository, inboundPutawaySuggestionService);
 
 export const netSuiteService = new NetSuiteService();
 export const esItemReceiptService = new EsItemReceiptServiceClass(
   esRepository,
   grnItemsRepository,
+  grnsRepository,
   skuRepository,
   suppliersRepository,
   supplierDeliveriesRepository,

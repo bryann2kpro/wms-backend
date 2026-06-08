@@ -7,7 +7,7 @@
  * Type definitions are in grns.typeDefs.ts
  */
 
-import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService, esRepository, grnPutawayService } from '@/composition-root';
+import { grnsRepository, grnItemsRepository, skuRepository, supplierDeliveriesRepository, supplierDeliveryItemsRepository, authRepository, warehousesRepository, racksRepository, inboundServices, inventoryMovementRepository, esItemReceiptService, esRepository, grnPutawayService, inboundPutawaySuggestionService } from '@/composition-root';
 import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
@@ -18,7 +18,15 @@ import { GrnFilter } from './grns.repository';
 import type { GrnItemsType } from './grns-items.repository';
 import { inArray } from 'drizzle-orm';
 import { InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
+import type { EsAdvanceNoticeType } from '@/features/es/es.model';
 import { recordGrnApprovalStockQuants } from './grn-stock-quant.service';
+import {
+    assertGrnItemRackAllocations,
+    buildGrnItemRackRows,
+    primaryRackIdFromAllocations,
+    resolveGrnItemRackAllocations,
+    type GrnItemRackInput,
+} from './grn-rack-allocation.util';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -52,10 +60,19 @@ function transformGrn(grn: GrnType) {
 function transformGrnItem(
     item: GrnItemsType,
     skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>,
-    rackMap?: Map<string, string[]>
+    rackMap?: Map<string, Array<{ rackId: string; quantity: number | null }>>,
 ) {
     const sku = skuMap?.get(item.skuId);
-    const rackIds = rackMap?.get(item.id) ?? (item.rackId ? [item.rackId] : []);
+    const rackLinks = rackMap?.get(item.id) ?? [];
+    const rackIds = rackLinks.length > 0
+        ? rackLinks.map((link) => link.rackId)
+        : (item.rackId ? [item.rackId] : []);
+    const rackAllocations = rackLinks
+        .filter((link) => link.quantity != null && link.quantity > 0)
+        .map((link) => ({
+            rackId: link.rackId,
+            quantity: link.quantity as number,
+        }));
     const primaryRackId = rackIds[0] ?? null;
     return {
         id: item.id,
@@ -68,6 +85,7 @@ function transformGrnItem(
         remarks: item.remarks,
         rackId: primaryRackId,
         rackIds,
+        rackAllocations,
         expiryDate: (item as any).expiryDate?.toISOString?.() ?? (item as any).expiryDate ?? null,
         lotNo: (item as any).lotNo ?? null,
         createdAt: item.createdAt?.toISOString?.() ?? item.createdAt,
@@ -119,17 +137,19 @@ async function assertSkuLotExpiryControls(
     }
 }
 
-type GrnItemRackInput = { rackId?: string | null; rackIds?: string[] | null };
-
-function assertSingleRackPerGrnItem(items: GrnItemRackInput[] | null | undefined) {
-    if (!items?.length) return;
-    for (const item of items) {
-        const rackIds = (item.rackIds ?? []).filter((id): id is string => Boolean(id?.trim()));
-        if (rackIds.length > 1) {
-            throw new GraphQLError('Each GRN line item may have only one rack.', {
-                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
-            });
-        }
+async function insertGrnItemRackRows(
+    createdItems: GrnItemsType[],
+    sourceItems: GrnItemRackInput[],
+    tx: import('@/types/db-transaction').DbTransaction,
+): Promise<void> {
+    const rackRows: Array<{ grnItemId: string; rackId: string; quantity: string }> = [];
+    createdItems.forEach((createdItem, index) => {
+        const source = sourceItems[index];
+        if (!source) return;
+        rackRows.push(...buildGrnItemRackRows(createdItem.id, source));
+    });
+    if (rackRows.length > 0) {
+        await tx.insert(GrnItemRacksTable).values(rackRows);
     }
 }
 
@@ -178,6 +198,120 @@ async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
     }
 }
 
+type EsAdvanceNoticePayload = {
+    tranid: string;
+    entity: string;
+    duedate: string;
+    lines?: Array<{
+        lineuniquekey: number;
+        itemid: string;
+        displayname?: string;
+        quantity: number;
+        units: string;
+        custrecord_r2o_order_code?: string;
+        islotitem?: string;
+        lots?: Array<{
+            serialNumbers: string;
+            quantity: number;
+            expiryDate: string;
+        }>;
+    }>;
+};
+
+/** Map a stored ES advance-notice record to the GraphQL AdvanceNotice shape. */
+function mapAdvanceNoticeRecord(
+    r: { id: string; tranid: string; receivedAt: Date | string; payload: unknown },
+    fulfillmentStatus: 'PENDING' | 'PARTIAL' = 'PENDING',
+) {
+    const p = r.payload as EsAdvanceNoticePayload;
+    return {
+        id: r.id,
+        tranid: p.tranid ?? r.tranid,
+        entity: p.entity ?? '',
+        duedate: p.duedate ?? '',
+        receivedAt: r.receivedAt instanceof Date ? r.receivedAt.toISOString() : r.receivedAt,
+        fulfillmentStatus,
+        lines: (p.lines ?? []).map((l) => {
+            const firstLot = l.lots?.[0];
+            const lotSerial =
+                firstLot &&
+                typeof firstLot.serialNumbers === 'string' &&
+                firstLot.serialNumbers.trim()
+                    ? firstLot.serialNumbers.trim()
+                    : null;
+            const lotExpiry =
+                firstLot &&
+                typeof firstLot.expiryDate === 'string' &&
+                firstLot.expiryDate.trim()
+                    ? firstLot.expiryDate.trim()
+                    : null;
+            return {
+                lineuniquekey: l.lineuniquekey,
+                itemid: l.itemid,
+                displayname: l.displayname ?? null,
+                quantity: l.quantity,
+                units: l.units,
+                custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
+                islotitem: l.islotitem ?? null,
+                lotNo: lotSerial,
+                expiryDate: lotExpiry,
+            };
+        }),
+    };
+}
+
+/**
+ * Compute whether a PO's linked ASN is fully received yet, by summing qty across
+ * ALL GRNs raised against that poNo (resolving skuId -> skuCode the same way
+ * listPendingAdvanceNotices does) and comparing against each ASN line's expected qty.
+ *
+ * Returns fullyFulfilled = true when there is no linked ASN (manual GRN — nothing to
+ * enforce, preserves existing behaviour) or when every line's received >= expected.
+ */
+async function computePoFulfillment(poNo: string | null | undefined): Promise<{
+    asn: EsAdvanceNoticeType | null;
+    fullyFulfilled: boolean;
+    shortfalls: Array<{ skuCode: string; expected: number; received: number }>;
+}> {
+    if (!poNo) return { asn: null, fullyFulfilled: true, shortfalls: [] };
+
+    const asn = await esRepository.findByTranid(poNo);
+    if (!asn) return { asn: null, fullyFulfilled: true, shortfalls: [] };
+
+    const payload = asn.payload as EsAdvanceNoticePayload;
+    const lines = payload.lines ?? [];
+    if (lines.length === 0) return { asn, fullyFulfilled: true, shortfalls: [] };
+
+    const grnsForPo = await grnsRepository.getGrns({ poNo }, { pageSize: 100, pageNumber: 1 });
+    const grnList = grnsForPo && 'query' in grnsForPo ? grnsForPo.query : [];
+
+    const receivedByskuId = new Map<string, number>();
+    for (const grn of grnList) {
+        const items = await grnItemsRepository.getGrnItems({ grnId: grn.id });
+        for (const item of items || []) {
+            receivedByskuId.set(item.skuId, (receivedByskuId.get(item.skuId) ?? 0) + Number(item.qty || 0));
+        }
+    }
+
+    let receivedBySku = new Map<string, number>();
+    if (receivedByskuId.size > 0) {
+        const skuResult = await skuRepository.getSku({ skuId: [...receivedByskuId.keys()] }, undefined, undefined, undefined);
+        receivedBySku = new Map(
+            skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuCode, receivedByskuId.get(s.skuId) ?? 0]),
+        );
+    }
+
+    const shortfalls: Array<{ skuCode: string; expected: number; received: number }> = [];
+    for (const line of lines) {
+        const received = receivedBySku.get(line.itemid) ?? 0;
+        if (line.quantity - received > 0) {
+            shortfalls.push({ skuCode: line.itemid, expected: line.quantity, received });
+        }
+    }
+
+    return { asn, fullyFulfilled: shortfalls.length === 0, shortfalls };
+}
+
 export const resolvers = {
     Query: {
         grns: async (_: unknown, args: {
@@ -194,6 +328,9 @@ export const resolvers = {
                     };
                     if (args.filter.grnNo) {
                         filter.grnNo = args.filter.grnNo;
+                    };
+                    if (args.filter.poNo) {
+                        filter.poNo = args.filter.poNo;
                     };
                     if (args.filter.search != null) {
                         filter.search = args.filter.search;
@@ -246,65 +383,107 @@ export const resolvers = {
         },
         listPendingAdvanceNotices: async () => {
             try {
-                const records = await esRepository.findPending();
-                return records.map((r) => {
-                    const p = r.payload as {
-                        tranid: string;
-                        entity: string;
-                        duedate: string;
-                        lines?: Array<{
-                            lineuniquekey: number;
-                            itemid: string;
-                            displayname?: string;
-                            quantity: number;
-                            units: string;
-                            custrecord_r2o_order_code?: string;
-                            islotitem?: string;
-                            lots?: Array<{
-                                serialNumbers: string;
-                                quantity: number;
-                                expiryDate: string;
-                            }>;
-                        }>;
-                    };
-                    return {
-                        id: r.id,
-                        tranid: p.tranid ?? r.tranid,
-                        entity: p.entity ?? '',
-                        duedate: p.duedate ?? '',
-                        receivedAt: r.receivedAt instanceof Date ? r.receivedAt.toISOString() : r.receivedAt,
-                        lines: (p.lines ?? []).map((l) => {
-                            const firstLot = l.lots?.[0];
-                            const lotSerial =
-                                firstLot &&
-                                typeof firstLot.serialNumbers === 'string' &&
-                                firstLot.serialNumbers.trim()
-                                    ? firstLot.serialNumbers.trim()
-                                    : null;
-                            const lotExpiry =
-                                firstLot &&
-                                typeof firstLot.expiryDate === 'string' &&
-                                firstLot.expiryDate.trim()
-                                    ? firstLot.expiryDate.trim()
-                                    : null;
-                            return {
-                                lineuniquekey: l.lineuniquekey,
-                                itemid: l.itemid,
-                                displayname: l.displayname ?? null,
-                                quantity: l.quantity,
-                                units: l.units,
-                                custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
-                                islotitem: l.islotitem ?? null,
-                                lotNo: lotSerial,
-                                expiryDate: lotExpiry,
-                            };
-                        }),
-                    };
-                });
+                const [pending, linked] = await Promise.all([
+                    esRepository.findPending(),
+                    esRepository.findLinked(),
+                ]);
+
+                const pendingResults = pending.map((r) => mapAdvanceNoticeRecord(r, 'PENDING'));
+
+                // For linked ASNs, work out whether the PO still has qty outstanding
+                // (i.e. more deliveries are expected) — only surface those as "partial".
+                const partialResults: ReturnType<typeof mapAdvanceNoticeRecord>[] = [];
+                for (const record of linked) {
+                    const payload = record.payload as EsAdvanceNoticePayload;
+                    const lines = payload.lines ?? [];
+                    if (lines.length === 0) continue;
+
+                    const grnsForPo = await grnsRepository.getGrns({ poNo: record.tranid }, { pageSize: 100, pageNumber: 1 });
+                    const grnList = grnsForPo && 'query' in grnsForPo ? grnsForPo.query : [];
+
+                    const receivedByskuId = new Map<string, number>();
+                    for (const grn of grnList) {
+                        const items = await grnItemsRepository.getGrnItems({ grnId: grn.id });
+                        for (const item of items || []) {
+                            receivedByskuId.set(item.skuId, (receivedByskuId.get(item.skuId) ?? 0) + Number(item.qty || 0));
+                        }
+                    }
+
+                    let receivedBySku = new Map<string, number>();
+                    if (receivedByskuId.size > 0) {
+                        const skuResult = await skuRepository.getSku({ skuId: [...receivedByskuId.keys()] }, undefined, undefined, undefined);
+                        receivedBySku = new Map(
+                            skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuCode, receivedByskuId.get(s.skuId) ?? 0]),
+                        );
+                    }
+
+                    const hasOutstandingQty = lines.some((l) => l.quantity - (receivedBySku.get(l.itemid) ?? 0) > 0);
+                    if (hasOutstandingQty) {
+                        partialResults.push(mapAdvanceNoticeRecord(record, 'PARTIAL'));
+                    }
+                }
+
+                return [...pendingResults, ...partialResults];
             } catch (error) {
                 logger.error('[grns.resolvers] listPendingAdvanceNotices Error:', error);
                 throw error;
             }
+        },
+        advanceNoticeByPoNo: async (_: unknown, args: { poNo: string }) => {
+            try {
+                const record = await esRepository.findByTranid(args.poNo);
+                return record ? mapAdvanceNoticeRecord(record) : null;
+            } catch (error) {
+                logger.error('[grns.resolvers] advanceNoticeByPoNo Error:', error);
+                throw error;
+            }
+        },
+        suggestInboundRack: async (
+            _: unknown,
+            args: {
+                skuId?: string | null;
+                skuCode?: string | null;
+                quantity: number;
+                forRackId?: string | null;
+            },
+            context: GraphQLContext,
+        ) => {
+            if (!context.organizationId) {
+                throw new GraphQLError('Organization context is required', {
+                    extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                });
+            }
+            const suggestion = await inboundPutawaySuggestionService.suggestRack({
+                organizationId: context.organizationId,
+                skuId: args.skuId,
+                skuCode: args.skuCode,
+                quantity: args.quantity,
+                forRackId: args.forRackId,
+            });
+            return suggestion;
+        },
+        suggestInboundPutawayPlan: async (
+            _: unknown,
+            args: {
+                skuId?: string | null;
+                skuCode?: string | null;
+                quantity: number;
+                forRackId?: string | null;
+            },
+            context: GraphQLContext,
+        ) => {
+            if (!context.organizationId) {
+                throw new GraphQLError('Organization context is required', {
+                    extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                });
+            }
+            return inboundPutawaySuggestionService.suggestPutawayPlan({
+                organizationId: context.organizationId,
+                skuId: args.skuId,
+                skuCode: args.skuCode,
+                quantity: args.quantity,
+                forRackId: args.forRackId,
+            });
         },
     },
     Grn: {
@@ -355,7 +534,7 @@ export const resolvers = {
             }
 
             const grnItemIds = result.map((r) => r.id);
-            let rackMap = new Map<string, string[]>();
+            let rackMap = new Map<string, Array<{ rackId: string; quantity: number | null }>>();
             if (grnItemIds.length > 0) {
                 const rackLinks = await db
                     .select()
@@ -363,12 +542,27 @@ export const resolvers = {
                     .where(inArray(GrnItemRacksTable.grnItemId, grnItemIds));
                 for (const link of rackLinks) {
                     const current = rackMap.get(link.grnItemId) ?? [];
-                    current.push(link.rackId);
+                    current.push({
+                        rackId: link.rackId,
+                        quantity: link.quantity != null ? Number(link.quantity) : null,
+                    });
                     rackMap.set(link.grnItemId, current);
                 }
             }
 
             return result.map((item) => transformGrnItem(item, skuMap, rackMap));
+        },
+        /**
+         * Whether this GRN's PO/ASN is fully received yet — drives the "Send to ES"
+         * button's visibility (a partially-fulfilled PO is guaranteed to be rejected
+         * by NetSuite, see computePoFulfillment). Returns null when there's nothing
+         * to enforce (no linked ASN / not yet approved) so the UI treats it as sendable.
+         */
+        poFulfilled: async (parent: { status?: string | null; poNo?: string | null }) => {
+            if (parent.status !== 'Approved') return null;
+            const fulfillment = await computePoFulfillment(parent.poNo);
+            if (!fulfillment.asn) return null;
+            return fulfillment.fullyFulfilled;
         },
     },
     GrnItem: {
@@ -409,7 +603,7 @@ export const resolvers = {
                     advanceNoticeId: input.advanceNoticeId,
                     items: input.items,
                 });
-                assertSingleRackPerGrnItem(input.items);
+                assertGrnItemRackAllocations(input.items);
                 await assertSkuLotExpiryControls(input.items, context.organizationId ?? undefined);
                 const result = await inboundServices.createInbound({
                     userId: input.userId,
@@ -483,7 +677,7 @@ export const resolvers = {
                         });
                     }
 
-                    assertSingleRackPerGrnItem(input.items);
+                    assertGrnItemRackAllocations(input.items);
                     await assertSkuLotExpiryControls(
                         input.items,
                         context.organizationId ?? undefined,
@@ -597,16 +791,14 @@ export const resolvers = {
                                 logger.error('[grns.resolvers]: SKU not found and cannot create', { item });
                                 continue;
                             }
-                            const rackIds = item.rackIds && item.rackIds.length > 0
-                                ? item.rackIds
-                                : (item.rackId ? [item.rackId] : []);
+                            const allocations = resolveGrnItemRackAllocations(item);
                             grnItemRows.push({
                                 grnId: grn.id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
                                 remarks: item.remarks ?? undefined,
-                                rackId: rackIds[0] ?? undefined,
+                                rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                                 expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                                 lotNo: item.lotNo ?? null,
                                 createdBy,
@@ -616,22 +808,8 @@ export const resolvers = {
                         const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
                         if (createdItems === false) {
                             logger.error('[grns.resolvers]: Failed to create GRN items batch');
-                        } else if (createdItems.length && input.items) {
-                            const rackRows: { grnItemId: string; rackId: string }[] = [];
-                            createdItems.forEach((createdItem, index) => {
-                                const source = input.items![index];
-                                const rackIds = (source.rackIds && source.rackIds.length > 0)
-                                    ? source.rackIds
-                                    : (source.rackId ? [source.rackId] : []);
-                                for (const rackId of rackIds) {
-                                    if (rackId) {
-                                        rackRows.push({ grnItemId: createdItem.id, rackId });
-                                    }
-                                }
-                            });
-                            if (rackRows.length > 0) {
-                                await db.insert(GrnItemRacksTable).values(rackRows);
-                            }
+                        } else if (createdItems.length && input.items && context.tx) {
+                            await insertGrnItemRackRows(createdItems, input.items, context.tx);
                         }
                     }
 
@@ -692,7 +870,7 @@ export const resolvers = {
                     }
 
                     if (input.items?.length) {
-                        assertSingleRackPerGrnItem(input.items);
+                        assertGrnItemRackAllocations(input.items);
                         await assertSkuLotExpiryControls(
                             input.items,
                             context.organizationId ?? undefined,
@@ -788,16 +966,14 @@ export const resolvers = {
                                 logger.error('[grns.resolvers]: SKU not found and cannot create', { item });
                                 continue;
                             }
-                            const rackIds = item.rackIds && item.rackIds.length > 0
-                                ? item.rackIds
-                                : (item.rackId ? [item.rackId] : []);
+                            const allocations = resolveGrnItemRackAllocations(item);
                             grnItemRows.push({
                                 grnId: id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
                                 remarks: item.remarks ?? undefined,
-                                rackId: rackIds[0] ?? undefined,
+                                rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                                 expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                                 lotNo: item.lotNo ?? null,
                                 createdBy,
@@ -817,22 +993,8 @@ export const resolvers = {
                         await grnItemsRepository.deleteGrnItem({ grnId: id }, context.tx);
                         if (grnItemRows.length > 0) {
                             const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
-                            if (createdItems !== false && input.items) {
-                                const rackRows: { grnItemId: string; rackId: string }[] = [];
-                                createdItems.forEach((createdItem, index) => {
-                                    const source = input.items![index];
-                                    const rackIds = (source.rackIds && source.rackIds.length > 0)
-                                        ? source.rackIds
-                                        : (source.rackId ? [source.rackId] : []);
-                                    for (const rackId of rackIds) {
-                                        if (rackId) {
-                                            rackRows.push({ grnItemId: createdItem.id, rackId });
-                                        }
-                                    }
-                                });
-                                if (rackRows.length > 0) {
-                                    await db.insert(GrnItemRacksTable).values(rackRows);
-                                }
+                            if (createdItems !== false && input.items && context.tx) {
+                                await insertGrnItemRackRows(createdItems, input.items, context.tx);
                             }
                         }
 
@@ -887,6 +1049,25 @@ export const resolvers = {
                     }
 
                     if (updateData.status === 'SentToES') {
+                        // Block premature sends: if the linked ASN/PO still has outstanding qty,
+                        // NetSuite will reject the item receipt anyway (root cause of the
+                        // "5 GRNs all failed sending to ES" incident — partial sends against
+                        // an unfulfilled PO are doomed). Fail fast with an actionable message.
+                        const fulfillment = await computePoFulfillment(existingGrn.poNo);
+                        if (!fulfillment.fullyFulfilled) {
+                            const outstanding = fulfillment.shortfalls
+                                .map((s) => `${s.skuCode} (${s.received}/${s.expected} units)`)
+                                .join(', ');
+                            const nsError = `PO ${existingGrn.poNo} not fully received yet — outstanding: ${outstanding}. Wait for remaining deliveries before sending to ES.`;
+                            logger.info(`ℹ️ [grns.resolvers] Blocking send-to-ES — PO not fully fulfilled: ${nsError}`);
+                            const blockedGrn = await grnsRepository.updateGrn(id, {
+                                status: 'Failed',
+                                nsError,
+                                nsSentAt: new Date(),
+                            }, context.tx);
+                            return transformGrn(blockedGrn ?? grn);
+                        }
+
                         logger.info(`ℹ️ [grns.resolvers] Sending Item Receipt to NetSuite — grnNo: ${existingGrn.grnNo}`);
                         const nsResult = await esItemReceiptService.sendItemReceipt(existingGrn, context.organizationId!);
                         const finalStatus = nsResult.success ? 'SentToES' : 'Failed';
@@ -896,6 +1077,27 @@ export const resolvers = {
                             nsSentAt: new Date(),
                         }, context.tx);
                         logger.info(`ℹ️ [grns.resolvers] GRN status updated to ${finalStatus} — grnNo: ${existingGrn.grnNo}`);
+
+                        // The Item Receipt sent represents the WHOLE PO (merged across all its GRNs),
+                        // so once it succeeds, every sibling GRN against the same PO is also "sent".
+                        if (nsResult.success && existingGrn.poNo) {
+                            const siblingResult = await grnsRepository.getGrns(
+                                { poNo: existingGrn.poNo },
+                                { pageSize: 100, pageNumber: 1 },
+                                context.organizationId ?? undefined,
+                            );
+                            const siblings = siblingResult && 'query' in siblingResult ? siblingResult.query : [];
+                            for (const sibling of siblings) {
+                                if (sibling.id === id || sibling.status === 'SentToES') continue;
+                                await grnsRepository.updateGrn(sibling.id, {
+                                    status: 'SentToES',
+                                    nsError: null,
+                                    nsSentAt: new Date(),
+                                }, context.tx);
+                                logger.info(`ℹ️ [grns.resolvers] Synced sibling GRN to SentToES — grnNo: ${sibling.grnNo}`);
+                            }
+                        }
+
                         return transformGrn(updatedGrn ?? grn);
                     }
 
