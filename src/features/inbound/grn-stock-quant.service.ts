@@ -1,10 +1,9 @@
 /**
  * Records stock_quant rows and INBOUND stock_quant_transaction rows when a GRN is approved.
- * Upsert key: rack → sku → lot (optional) → expiry (optional).
- * When all match, quantity is added; otherwise a new row is created.
- * Each received line also writes a transaction: source rack = receiving rack, destination = null.
+ * Uses grn_item_racks allocations when present; otherwise falls back to grn_items.rackId + full net qty.
  */
 
+import { inArray } from "drizzle-orm";
 import type { DbTransaction } from "@/types/db-transaction";
 import { logger } from "@/util/logger";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
@@ -16,10 +15,46 @@ import {
   roundQtyPutaway,
 } from "../stock-quant/putaway/putaway-stock-move.service";
 import type { GrnItemsType } from "./grns-items.repository";
+import { GrnItemRacksTable } from "./grns.model";
+import {
+  grnItemNetQty,
+  type ResolvedGrnRackAllocation,
+} from "./grn-rack-allocation.util";
 
 const stockQuantRepository = new StockQuantRepositoryClass();
 const stockQuantTransactionRepository = new StockQuantTransactionRepositoryClass();
 const skuRepository = new SkuRepositoryClass();
+
+async function loadGrnItemRackAllocations(
+  grnItemIds: string[],
+  tx: DbTransaction,
+): Promise<Map<string, ResolvedGrnRackAllocation[]>> {
+  const map = new Map<string, ResolvedGrnRackAllocation[]>();
+  if (grnItemIds.length === 0) return map;
+
+  const rows = await tx
+    .select({
+      grnItemId: GrnItemRacksTable.grnItemId,
+      rackId: GrnItemRacksTable.rackId,
+      quantity: GrnItemRacksTable.quantity,
+    })
+    .from(GrnItemRacksTable)
+    .where(inArray(GrnItemRacksTable.grnItemId, grnItemIds));
+
+  for (const row of rows) {
+    const qty = roundQtyPutaway(Number(row.quantity ?? 0));
+    if (!row.rackId || qty <= 0) continue;
+    const current = map.get(row.grnItemId) ?? [];
+    current.push({
+      rackId: row.rackId,
+      quantity: qty,
+      quantityStr: String(qty),
+    });
+    map.set(row.grnItemId, current);
+  }
+
+  return map;
+}
 
 export async function recordGrnApprovalStockQuants(params: {
   organizationId: string;
@@ -43,58 +78,88 @@ export async function recordGrnApprovalStockQuants(params: {
     }
   }
 
-  for (const item of items) {
-    const rackId = (item.rackId ?? "").trim();
-    if (!rackId) {
-      logger.warn(
-        "[recordGrnApprovalStockQuants] Skipping GRN item without rackId",
-        { grnItemId: item.id, skuId: item.skuId },
-      );
-      continue;
-    }
+  const allocationsByItemId = await loadGrnItemRackAllocations(
+    items.map((item) => item.id),
+    tx,
+  );
 
-    const grossQty = Number(item.qty ?? 0);
-    const lossQty = Number(item.lossQty ?? 0);
-    const netQty = roundQtyPutaway(grossQty - lossQty);
-    if (!Number.isFinite(netQty) || netQty <= 0) {
-      continue;
+  for (const item of items) {
+    const netQty = grnItemNetQty(item);
+    if (netQty <= 0) continue;
+
+    let allocations = allocationsByItemId.get(item.id) ?? [];
+    if (allocations.length === 0) {
+      const rackId = (item.rackId ?? "").trim();
+      if (!rackId) {
+        logger.warn(
+          "[recordGrnApprovalStockQuants] Skipping GRN item without rack allocation",
+          { grnItemId: item.id, skuId: item.skuId },
+        );
+        continue;
+      }
+      allocations = [
+        {
+          rackId,
+          quantity: netQty,
+          quantityStr: String(netQty),
+        },
+      ];
     }
 
     const lotNo = normalizedPutawayLotNo(item.lotNo);
     const expiryDate = item.expiryDate ?? null;
-    const qtyStr = qtyPutawayToDbString(netQty);
     const description = skuDescriptionById.get(item.skuId) ?? null;
 
-    const existing = await stockQuantRepository.getStockQuantByRackSkuLotAndExpiry(
-      organizationId,
-      rackId,
-      item.skuId,
-      lotNo,
-      expiryDate,
-      tx,
-    );
+    for (const allocation of allocations) {
+      const qtyStr = qtyPutawayToDbString(allocation.quantity);
 
-    if (existing) {
-      const newQty = roundQtyPutaway(Number(existing.quantity) + netQty);
-      await stockQuantRepository.updateStockQuant(
+      const existing = await stockQuantRepository.getStockQuantByRackSkuLotAndExpiry(
         organizationId,
-        existing.id,
-        {
-          quantity: qtyPutawayToDbString(newQty),
-          description: description ?? existing.description,
-          updatedBy: userId,
-        },
+        allocation.rackId,
+        item.skuId,
+        lotNo,
+        expiryDate,
         tx,
       );
-    } else {
-      await stockQuantRepository.createStockQuant(
+
+      if (existing) {
+        const newQty = roundQtyPutaway(Number(existing.quantity) + allocation.quantity);
+        await stockQuantRepository.updateStockQuant(
+          organizationId,
+          existing.id,
+          {
+            quantity: qtyPutawayToDbString(newQty),
+            description: description ?? existing.description,
+            updatedBy: userId,
+          },
+          tx,
+        );
+      } else {
+        await stockQuantRepository.createStockQuant(
+          {
+            skuId: item.skuId,
+            rackId: allocation.rackId,
+            lotNo,
+            expiryDate,
+            description,
+            quantity: qtyStr,
+            organizationId,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+          tx,
+        );
+      }
+
+      await stockQuantTransactionRepository.createStockQuantTransaction(
         {
           skuId: item.skuId,
-          rackId,
           lotNo,
-          expiryDate,
           description,
           quantity: qtyStr,
+          sourceRackId: allocation.rackId,
+          destinationRackId: null,
+          type: "INBOUND",
           organizationId,
           createdBy: userId,
           updatedBy: userId,
@@ -102,21 +167,5 @@ export async function recordGrnApprovalStockQuants(params: {
         tx,
       );
     }
-
-    await stockQuantTransactionRepository.createStockQuantTransaction(
-      {
-        skuId: item.skuId,
-        lotNo,
-        description,
-        quantity: qtyStr,
-        sourceRackId: rackId,
-        destinationRackId: null,
-        type: "INBOUND",
-        organizationId,
-        createdBy: userId,
-        updatedBy: userId,
-      },
-      tx,
-    );
   }
 }
