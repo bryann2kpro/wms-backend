@@ -139,6 +139,11 @@ export const typeDefs = `#graphql
         duedate: String!
         receivedAt: String!
         lines: [AdvanceNoticeLine!]!
+        """
+        PENDING = no GRN created yet for this PO. PARTIAL = a GRN exists but quantities
+        remain outstanding (more deliveries expected for this PO).
+        """
+        fulfillmentStatus: String!
     }
 
     """
@@ -198,11 +203,19 @@ export const typeDefs = `#graphql
         Used to populate the ASN dropdown when creating a new GRN.
         """
         listPendingAdvanceNotices: [AdvanceNotice!]! @auth
+
+        """
+        Look up the advance notice (linked or not) for a given PO/tranid.
+        Used on GRN create to compute remaining-to-receive qty against prior deliveries.
+        """
+        advanceNoticeByPoNo(poNo: String!): AdvanceNotice @auth
     }
 
     input GrnFilterInput {
         id: ID
         grnNo: String
+        """Exact PO reference match — used to look up fulfillment history for a PO."""
+        poNo: String
         """Search across GRN number, PO reference, and Supplier DO (case-insensitive)."""
         search: String
         """When true and status is not set, omit draft GRNs from results (Draft / DRAFT)."""

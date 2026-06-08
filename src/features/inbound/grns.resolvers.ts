@@ -178,6 +178,68 @@ async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
     }
 }
 
+type EsAdvanceNoticePayload = {
+    tranid: string;
+    entity: string;
+    duedate: string;
+    lines?: Array<{
+        lineuniquekey: number;
+        itemid: string;
+        displayname?: string;
+        quantity: number;
+        units: string;
+        custrecord_r2o_order_code?: string;
+        islotitem?: string;
+        lots?: Array<{
+            serialNumbers: string;
+            quantity: number;
+            expiryDate: string;
+        }>;
+    }>;
+};
+
+/** Map a stored ES advance-notice record to the GraphQL AdvanceNotice shape. */
+function mapAdvanceNoticeRecord(
+    r: { id: string; tranid: string; receivedAt: Date | string; payload: unknown },
+    fulfillmentStatus: 'PENDING' | 'PARTIAL' = 'PENDING',
+) {
+    const p = r.payload as EsAdvanceNoticePayload;
+    return {
+        id: r.id,
+        tranid: p.tranid ?? r.tranid,
+        entity: p.entity ?? '',
+        duedate: p.duedate ?? '',
+        receivedAt: r.receivedAt instanceof Date ? r.receivedAt.toISOString() : r.receivedAt,
+        fulfillmentStatus,
+        lines: (p.lines ?? []).map((l) => {
+            const firstLot = l.lots?.[0];
+            const lotSerial =
+                firstLot &&
+                typeof firstLot.serialNumbers === 'string' &&
+                firstLot.serialNumbers.trim()
+                    ? firstLot.serialNumbers.trim()
+                    : null;
+            const lotExpiry =
+                firstLot &&
+                typeof firstLot.expiryDate === 'string' &&
+                firstLot.expiryDate.trim()
+                    ? firstLot.expiryDate.trim()
+                    : null;
+            return {
+                lineuniquekey: l.lineuniquekey,
+                itemid: l.itemid,
+                displayname: l.displayname ?? null,
+                quantity: l.quantity,
+                units: l.units,
+                custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
+                islotitem: l.islotitem ?? null,
+                lotNo: lotSerial,
+                expiryDate: lotExpiry,
+            };
+        }),
+    };
+}
+
 export const resolvers = {
     Query: {
         grns: async (_: unknown, args: {
@@ -194,6 +256,9 @@ export const resolvers = {
                     };
                     if (args.filter.grnNo) {
                         filter.grnNo = args.filter.grnNo;
+                    };
+                    if (args.filter.poNo) {
+                        filter.poNo = args.filter.poNo;
                     };
                     if (args.filter.search != null) {
                         filter.search = args.filter.search;
@@ -246,63 +311,58 @@ export const resolvers = {
         },
         listPendingAdvanceNotices: async () => {
             try {
-                const records = await esRepository.findPending();
-                return records.map((r) => {
-                    const p = r.payload as {
-                        tranid: string;
-                        entity: string;
-                        duedate: string;
-                        lines?: Array<{
-                            lineuniquekey: number;
-                            itemid: string;
-                            displayname?: string;
-                            quantity: number;
-                            units: string;
-                            custrecord_r2o_order_code?: string;
-                            islotitem?: string;
-                            lots?: Array<{
-                                serialNumbers: string;
-                                quantity: number;
-                                expiryDate: string;
-                            }>;
-                        }>;
-                    };
-                    return {
-                        id: r.id,
-                        tranid: p.tranid ?? r.tranid,
-                        entity: p.entity ?? '',
-                        duedate: p.duedate ?? '',
-                        receivedAt: r.receivedAt instanceof Date ? r.receivedAt.toISOString() : r.receivedAt,
-                        lines: (p.lines ?? []).map((l) => {
-                            const firstLot = l.lots?.[0];
-                            const lotSerial =
-                                firstLot &&
-                                typeof firstLot.serialNumbers === 'string' &&
-                                firstLot.serialNumbers.trim()
-                                    ? firstLot.serialNumbers.trim()
-                                    : null;
-                            const lotExpiry =
-                                firstLot &&
-                                typeof firstLot.expiryDate === 'string' &&
-                                firstLot.expiryDate.trim()
-                                    ? firstLot.expiryDate.trim()
-                                    : null;
-                            return {
-                                lineuniquekey: l.lineuniquekey,
-                                itemid: l.itemid,
-                                displayname: l.displayname ?? null,
-                                quantity: l.quantity,
-                                units: l.units,
-                                custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
-                                islotitem: l.islotitem ?? null,
-                                lotNo: lotSerial,
-                                expiryDate: lotExpiry,
-                            };
-                        }),
-                    };
-                });
+                const [pending, linked] = await Promise.all([
+                    esRepository.findPending(),
+                    esRepository.findLinked(),
+                ]);
+
+                const pendingResults = pending.map((r) => mapAdvanceNoticeRecord(r, 'PENDING'));
+
+                // For linked ASNs, work out whether the PO still has qty outstanding
+                // (i.e. more deliveries are expected) — only surface those as "partial".
+                const partialResults: ReturnType<typeof mapAdvanceNoticeRecord>[] = [];
+                for (const record of linked) {
+                    const payload = record.payload as EsAdvanceNoticePayload;
+                    const lines = payload.lines ?? [];
+                    if (lines.length === 0) continue;
+
+                    const grnsForPo = await grnsRepository.getGrns({ poNo: record.tranid }, { pageSize: 100, pageNumber: 1 });
+                    const grnList = grnsForPo && 'query' in grnsForPo ? grnsForPo.query : [];
+
+                    const receivedByskuId = new Map<string, number>();
+                    for (const grn of grnList) {
+                        const items = await grnItemsRepository.getGrnItems({ grnId: grn.id });
+                        for (const item of items || []) {
+                            receivedByskuId.set(item.skuId, (receivedByskuId.get(item.skuId) ?? 0) + Number(item.qty || 0));
+                        }
+                    }
+
+                    let receivedBySku = new Map<string, number>();
+                    if (receivedByskuId.size > 0) {
+                        const skuResult = await skuRepository.getSku({ skuId: [...receivedByskuId.keys()] }, undefined, undefined, undefined);
+                        receivedBySku = new Map(
+                            skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuCode, receivedByskuId.get(s.skuId) ?? 0]),
+                        );
+                    }
+
+                    const hasOutstandingQty = lines.some((l) => l.quantity - (receivedBySku.get(l.itemid) ?? 0) > 0);
+                    if (hasOutstandingQty) {
+                        partialResults.push(mapAdvanceNoticeRecord(record, 'PARTIAL'));
+                    }
+                }
+
+                return [...pendingResults, ...partialResults];
             } catch (error) {
                 logger.error('[grns.resolvers] listPendingAdvanceNotices Error:', error);
+                throw error;
+            }
+        },
+        advanceNoticeByPoNo: async (_: unknown, args: { poNo: string }) => {
+            try {
+                const record = await esRepository.findByTranid(args.poNo);
+                return record ? mapAdvanceNoticeRecord(record) : null;
+            } catch (error) {
+                logger.error('[grns.resolvers] advanceNoticeByPoNo Error:', error);
                 throw error;
             }
         },
