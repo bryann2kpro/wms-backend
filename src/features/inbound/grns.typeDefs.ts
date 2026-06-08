@@ -25,6 +25,13 @@ export const typeDefs = `#graphql
         warehouse: Warehouse
         nsError: String
         nsSentAt: String
+        """
+        Whether this GRN's PO/ASN is fully received yet. null = nothing to enforce
+        (no linked ASN, or GRN isn't Approved yet — send button not relevant).
+        true/false only computed once Approved, to gate the "Send to ES" action —
+        a partially-received PO is guaranteed to be rejected by NetSuite.
+        """
+        poFulfilled: Boolean
         createdAt: String!
         updatedAt: String!
         createdByUser: GrnAuditUser
