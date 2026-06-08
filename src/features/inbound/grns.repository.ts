@@ -20,6 +20,8 @@ import { RunningNoRepositoryClass } from '../running-no/running-no.repository';
 export type GrnFilter = {
     id?: string;
     grnNo?: string;
+    /** Exact PO reference match — used to look up fulfillment history for a PO. */
+    poNo?: string;
     /** Search across GRN number, PO reference, and Supplier DO (case-insensitive). */
     search?: string;
     status?: string;
@@ -44,6 +46,9 @@ export class GrnsRepositoryClass {
             }
             if (filter.id) {
                 whereCondition.push(eq(GrnsTable.id, filter.id));
+            }
+            if (filter.poNo) {
+                whereCondition.push(eq(GrnsTable.poNo, filter.poNo));
             }
             if (filter.grnNo && !filter.search) {
                 whereCondition.push(like(GrnsTable.grnNo, `%${filter.grnNo}%`));

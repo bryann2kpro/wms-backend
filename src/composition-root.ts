@@ -220,6 +220,7 @@ export const netSuiteService = new NetSuiteService();
 export const esItemReceiptService = new EsItemReceiptServiceClass(
   esRepository,
   grnItemsRepository,
+  grnsRepository,
   skuRepository,
   suppliersRepository,
   supplierDeliveriesRepository,
