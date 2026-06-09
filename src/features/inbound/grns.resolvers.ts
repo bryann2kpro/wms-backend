@@ -60,19 +60,14 @@ function transformGrn(grn: GrnType) {
 function transformGrnItem(
     item: GrnItemsType,
     skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>,
-    rackMap?: Map<string, Array<{ rackId: string; quantity: number | null }>>,
+    rackMap?: Map<string, Array<{ rackId: string }>>,
 ) {
     const sku = skuMap?.get(item.skuId);
     const rackLinks = rackMap?.get(item.id) ?? [];
     const rackIds = rackLinks.length > 0
         ? rackLinks.map((link) => link.rackId)
         : (item.rackId ? [item.rackId] : []);
-    const rackAllocations = rackLinks
-        .filter((link) => link.quantity != null && link.quantity > 0)
-        .map((link) => ({
-            rackId: link.rackId,
-            quantity: link.quantity as number,
-        }));
+    const rackAllocations: Array<{ rackId: string; quantity: number }> = [];
     const primaryRackId = rackIds[0] ?? null;
     return {
         id: item.id,
@@ -534,7 +529,7 @@ export const resolvers = {
             }
 
             const grnItemIds = result.map((r) => r.id);
-            let rackMap = new Map<string, Array<{ rackId: string; quantity: number | null }>>();
+            let rackMap = new Map<string, Array<{ rackId: string }>>();
             if (grnItemIds.length > 0) {
                 const rackLinks = await db
                     .select()
@@ -542,10 +537,7 @@ export const resolvers = {
                     .where(inArray(GrnItemRacksTable.grnItemId, grnItemIds));
                 for (const link of rackLinks) {
                     const current = rackMap.get(link.grnItemId) ?? [];
-                    current.push({
-                        rackId: link.rackId,
-                        quantity: link.quantity != null ? Number(link.quantity) : null,
-                    });
+                    current.push({ rackId: link.rackId });
                     rackMap.set(link.grnItemId, current);
                 }
             }

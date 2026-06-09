@@ -110,8 +110,6 @@ export const GrnItemRacksTable = MainSchema.table('grn_item_racks', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
   grnItemId: uuid('grn_item_id').notNull(),
   rackId: uuid('rack_id').notNull(),
-  /** Cartons allocated to this rack for the parent GRN line (net of loss). */
-  quantity: numeric('quantity', { precision: 10, scale: 2 }),
 });
 
 export type GrnItemRackType = typeof GrnItemRacksTable.$inferSelect;

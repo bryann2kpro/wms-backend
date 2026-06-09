@@ -1,1 +1,0 @@
-ALTER TABLE "main"."grn_item_racks" ADD COLUMN "quantity" numeric(10, 2);
