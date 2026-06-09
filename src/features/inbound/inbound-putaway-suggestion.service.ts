@@ -5,7 +5,7 @@
  * 3. Fallback to an empty rack when the default is full
  */
 
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import type { DbTransaction } from "@/types/db-transaction";
 import { PickFaceStrategyRepositoryClass } from "../master-data/pick-face-strategy.repository";
@@ -13,6 +13,8 @@ import { SkuRepositoryClass } from "../master-data/sku.repository";
 import { RacksRepositoryClass } from "../master-data/racks.repository";
 import { StockQuantRepositoryClass } from "../stock-quant/stock-quant.repository";
 import { StockQuantTable } from "../stock-quant/stock-quant.model";
+import { GrnsTable, GrnItemsTable, GrnItemRacksTable } from "./grns.model";
+import { SkuTable } from "../master-data/sku.model";
 import {
   capacityForSkuOnRack,
   maxCasesForSkuInRack,
@@ -54,6 +56,22 @@ export type RackSkuCapacity = {
   availableCapacity: number | null;
 };
 
+export type RackCapacityOption = {
+  rackId: string;
+  rackRow: string;
+  rackLevel: string;
+  rackColumn: string;
+  availableCapacity: number | null;
+};
+
+export type ListRacksWithCapacityInput = {
+  organizationId: string;
+  skuId?: string | null;
+  skuCode?: string | null;
+  quantity: number;
+  excludeRackIds?: string[] | null;
+};
+
 export type InboundRackSuggestion = {
   rackId: string | null;
   rackLabel: string | null;
@@ -74,6 +92,8 @@ export type SuggestInboundRackInput = {
   quantity: number;
   /** When set, response includes capacity for this rack (selected bin). */
   forRackId?: string | null;
+  /** Rack IDs already assigned to other SKUs in the same form session — excluded from suggestion. */
+  excludeRackIds?: string[] | null;
 };
 
 export class InboundPutawaySuggestionService {
@@ -224,8 +244,10 @@ export class InboundPutawaySuggestionService {
       return emptyPutawayPlan(null, "SKU not found — cannot suggest racks.");
     }
 
+    const pendingByRack = await this.fetchPendingGrnOccupants(organizationId, tx);
+
     const capacityForRack = input.forRackId
-      ? await this.getRackSkuCapacity(organizationId, input.forRackId, sku, tx)
+      ? await this.getRackSkuCapacity(organizationId, input.forRackId, sku, pendingByRack, tx)
       : null;
 
     if (incomingQty <= 0) {
@@ -251,7 +273,7 @@ export class InboundPutawaySuggestionService {
     );
 
     const allocations: InboundPutawayAllocation[] = [];
-    const usedRackIds = new Set<string>();
+    const usedRackIds = new Set<string>(input.excludeRackIds?.filter(Boolean) ?? []);
     let remaining = incomingQty;
 
     if (defaultRackId) {
@@ -263,6 +285,7 @@ export class InboundPutawaySuggestionService {
         usedRackIds,
         allocations,
         "DEFAULT",
+        pendingByRack,
         tx,
       );
     }
@@ -272,6 +295,7 @@ export class InboundPutawaySuggestionService {
         organizationId,
         usedRackIds,
         { emptyOnly: true, excludePickFaceBins: true, pickFaceBinIds },
+        pendingByRack,
         tx,
       );
       remaining = await this.allocateAcrossRacks(
@@ -282,6 +306,7 @@ export class InboundPutawaySuggestionService {
         allocations,
         unassignedEmpty,
         "UNASSIGNED_EMPTY",
+        pendingByRack,
         tx,
       );
     }
@@ -291,6 +316,7 @@ export class InboundPutawaySuggestionService {
         organizationId,
         usedRackIds,
         { emptyOnly: false, excludePickFaceBins: false, pickFaceBinIds },
+        pendingByRack,
         tx,
       );
       remaining = await this.allocateAcrossRacks(
@@ -301,6 +327,7 @@ export class InboundPutawaySuggestionService {
         allocations,
         fallbackRacks,
         "FALLBACK",
+        pendingByRack,
         tx,
       );
     }
@@ -354,6 +381,7 @@ export class InboundPutawaySuggestionService {
     usedRackIds: Set<string>,
     allocations: InboundPutawayAllocation[],
     source: InboundPutawayAllocationSource,
+    pendingByRack: Map<string, RackOccupant[]>,
     tx?: DbTransaction,
   ): Promise<number> {
     if (remaining <= 0 || usedRackIds.has(rackId)) return remaining;
@@ -361,7 +389,7 @@ export class InboundPutawaySuggestionService {
     const rack = await this.racksRepository.getRackById(rackId, organizationId);
     if (!rack) return remaining;
 
-    const occupants = await this.loadRackOccupants(organizationId, rackId, tx);
+    const occupants = await this.loadRackOccupantsWithPending(organizationId, rackId, pendingByRack, tx);
     const capacity = capacityForSkuOnRack(rack, sku, occupants);
     const available = this.availableQtyForAllocation(capacity);
     if (available <= 0) return remaining;
@@ -394,6 +422,7 @@ export class InboundPutawaySuggestionService {
       rackColumn?: string | null;
     }>,
     source: InboundPutawayAllocationSource,
+    pendingByRack: Map<string, RackOccupant[]>,
     tx?: DbTransaction,
   ): Promise<number> {
     let left = remaining;
@@ -408,6 +437,7 @@ export class InboundPutawaySuggestionService {
         usedRackIds,
         allocations,
         source,
+        pendingByRack,
         tx,
       );
     }
@@ -422,6 +452,7 @@ export class InboundPutawaySuggestionService {
       excludePickFaceBins: boolean;
       pickFaceBinIds: Set<string>;
     },
+    pendingByRack: Map<string, RackOccupant[]>,
     tx?: DbTransaction,
   ) {
     const client = tx ?? db;
@@ -437,6 +468,10 @@ export class InboundPutawaySuggestionService {
           ),
         );
       occupied = new Set(occupiedRows.map((row) => row.rackId));
+      // also treat racks with pending GRN allocations as occupied
+      for (const rackId of pendingByRack.keys()) {
+        occupied.add(rackId);
+      }
     }
 
     const racksResult = await this.racksRepository.getRack(
@@ -471,12 +506,15 @@ export class InboundPutawaySuggestionService {
       casesPerLayer?: string | null;
       noOfLayers?: string | null;
     },
+    pendingByRack?: Map<string, RackOccupant[]>,
     tx?: DbTransaction,
   ): Promise<RackSkuCapacity | null> {
     const rack = await this.racksRepository.getRackById(rackId, organizationId);
     if (!rack) return null;
 
-    const occupants = await this.loadRackOccupants(organizationId, rackId, tx);
+    const occupants = pendingByRack
+      ? await this.loadRackOccupantsWithPending(organizationId, rackId, pendingByRack, tx)
+      : await this.loadRackOccupants(organizationId, rackId, tx);
     const capacity = capacityForSkuOnRack(rack, sku, occupants);
 
     return {
@@ -501,6 +539,60 @@ export class InboundPutawaySuggestionService {
       quantity: row.quantity,
       sku: toSkuCaseDimensions(row),
     }));
+  }
+
+  private async loadRackOccupantsWithPending(
+    organizationId: string,
+    rackId: string,
+    pendingByRack: Map<string, RackOccupant[]>,
+    tx?: DbTransaction,
+  ): Promise<RackOccupant[]> {
+    const committed = await this.loadRackOccupants(organizationId, rackId, tx);
+    const pending = pendingByRack.get(rackId) ?? [];
+    return pending.length > 0 ? [...committed, ...pending] : committed;
+  }
+
+  private async fetchPendingGrnOccupants(
+    organizationId: string,
+    tx?: DbTransaction,
+  ): Promise<Map<string, RackOccupant[]>> {
+    const client = tx ?? db;
+    const rows = await client
+      .select({
+        rackId: GrnItemRacksTable.rackId,
+        quantity: GrnItemRacksTable.quantity,
+        caseExtLengthMm: SkuTable.caseExtLengthMm,
+        caseExtWidthMm: SkuTable.caseExtWidthMm,
+        caseExtHeightMm: SkuTable.caseExtHeightMm,
+        caseGrossWeightKg: SkuTable.caseGrossWeightKg,
+        casesPerLayer: SkuTable.casesPerLayer,
+        noOfLayers: SkuTable.noOfLayers,
+      })
+      .from(GrnItemRacksTable)
+      .innerJoin(GrnItemsTable, eq(GrnItemRacksTable.grnItemId, GrnItemsTable.id))
+      .innerJoin(GrnsTable, eq(GrnItemsTable.grnId, GrnsTable.id))
+      .innerJoin(SkuTable, eq(GrnItemsTable.skuId, SkuTable.skuId))
+      .where(
+        and(
+          eq(GrnsTable.organizationId, organizationId),
+          inArray(GrnsTable.status, ["DRAFT", "SUBMITTED"]),
+          gt(sql`${GrnItemRacksTable.quantity}::numeric`, 0),
+        ),
+      );
+
+    const map = new Map<string, RackOccupant[]>();
+    for (const row of rows) {
+      const qty = Number(row.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const occupant: RackOccupant = { quantity: qty, sku: toSkuCaseDimensions(row) };
+      const existing = map.get(row.rackId);
+      if (existing) {
+        existing.push(occupant);
+      } else {
+        map.set(row.rackId, [occupant]);
+      }
+    }
+    return map;
   }
 
   private async resolveSku(
@@ -593,6 +685,51 @@ export class InboundPutawaySuggestionService {
     }
 
     return null;
+  }
+
+  async listRacksWithCapacity(
+    input: ListRacksWithCapacityInput,
+    tx?: DbTransaction,
+  ): Promise<RackCapacityOption[]> {
+    const { organizationId } = input;
+    const quantity = Number.isFinite(input.quantity) && input.quantity > 0 ? input.quantity : 0;
+    const excluded = new Set(input.excludeRackIds?.filter(Boolean) ?? []);
+
+    const sku = await this.resolveSku(input, organizationId, tx);
+    if (!sku) return [];
+
+    const [committedByRack, pendingByRack, racksResult] = await Promise.all([
+      this.stockQuantRepository.listAllRackOccupancy(organizationId, tx),
+      this.fetchPendingGrnOccupants(organizationId, tx),
+      this.racksRepository.getRack({ isActive: true }, { pageSize: 50000, pageNumber: 1 }, organizationId),
+    ]);
+
+    const result: RackCapacityOption[] = [];
+    for (const rack of racksResult.query ?? []) {
+      if (!rack.rackId || excluded.has(rack.rackId)) continue;
+
+      const committed: RackOccupant[] = (committedByRack.get(rack.rackId) ?? []).map((r) => ({
+        quantity: r.quantity,
+        sku: toSkuCaseDimensions(r),
+      }));
+      const pending = pendingByRack.get(rack.rackId) ?? [];
+      const occupants = pending.length > 0 ? [...committed, ...pending] : committed;
+
+      const { availableCapacity } = capacityForSkuOnRack(rack, sku, occupants);
+      if (availableCapacity == null || availableCapacity >= quantity) {
+        result.push({
+          rackId: rack.rackId,
+          rackRow: rack.rackRow ?? "",
+          rackLevel: rack.rackLevel ?? "",
+          rackColumn: rack.rackColumn ?? "",
+          availableCapacity,
+        });
+      }
+    }
+
+    return result.sort((a, b) =>
+      formatRackLabel(a).localeCompare(formatRackLabel(b), undefined, { numeric: true }),
+    );
   }
 }
 

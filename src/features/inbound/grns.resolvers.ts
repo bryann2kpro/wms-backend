@@ -356,6 +356,7 @@ export const resolvers = {
                 skuCode?: string | null;
                 quantity: number;
                 forRackId?: string | null;
+                excludeRackIds?: string[] | null;
             },
             context: GraphQLContext,
         ) => {
@@ -370,6 +371,30 @@ export const resolvers = {
                 skuCode: args.skuCode,
                 quantity: args.quantity,
                 forRackId: args.forRackId,
+                excludeRackIds: args.excludeRackIds,
+            });
+        },
+        listRacksWithCapacity: async (
+            _: unknown,
+            args: {
+                skuId?: string | null;
+                skuCode?: string | null;
+                quantity: number;
+                excludeRackIds?: string[] | null;
+            },
+            context: GraphQLContext,
+        ) => {
+            if (!context.organizationId) {
+                throw new GraphQLError('Organization context is required', {
+                    extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                });
+            }
+            return inboundPutawaySuggestionService.listRacksWithCapacity({
+                organizationId: context.organizationId,
+                skuId: args.skuId,
+                skuCode: args.skuCode,
+                quantity: args.quantity,
+                excludeRackIds: args.excludeRackIds,
             });
         },
     },
