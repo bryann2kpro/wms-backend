@@ -840,12 +840,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "quantity": {
-          "name": "quantity",
-          "type": "numeric(10, 2)",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {},

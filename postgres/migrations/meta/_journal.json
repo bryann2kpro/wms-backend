@@ -696,13 +696,6 @@
       "breakpoints": true
     },
     {
-      "idx": 99,
-      "version": "7",
-      "when": 1780556469645,
-      "tag": "0099_perfect_photon",
-      "breakpoints": true
-    },
-    {
       "idx": 100,
       "version": "7",
       "when": 1780992233391,
