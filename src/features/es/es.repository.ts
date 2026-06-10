@@ -77,6 +77,27 @@ export class EsRepositoryClass {
   }
 
   /**
+   * Find advance notices already linked to a GRN, most-recent first.
+   * Used (alongside findPending) to detect partially-fulfilled POs that still
+   * need follow-up deliveries — bounded to the most recent records since fully
+   * fulfilled older POs are filtered out by the caller anyway.
+   */
+  async findLinked(limit = 100): Promise<EsAdvanceNoticeType[]> {
+    try {
+      logger.info('ℹ️ [EsRepository.findLinked] Fetching linked advance notices');
+      return await db
+        .select()
+        .from(EsAdvanceNoticesTable)
+        .where(sql`${EsAdvanceNoticesTable.linkedGrnId} IS NOT NULL`)
+        .orderBy(desc(EsAdvanceNoticesTable.receivedAt))
+        .limit(limit);
+    } catch (error) {
+      logger.error('❌ [EsRepository.findLinked] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Mark an advance notice as linked to a GRN.
    * Called within the createInbound transaction after the GRN is created.
    */

@@ -7,11 +7,22 @@ export class NetSuiteService {
    * Build the OAuth 1.0a TBA Authorization header for a NetSuite RESTlet request.
    */
   private buildAuthHeader(url: string, method: string): string {
-    const accountId = env.NETSUITE_ACCOUNT_ID;
-    const consumerKey = env.NETSUITE_CONSUMER_KEY;
-    const consumerSecret = env.NETSUITE_CONSUMER_SECRET;
-    const tokenId = env.NETSUITE_TOKEN_ID;
-    const tokenSecret = env.NETSUITE_TOKEN_SECRET;
+    // OAuth credentials must be plain ASCII — header values can't carry code points > 255
+    // (fetch throws "Cannot convert argument to a ByteString"). Strip stray Unicode
+    // whitespace (e.g. U+202F narrow no-break space) that can sneak in via copy-paste.
+    const sanitize = (label: string, raw: string) => {
+      const badIdx = [...raw].findIndex((ch) => ch.codePointAt(0)! > 255);
+      if (badIdx !== -1) {
+        logger.warn(`⚠️ [NetSuiteService.buildAuthHeader] env ${label} has non-Latin1 char (code ${raw.codePointAt(badIdx)}) at index ${badIdx} — stripping`);
+      }
+      return raw.replace(/[^\x00-\xFF]/g, '').trim();
+    };
+    const accountId = sanitize('NETSUITE_ACCOUNT_ID', env.NETSUITE_ACCOUNT_ID);
+    const consumerKey = sanitize('NETSUITE_CONSUMER_KEY', env.NETSUITE_CONSUMER_KEY);
+    const consumerSecret = sanitize('NETSUITE_CONSUMER_SECRET', env.NETSUITE_CONSUMER_SECRET);
+    const tokenId = sanitize('NETSUITE_TOKEN_ID', env.NETSUITE_TOKEN_ID);
+    const tokenSecret = sanitize('NETSUITE_TOKEN_SECRET', env.NETSUITE_TOKEN_SECRET);
+    sanitize('NETSUITE_ITEM_RECEIPT_URL (diagnostic only — not stripped)', url);
 
     const nonce = crypto.randomBytes(16).toString('hex');
     const timestamp = Math.floor(Date.now() / 1000).toString();

@@ -19,6 +19,7 @@ import { logger } from '@/util/logger';
 import { GrnFilter } from './grns.repository';
 import type { GrnItemsType } from './grns-items.repository';
 import { InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
+import type { EsAdvanceNoticeType } from '@/features/es/es.model';
 import { recordGrnApprovalStockQuants } from './grn-stock-quant.service';
 import {
     assertGrnItemRackAllocations,
@@ -199,6 +200,120 @@ async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
     }
 }
 
+type EsAdvanceNoticePayload = {
+    tranid: string;
+    entity: string;
+    duedate: string;
+    lines?: Array<{
+        lineuniquekey: number;
+        itemid: string;
+        displayname?: string;
+        quantity: number;
+        units: string;
+        custrecord_r2o_order_code?: string;
+        islotitem?: string;
+        lots?: Array<{
+            serialNumbers: string;
+            quantity: number;
+            expiryDate: string;
+        }>;
+    }>;
+};
+
+/** Map a stored ES advance-notice record to the GraphQL AdvanceNotice shape. */
+function mapAdvanceNoticeRecord(
+    r: { id: string; tranid: string; receivedAt: Date | string; payload: unknown },
+    fulfillmentStatus: 'PENDING' | 'PARTIAL' = 'PENDING',
+) {
+    const p = r.payload as EsAdvanceNoticePayload;
+    return {
+        id: r.id,
+        tranid: p.tranid ?? r.tranid,
+        entity: p.entity ?? '',
+        duedate: p.duedate ?? '',
+        receivedAt: r.receivedAt instanceof Date ? r.receivedAt.toISOString() : r.receivedAt,
+        fulfillmentStatus,
+        lines: (p.lines ?? []).map((l) => {
+            const firstLot = l.lots?.[0];
+            const lotSerial =
+                firstLot &&
+                typeof firstLot.serialNumbers === 'string' &&
+                firstLot.serialNumbers.trim()
+                    ? firstLot.serialNumbers.trim()
+                    : null;
+            const lotExpiry =
+                firstLot &&
+                typeof firstLot.expiryDate === 'string' &&
+                firstLot.expiryDate.trim()
+                    ? firstLot.expiryDate.trim()
+                    : null;
+            return {
+                lineuniquekey: l.lineuniquekey,
+                itemid: l.itemid,
+                displayname: l.displayname ?? null,
+                quantity: l.quantity,
+                units: l.units,
+                custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
+                islotitem: l.islotitem ?? null,
+                lotNo: lotSerial,
+                expiryDate: lotExpiry,
+            };
+        }),
+    };
+}
+
+/**
+ * Compute whether a PO's linked ASN is fully received yet, by summing qty across
+ * ALL GRNs raised against that poNo (resolving skuId -> skuCode the same way
+ * listPendingAdvanceNotices does) and comparing against each ASN line's expected qty.
+ *
+ * Returns fullyFulfilled = true when there is no linked ASN (manual GRN — nothing to
+ * enforce, preserves existing behaviour) or when every line's received >= expected.
+ */
+async function computePoFulfillment(poNo: string | null | undefined): Promise<{
+    asn: EsAdvanceNoticeType | null;
+    fullyFulfilled: boolean;
+    shortfalls: Array<{ skuCode: string; expected: number; received: number }>;
+}> {
+    if (!poNo) return { asn: null, fullyFulfilled: true, shortfalls: [] };
+
+    const asn = await esRepository.findByTranid(poNo);
+    if (!asn) return { asn: null, fullyFulfilled: true, shortfalls: [] };
+
+    const payload = asn.payload as EsAdvanceNoticePayload;
+    const lines = payload.lines ?? [];
+    if (lines.length === 0) return { asn, fullyFulfilled: true, shortfalls: [] };
+
+    const grnsForPo = await grnsRepository.getGrns({ poNo }, { pageSize: 100, pageNumber: 1 });
+    const grnList = grnsForPo && 'query' in grnsForPo ? grnsForPo.query : [];
+
+    const receivedByskuId = new Map<string, number>();
+    for (const grn of grnList) {
+        const items = await grnItemsRepository.getGrnItems({ grnId: grn.id });
+        for (const item of items || []) {
+            receivedByskuId.set(item.skuId, (receivedByskuId.get(item.skuId) ?? 0) + Number(item.qty || 0));
+        }
+    }
+
+    let receivedBySku = new Map<string, number>();
+    if (receivedByskuId.size > 0) {
+        const skuResult = await skuRepository.getSku({ skuId: [...receivedByskuId.keys()] }, undefined, undefined, undefined);
+        receivedBySku = new Map(
+            skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuCode, receivedByskuId.get(s.skuId) ?? 0]),
+        );
+    }
+
+    const shortfalls: Array<{ skuCode: string; expected: number; received: number }> = [];
+    for (const line of lines) {
+        const received = receivedBySku.get(line.itemid) ?? 0;
+        if (line.quantity - received > 0) {
+            shortfalls.push({ skuCode: line.itemid, expected: line.quantity, received });
+        }
+    }
+
+    return { asn, fullyFulfilled: shortfalls.length === 0, shortfalls };
+}
+
 export const resolvers = {
     Query: {
         grns: async (_: unknown, args: {
@@ -215,6 +330,9 @@ export const resolvers = {
                     };
                     if (args.filter.grnNo) {
                         filter.grnNo = args.filter.grnNo;
+                    };
+                    if (args.filter.poNo) {
+                        filter.poNo = args.filter.poNo;
                     };
                     if (args.filter.search != null) {
                         filter.search = args.filter.search;
@@ -267,63 +385,58 @@ export const resolvers = {
         },
         listPendingAdvanceNotices: async () => {
             try {
-                const records = await esRepository.findPending();
-                return records.map((r) => {
-                    const p = r.payload as {
-                        tranid: string;
-                        entity: string;
-                        duedate: string;
-                        lines?: Array<{
-                            lineuniquekey: number;
-                            itemid: string;
-                            displayname?: string;
-                            quantity: number;
-                            units: string;
-                            custrecord_r2o_order_code?: string;
-                            islotitem?: string;
-                            lots?: Array<{
-                                serialNumbers: string;
-                                quantity: number;
-                                expiryDate: string;
-                            }>;
-                        }>;
-                    };
-                    return {
-                        id: r.id,
-                        tranid: p.tranid ?? r.tranid,
-                        entity: p.entity ?? '',
-                        duedate: p.duedate ?? '',
-                        receivedAt: r.receivedAt instanceof Date ? r.receivedAt.toISOString() : r.receivedAt,
-                        lines: (p.lines ?? []).map((l) => {
-                            const firstLot = l.lots?.[0];
-                            const lotSerial =
-                                firstLot &&
-                                typeof firstLot.serialNumbers === 'string' &&
-                                firstLot.serialNumbers.trim()
-                                    ? firstLot.serialNumbers.trim()
-                                    : null;
-                            const lotExpiry =
-                                firstLot &&
-                                typeof firstLot.expiryDate === 'string' &&
-                                firstLot.expiryDate.trim()
-                                    ? firstLot.expiryDate.trim()
-                                    : null;
-                            return {
-                                lineuniquekey: l.lineuniquekey,
-                                itemid: l.itemid,
-                                displayname: l.displayname ?? null,
-                                quantity: l.quantity,
-                                units: l.units,
-                                custrecord_r2o_order_code: l.custrecord_r2o_order_code ?? null,
-                                islotitem: l.islotitem ?? null,
-                                lotNo: lotSerial,
-                                expiryDate: lotExpiry,
-                            };
-                        }),
-                    };
-                });
+                const [pending, linked] = await Promise.all([
+                    esRepository.findPending(),
+                    esRepository.findLinked(),
+                ]);
+
+                const pendingResults = pending.map((r) => mapAdvanceNoticeRecord(r, 'PENDING'));
+
+                // For linked ASNs, work out whether the PO still has qty outstanding
+                // (i.e. more deliveries are expected) — only surface those as "partial".
+                const partialResults: ReturnType<typeof mapAdvanceNoticeRecord>[] = [];
+                for (const record of linked) {
+                    const payload = record.payload as EsAdvanceNoticePayload;
+                    const lines = payload.lines ?? [];
+                    if (lines.length === 0) continue;
+
+                    const grnsForPo = await grnsRepository.getGrns({ poNo: record.tranid }, { pageSize: 100, pageNumber: 1 });
+                    const grnList = grnsForPo && 'query' in grnsForPo ? grnsForPo.query : [];
+
+                    const receivedByskuId = new Map<string, number>();
+                    for (const grn of grnList) {
+                        const items = await grnItemsRepository.getGrnItems({ grnId: grn.id });
+                        for (const item of items || []) {
+                            receivedByskuId.set(item.skuId, (receivedByskuId.get(item.skuId) ?? 0) + Number(item.qty || 0));
+                        }
+                    }
+
+                    let receivedBySku = new Map<string, number>();
+                    if (receivedByskuId.size > 0) {
+                        const skuResult = await skuRepository.getSku({ skuId: [...receivedByskuId.keys()] }, undefined, undefined, undefined);
+                        receivedBySku = new Map(
+                            skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuCode, receivedByskuId.get(s.skuId) ?? 0]),
+                        );
+                    }
+
+                    const hasOutstandingQty = lines.some((l) => l.quantity - (receivedBySku.get(l.itemid) ?? 0) > 0);
+                    if (hasOutstandingQty) {
+                        partialResults.push(mapAdvanceNoticeRecord(record, 'PARTIAL'));
+                    }
+                }
+
+                return [...pendingResults, ...partialResults];
             } catch (error) {
                 logger.error('[grns.resolvers] listPendingAdvanceNotices Error:', error);
+                throw error;
+            }
+        },
+        advanceNoticeByPoNo: async (_: unknown, args: { poNo: string }) => {
+            try {
+                const record = await esRepository.findByTranid(args.poNo);
+                return record ? mapAdvanceNoticeRecord(record) : null;
+            } catch (error) {
+                logger.error('[grns.resolvers] advanceNoticeByPoNo Error:', error);
                 throw error;
             }
         },
@@ -477,6 +590,18 @@ export const resolvers = {
             }
 
             return result.map((item) => transformGrnItem(item, skuMap, rackMap));
+        },
+        /**
+         * Whether this GRN's PO/ASN is fully received yet — drives the "Send to ES"
+         * button's visibility (a partially-fulfilled PO is guaranteed to be rejected
+         * by NetSuite, see computePoFulfillment). Returns null when there's nothing
+         * to enforce (no linked ASN / not yet approved) so the UI treats it as sendable.
+         */
+        poFulfilled: async (parent: { status?: string | null; poNo?: string | null }) => {
+            if (parent.status !== 'Approved') return null;
+            const fulfillment = await computePoFulfillment(parent.poNo);
+            if (!fulfillment.asn) return null;
+            return fulfillment.fullyFulfilled;
         },
     },
     GrnItem: {
@@ -963,6 +1088,25 @@ export const resolvers = {
                     }
 
                     if (updateData.status === 'SentToES') {
+                        // Block premature sends: if the linked ASN/PO still has outstanding qty,
+                        // NetSuite will reject the item receipt anyway (root cause of the
+                        // "5 GRNs all failed sending to ES" incident — partial sends against
+                        // an unfulfilled PO are doomed). Fail fast with an actionable message.
+                        const fulfillment = await computePoFulfillment(existingGrn.poNo);
+                        if (!fulfillment.fullyFulfilled) {
+                            const outstanding = fulfillment.shortfalls
+                                .map((s) => `${s.skuCode} (${s.received}/${s.expected} units)`)
+                                .join(', ');
+                            const nsError = `PO ${existingGrn.poNo} not fully received yet — outstanding: ${outstanding}. Wait for remaining deliveries before sending to ES.`;
+                            logger.info(`ℹ️ [grns.resolvers] Blocking send-to-ES — PO not fully fulfilled: ${nsError}`);
+                            const blockedGrn = await grnsRepository.updateGrn(id, {
+                                status: 'Failed',
+                                nsError,
+                                nsSentAt: new Date(),
+                            }, context.tx);
+                            return transformGrn(blockedGrn ?? grn);
+                        }
+
                         logger.info(`ℹ️ [grns.resolvers] Sending Item Receipt to NetSuite — grnNo: ${existingGrn.grnNo}`);
                         const nsResult = await esItemReceiptService.sendItemReceipt(existingGrn, context.organizationId!);
                         const finalStatus = nsResult.success ? 'SentToES' : 'Failed';
@@ -972,6 +1116,27 @@ export const resolvers = {
                             nsSentAt: new Date(),
                         }, context.tx);
                         logger.info(`ℹ️ [grns.resolvers] GRN status updated to ${finalStatus} — grnNo: ${existingGrn.grnNo}`);
+
+                        // The Item Receipt sent represents the WHOLE PO (merged across all its GRNs),
+                        // so once it succeeds, every sibling GRN against the same PO is also "sent".
+                        if (nsResult.success && existingGrn.poNo) {
+                            const siblingResult = await grnsRepository.getGrns(
+                                { poNo: existingGrn.poNo },
+                                { pageSize: 100, pageNumber: 1 },
+                                context.organizationId ?? undefined,
+                            );
+                            const siblings = siblingResult && 'query' in siblingResult ? siblingResult.query : [];
+                            for (const sibling of siblings) {
+                                if (sibling.id === id || sibling.status === 'SentToES') continue;
+                                await grnsRepository.updateGrn(sibling.id, {
+                                    status: 'SentToES',
+                                    nsError: null,
+                                    nsSentAt: new Date(),
+                                }, context.tx);
+                                logger.info(`ℹ️ [grns.resolvers] Synced sibling GRN to SentToES — grnNo: ${sibling.grnNo}`);
+                            }
+                        }
+
                         return transformGrn(updatedGrn ?? grn);
                     }
 

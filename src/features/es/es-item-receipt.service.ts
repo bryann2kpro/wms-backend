@@ -2,6 +2,7 @@ import { logger } from '@/util/logger.js';
 import { EsRepositoryClass } from './es.repository.js';
 import { NetSuiteService } from './netsuite.service.js';
 import { GrnItemsRepositoryClass } from '@/features/inbound/grns-items.repository.js';
+import { GrnsRepositoryClass } from '@/features/inbound/grns.repository.js';
 import { SkuRepositoryClass } from '@/features/master-data/sku.repository.js';
 import { SuppliersRepositoryClass } from '@/features/master-data/suppliers.repository.js';
 import { SupplierDeliveriesRepositoryClass } from '@/features/inbound/supplier-deliveries/supplier-deliveries.repository.js';
@@ -36,6 +37,7 @@ export class EsItemReceiptServiceClass {
   constructor(
     private esRepository: EsRepositoryClass,
     private grnItemsRepository: GrnItemsRepositoryClass,
+    private grnsRepository: GrnsRepositoryClass,
     private skuRepository: SkuRepositoryClass,
     private suppliersRepository: SuppliersRepositoryClass,
     private supplierDeliveriesRepository: SupplierDeliveriesRepositoryClass,
@@ -65,13 +67,43 @@ export class EsItemReceiptServiceClass {
     }
     logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Found ${grnItems.length} GRN items`);
 
-    // 2. Fetch SKUs for all items
-    const skuIds = [...new Set(grnItems.map((i) => i.skuId))];
+    // 2. Item receipt represents the WHOLE PO (sent only once fully fulfilled) — aggregate
+    // quantities across ALL GRNs raised against this PO, and track which supplier-delivery
+    // (DO) number each GRN's items came from so each merged line gets only ITS contributing DO(s).
+    let aggregatedItems = grnItems;
+    const doNoByGrnId = new Map<string, string>();
+    if (grn.poNo) {
+      const grnsForPoResult = await this.grnsRepository.getGrns({ poNo: grn.poNo }, { pageSize: 100, pageNumber: 1 }, organizationId);
+      const grnsForPo = grnsForPoResult && 'query' in grnsForPoResult ? grnsForPoResult.query : [grn];
+
+      const allItems: typeof grnItems = [];
+      for (const g of grnsForPo) {
+        const items = g.id === grn.id ? grnItems : await this.grnItemsRepository.getGrnItems({ grnId: g.id });
+        allItems.push(...(items || []));
+      }
+      aggregatedItems = allItems;
+
+      const doNoByDeliveryId = new Map<string, string>();
+      for (const g of grnsForPo) {
+        if (!g.supplierDeliveryId) continue;
+        if (!doNoByDeliveryId.has(g.supplierDeliveryId)) {
+          const deliveryResult = await this.supplierDeliveriesRepository.getSupplierDeliveries({ id: g.supplierDeliveryId }, undefined, organizationId);
+          const deliveryNo = deliveryResult && 'query' in deliveryResult ? deliveryResult.query?.[0]?.supplierDeliveryNo : undefined;
+          if (deliveryNo) doNoByDeliveryId.set(g.supplierDeliveryId, deliveryNo);
+        }
+        const deliveryNo = doNoByDeliveryId.get(g.supplierDeliveryId);
+        if (deliveryNo) doNoByGrnId.set(g.id, deliveryNo);
+      }
+      logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Aggregated ${grnsForPo.length} GRN(s), ${allItems.length} item(s), DO map: ${[...doNoByGrnId.values()].join(',') || 'none'}`);
+    }
+
+    // 3. Fetch SKUs for all items
+    const skuIds = [...new Set(aggregatedItems.map((i) => i.skuId))];
     const skuResult = await this.skuRepository.getSku({ skuId: skuIds }, undefined, undefined, organizationId);
     const skuMap = new Map(skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuId, s]));
     logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Fetched ${skuResult.query.length} SKUs`);
 
-    // 3. Fetch advance notice and build lineuniquekey / lot-tracking maps
+    // 3b. Fetch advance notice and build lineuniquekey / lot-tracking maps
     let entity: string | undefined;
     const linekeyByItemId = new Map<string, number>();
     const isLotItemByItemId = new Map<string, boolean>();
@@ -107,21 +139,7 @@ export class EsItemReceiptServiceClass {
       }
     }
 
-    // 4. Fetch supplier delivery number (for abj_es_supplier_do)
-    let supplierDeliveryNo: string | undefined;
-    if (grn.supplierDeliveryId) {
-      const deliveryResult = await this.supplierDeliveriesRepository.getSupplierDeliveries(
-        { id: grn.supplierDeliveryId },
-        undefined,
-        organizationId,
-      );
-      if (deliveryResult && 'query' in deliveryResult && deliveryResult.query?.[0]) {
-        supplierDeliveryNo = deliveryResult.query[0].supplierDeliveryNo;
-        logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Supplier delivery no: ${supplierDeliveryNo}`);
-      }
-    }
-
-    // 5. Fetch UOM unit codes for all SKUs
+    // 4. Fetch UOM unit codes for all SKUs
     const uomIds = [...new Set(skuResult.query.map((s: { skuUom: string }) => s.skuUom).filter(Boolean))];
     const uomMap = new Map<string, string>();
     if (uomIds.length > 0) {
@@ -132,14 +150,14 @@ export class EsItemReceiptServiceClass {
       logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Fetched ${uomResult.query.length} UOMs`);
     }
 
-    // 6. Group GRN items by SKU and build Item Receipt lines
+    // 5. Group GRN items by SKU and build Item Receipt lines
     const lines: Array<Record<string, unknown>> = [];
     let lineIndex = 1;
     let unmatchedCount = 0;
 
     // Group GRN items by skuId
     const itemsBySkuId = new Map<string, typeof grnItems>();
-    for (const item of grnItems) {
+    for (const item of aggregatedItems) {
       const existing = itemsBySkuId.get(item.skuId) ?? [];
       existing.push(item);
       itemsBySkuId.set(item.skuId, existing);
@@ -164,11 +182,15 @@ export class EsItemReceiptServiceClass {
       // Reverted contract: lot fields are flattened at line-level.
       let totalQuantity = 0;
       const distinctLots = new Set<string>();
+      const lineDoNumbers = new Set<string>();
       let serialnumbers: string | undefined;
       let expirationdate: string | undefined;
 
       for (const item of items) {
         totalQuantity += Number(item.qty);
+
+        const doNo = doNoByGrnId.get(item.grnId);
+        if (doNo) lineDoNumbers.add(doNo);
 
         if (item.lotNo) {
           distinctLots.add(item.lotNo);
@@ -228,8 +250,8 @@ export class EsItemReceiptServiceClass {
       if (lineUniqueKey !== undefined) {
         line.lineuniquekey = lineUniqueKey;
       }
-      if (supplierDeliveryNo) {
-        line.abj_es_supplier_do = supplierDeliveryNo;
+      if (lineDoNumbers.size > 0) {
+        line.abj_es_supplier_do = [...lineDoNumbers].join(',');
       }
 
       lines.push(line);
@@ -240,7 +262,7 @@ export class EsItemReceiptServiceClass {
       logger.warn(`⚠️ [EsItemReceiptService.sendItemReceipt] ${unmatchedCount} line(s) missing lineuniquekey — NetSuite may reject`);
     }
 
-    // 7. Build Item Receipt payload
+    // 6. Build Item Receipt payload
     const trandate = grn.receivedAt
       ? new Date(grn.receivedAt).toISOString().split('T')[0]
       : new Date().toISOString().split('T')[0];
@@ -257,7 +279,7 @@ export class EsItemReceiptServiceClass {
 
     logger.info(`ℹ️ [EsItemReceiptService.sendItemReceipt] Payload built — ${lines.length} lines, validating schema`);
 
-    // 8. Validate payload against schema
+    // 7. Validate payload against schema
     const parsed = ItemReceiptPayloadSchema.safeParse(payload);
     if (!parsed.success) {
       const errors = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
@@ -272,7 +294,7 @@ export class EsItemReceiptServiceClass {
       return { success: false, nsResponse: { error: `Payload validation failed: ${errors}` } };
     }
 
-    // 9. POST to NetSuite
+    // 8. POST to NetSuite
     try {
       logger.debug("ℹ️ [EsItemReceiptServiceClass.sendItemReceipt] payload:", );
       console.log("payload: ", payload);
