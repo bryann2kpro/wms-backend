@@ -117,7 +117,7 @@ export class InboundPutawaySuggestionService {
     }
 
     const capacityForRack = input.forRackId
-      ? await this.getRackSkuCapacity(organizationId, input.forRackId, sku, tx)
+      ? await this.getRackSkuCapacity(organizationId, input.forRackId, sku, undefined, tx)
       : null;
 
     const strategy = await this.pickFaceStrategyRepository.getActiveBySkuId(
@@ -385,6 +385,8 @@ export class InboundPutawaySuggestionService {
     tx?: DbTransaction,
   ): Promise<number> {
     if (remaining <= 0 || usedRackIds.has(rackId)) return remaining;
+    // skip racks that already have pending allocations from other GRNs
+    if (pendingByRack.has(rackId)) return remaining;
 
     const rack = await this.racksRepository.getRackById(rackId, organizationId);
     if (!rack) return remaining;
@@ -468,10 +470,10 @@ export class InboundPutawaySuggestionService {
           ),
         );
       occupied = new Set(occupiedRows.map((row) => row.rackId));
-      // also treat racks with pending GRN allocations as occupied
-      for (const rackId of pendingByRack.keys()) {
-        occupied.add(rackId);
-      }
+    }
+    // always exclude racks with pending GRN allocations from other GRNs
+    for (const rackId of pendingByRack.keys()) {
+      occupied.add(rackId);
     }
 
     const racksResult = await this.racksRepository.getRack(
@@ -482,7 +484,7 @@ export class InboundPutawaySuggestionService {
 
     return (racksResult.query ?? [])
       .filter((rack) => rack.rackId && !usedRackIds.has(rack.rackId))
-      .filter((rack) => !options.emptyOnly || !occupied.has(rack.rackId))
+      .filter((rack) => !occupied.has(rack.rackId))
       .filter(
         (rack) =>
           !options.excludePickFaceBins || !options.pickFaceBinIds.has(rack.rackId),
@@ -575,7 +577,7 @@ export class InboundPutawaySuggestionService {
       .where(
         and(
           eq(GrnsTable.organizationId, organizationId),
-          inArray(GrnsTable.status, ["DRAFT", "SUBMITTED"]),
+          inArray(GrnsTable.status, ["DRAFT", "SUBMITTED", "Draft", "Submitted"]),
           gt(sql`${GrnItemRacksTable.quantity}::numeric`, 0),
         ),
       );
@@ -706,7 +708,7 @@ export class InboundPutawaySuggestionService {
 
     const result: RackCapacityOption[] = [];
     for (const rack of racksResult.query ?? []) {
-      if (!rack.rackId || excluded.has(rack.rackId)) continue;
+      if (!rack.rackId || excluded.has(rack.rackId) || pendingByRack.has(rack.rackId)) continue;
 
       const committed: RackOccupant[] = (committedByRack.get(rack.rackId) ?? []).map((r) => ({
         quantity: r.quantity,

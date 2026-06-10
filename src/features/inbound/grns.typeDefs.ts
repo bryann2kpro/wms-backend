@@ -236,6 +236,7 @@ export const typeDefs = `#graphql
     type GrnRackAllocation {
         rackId: ID!
         quantity: Float!
+        rackLabel: String
     }
 
     input GrnRackAllocationInput {
