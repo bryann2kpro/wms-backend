@@ -128,10 +128,11 @@ export function assertGrnItemRackAllocations(
 export function buildGrnItemRackRows(
   grnItemId: string,
   item: GrnItemRackInput,
-): Array<{ grnItemId: string; rackId: string }> {
+): Array<{ grnItemId: string; rackId: string; quantity: string }> {
   return resolveGrnItemRackAllocations(item).map((row) => ({
     grnItemId,
     rackId: row.rackId,
+    quantity: row.quantityStr,
   }));
 }
 
