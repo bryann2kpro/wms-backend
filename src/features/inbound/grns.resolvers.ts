@@ -68,13 +68,26 @@ function transformGrnItem(
     const rackIds = rackLinks.length > 0
         ? rackLinks.map((link) => link.rackId)
         : (item.rackId ? [item.rackId] : []);
-    const rackAllocations = rackLinks
+    let rackAllocations = rackLinks
         .filter((link) => link.quantity != null && link.quantity > 0)
         .map((link) => ({
             rackId: link.rackId,
             quantity: link.quantity as number,
             rackLabel: link.rackLabel ?? null,
         }));
+    if (rackAllocations.length === 0 && rackLinks.length > 0) {
+        const resolved = resolveGrnItemRackAllocations({
+            qty: item.qty,
+            lossQty: item.lossQty,
+            rackIds: rackLinks.map((link) => link.rackId),
+        });
+        const labelByRackId = new Map(rackLinks.map((link) => [link.rackId, link.rackLabel]));
+        rackAllocations = resolved.map((row) => ({
+            rackId: row.rackId,
+            quantity: row.quantity,
+            rackLabel: labelByRackId.get(row.rackId) ?? null,
+        }));
+    }
     const primaryRackId = rackIds[0] ?? null;
     return {
         id: item.id,
@@ -567,7 +580,6 @@ export const resolvers = {
                     .select({
                         grnItemId: GrnItemRacksTable.grnItemId,
                         rackId: GrnItemRacksTable.rackId,
-                        quantity: GrnItemRacksTable.quantity,
                         rackRow: RacksTable.rackRow,
                         rackLevel: RacksTable.rackLevel,
                         rackColumn: RacksTable.rackColumn,
@@ -582,7 +594,7 @@ export const resolvers = {
                     const current = rackMap.get(link.grnItemId) ?? [];
                     current.push({
                         rackId: link.rackId,
-                        quantity: link.quantity != null ? Number(link.quantity) : null,
+                        quantity: null,
                         rackLabel,
                     });
                     rackMap.set(link.grnItemId, current);
