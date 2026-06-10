@@ -82,15 +82,18 @@ export class EsRepositoryClass {
    * need follow-up deliveries — bounded to the most recent records since fully
    * fulfilled older POs are filtered out by the caller anyway.
    */
-  async findLinked(limit = 100): Promise<EsAdvanceNoticeType[]> {
+  async findLinked(limit?: number): Promise<EsAdvanceNoticeType[]> {
     try {
       logger.info('ℹ️ [EsRepository.findLinked] Fetching linked advance notices');
-      return await db
+      const query = db
         .select()
         .from(EsAdvanceNoticesTable)
         .where(sql`${EsAdvanceNoticesTable.linkedGrnId} IS NOT NULL`)
-        .orderBy(desc(EsAdvanceNoticesTable.receivedAt))
-        .limit(limit);
+        .orderBy(desc(EsAdvanceNoticesTable.receivedAt));
+      if (limit != null) {
+        return await query.limit(limit);
+      }
+      return await query;
     } catch (error) {
       logger.error('❌ [EsRepository.findLinked] Error:', error);
       throw error;

@@ -400,6 +400,7 @@ export const resolvers = {
             try {
                 const [pending, linked] = await Promise.all([
                     esRepository.findPending(),
+                    // Must scan all linked ASNs — a low limit hides older partially-fulfilled POs.
                     esRepository.findLinked(),
                 ]);
 
@@ -1078,6 +1079,13 @@ export const resolvers = {
                             logger.error('[grns.resolvers]: Failed to get GRN items');
                             throw new Error('Failed to get GRN items for approval');
                         }
+                        const approvalOrganizationId =
+                            context.organizationId ?? existingGrn.organizationId ?? grn.organizationId;
+                        if (!approvalOrganizationId) {
+                            throw new GraphQLError('Organization context is required to approve a GRN', {
+                                extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                            });
+                        }
 
                         await inventoryMovementRepository.createInventoryMovement(grnItems.map(item => ({
                             skuId: item.skuId,
@@ -1087,10 +1095,10 @@ export const resolvers = {
                             createdBy: updatedBy,
                             updatedBy: updatedBy,
                             movementType: InventoryMovementType.INBOUND,
-                        })), updatedBy, context.organizationId!, context.tx);
+                        })), updatedBy, approvalOrganizationId, context.tx);
 
                         await recordGrnApprovalStockQuants({
-                            organizationId: context.organizationId!,
+                            organizationId: approvalOrganizationId,
                             userId: updatedBy,
                             items: grnItems,
                             tx: context.tx!,
