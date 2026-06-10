@@ -221,6 +221,15 @@ export const typeDefs = `#graphql
         source: String!
     }
 
+    """Rack with available capacity for a given SKU and quantity (used for manual rack selection)."""
+    type RackCapacityOption {
+        rackId: ID!
+        rackRow: String!
+        rackLevel: String!
+        rackColumn: String!
+        availableCapacity: Float
+    }
+
     """
     Multi-rack putaway plan when received quantity exceeds a single rack capacity.
     """
@@ -239,6 +248,7 @@ export const typeDefs = `#graphql
     type GrnRackAllocation {
         rackId: ID!
         quantity: Float!
+        rackLabel: String
     }
 
     input GrnRackAllocationInput {
@@ -299,7 +309,9 @@ export const typeDefs = `#graphql
         Suggest multiple rack locations for inbound putaway when quantity exceeds one rack.
         Fills pick-face default first, then empty racks not assigned in pick-face table, then any rack with capacity.
         """
-        suggestInboundPutawayPlan(skuId: ID, skuCode: String, quantity: Float!, forRackId: ID): InboundPutawayPlan! @auth
+        suggestInboundPutawayPlan(skuId: ID, skuCode: String, quantity: Float!, forRackId: ID, excludeRackIds: [ID!]): InboundPutawayPlan! @auth
+        """List racks that have enough capacity for the given SKU and quantity (for manual rack picker)."""
+        listRacksWithCapacity(skuId: ID, skuCode: String, quantity: Float!, excludeRackIds: [ID!]): [RackCapacityOption!]! @auth
     }
 
     type GrnPaginatedResponse {
