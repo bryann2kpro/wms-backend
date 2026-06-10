@@ -443,6 +443,74 @@ export class StockQuantRepositoryClass {
     }
   }
 
+  /** All on-hand occupancy across all racks, grouped by rackId (single query for bulk capacity checks). */
+  async listAllRackOccupancy(
+    organizationId: string,
+    tx?: DbTransaction,
+  ): Promise<Map<string, Array<{
+    quantity: number;
+    caseExtLengthMm: string | null;
+    caseExtWidthMm: string | null;
+    caseExtHeightMm: string | null;
+    caseGrossWeightKg: string | null;
+    casesPerLayer: string | null;
+    noOfLayers: string | null;
+  }>>> {
+    try {
+      const client = tx ?? db;
+      const rows = await client
+        .select({
+          rackId: StockQuantTable.rackId,
+          quantity: StockQuantTable.quantity,
+          caseExtLengthMm: SkuTable.caseExtLengthMm,
+          caseExtWidthMm: SkuTable.caseExtWidthMm,
+          caseExtHeightMm: SkuTable.caseExtHeightMm,
+          caseGrossWeightKg: SkuTable.caseGrossWeightKg,
+          casesPerLayer: SkuTable.casesPerLayer,
+          noOfLayers: SkuTable.noOfLayers,
+        })
+        .from(StockQuantTable)
+        .innerJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
+        .where(
+          and(
+            eq(StockQuantTable.organizationId, organizationId),
+            sql`${StockQuantTable.quantity}::numeric > 0`,
+          ),
+        );
+
+      const map = new Map<string, Array<{
+        quantity: number;
+        caseExtLengthMm: string | null;
+        caseExtWidthMm: string | null;
+        caseExtHeightMm: string | null;
+        caseGrossWeightKg: string | null;
+        casesPerLayer: string | null;
+        noOfLayers: string | null;
+      }>>();
+      for (const row of rows) {
+        const entry = {
+          quantity: Number(row.quantity ?? 0),
+          caseExtLengthMm: row.caseExtLengthMm,
+          caseExtWidthMm: row.caseExtWidthMm,
+          caseExtHeightMm: row.caseExtHeightMm,
+          caseGrossWeightKg: row.caseGrossWeightKg,
+          casesPerLayer: row.casesPerLayer,
+          noOfLayers: row.noOfLayers,
+        };
+        const existing = map.get(row.rackId);
+        if (existing) {
+          existing.push(entry);
+        } else {
+          map.set(row.rackId, [entry]);
+        }
+      }
+      return map;
+    } catch (error) {
+      logger.error("❌ [StockQuantRepository.listAllRackOccupancy]", error);
+      throw error;
+    }
+  }
+
   /** Sum on-hand quantity for a SKU in a rack (all lots/expiry rows). */
   async sumQuantityByRackAndSku(
     organizationId: string,

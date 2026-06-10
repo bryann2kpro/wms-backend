@@ -13,10 +13,11 @@ import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { GraphQLError } from 'graphql';
 import { GrnType, GrnItemRacksTable } from './grns.model';
+import { RacksTable } from '@/features/master-data/racks.model';
+import { eq, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { GrnFilter } from './grns.repository';
 import type { GrnItemsType } from './grns-items.repository';
-import { inArray } from 'drizzle-orm';
 import { InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
 import type { EsAdvanceNoticeType } from '@/features/es/es.model';
 import { recordGrnApprovalStockQuants } from './grn-stock-quant.service';
@@ -60,14 +61,20 @@ function transformGrn(grn: GrnType) {
 function transformGrnItem(
     item: GrnItemsType,
     skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>,
-    rackMap?: Map<string, Array<{ rackId: string }>>,
+    rackMap?: Map<string, Array<{ rackId: string; quantity: number | null; rackLabel: string | null }>>,
 ) {
     const sku = skuMap?.get(item.skuId);
     const rackLinks = rackMap?.get(item.id) ?? [];
     const rackIds = rackLinks.length > 0
         ? rackLinks.map((link) => link.rackId)
         : (item.rackId ? [item.rackId] : []);
-    const rackAllocations: Array<{ rackId: string; quantity: number }> = [];
+    const rackAllocations = rackLinks
+        .filter((link) => link.quantity != null && link.quantity > 0)
+        .map((link) => ({
+            rackId: link.rackId,
+            quantity: link.quantity as number,
+            rackLabel: link.rackLabel ?? null,
+        }));
     const primaryRackId = rackIds[0] ?? null;
     return {
         id: item.id,
@@ -464,6 +471,7 @@ export const resolvers = {
                 skuCode?: string | null;
                 quantity: number;
                 forRackId?: string | null;
+                excludeRackIds?: string[] | null;
             },
             context: GraphQLContext,
         ) => {
@@ -478,6 +486,30 @@ export const resolvers = {
                 skuCode: args.skuCode,
                 quantity: args.quantity,
                 forRackId: args.forRackId,
+                excludeRackIds: args.excludeRackIds,
+            });
+        },
+        listRacksWithCapacity: async (
+            _: unknown,
+            args: {
+                skuId?: string | null;
+                skuCode?: string | null;
+                quantity: number;
+                excludeRackIds?: string[] | null;
+            },
+            context: GraphQLContext,
+        ) => {
+            if (!context.organizationId) {
+                throw new GraphQLError('Organization context is required', {
+                    extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                });
+            }
+            return inboundPutawaySuggestionService.listRacksWithCapacity({
+                organizationId: context.organizationId,
+                skuId: args.skuId,
+                skuCode: args.skuCode,
+                quantity: args.quantity,
+                excludeRackIds: args.excludeRackIds,
             });
         },
     },
@@ -529,15 +561,30 @@ export const resolvers = {
             }
 
             const grnItemIds = result.map((r) => r.id);
-            let rackMap = new Map<string, Array<{ rackId: string }>>();
+            let rackMap = new Map<string, Array<{ rackId: string; quantity: number | null; rackLabel: string | null }>>();
             if (grnItemIds.length > 0) {
                 const rackLinks = await db
-                    .select()
+                    .select({
+                        grnItemId: GrnItemRacksTable.grnItemId,
+                        rackId: GrnItemRacksTable.rackId,
+                        quantity: GrnItemRacksTable.quantity,
+                        rackRow: RacksTable.rackRow,
+                        rackLevel: RacksTable.rackLevel,
+                        rackColumn: RacksTable.rackColumn,
+                    })
                     .from(GrnItemRacksTable)
+                    .leftJoin(RacksTable, eq(GrnItemRacksTable.rackId, RacksTable.rackId))
                     .where(inArray(GrnItemRacksTable.grnItemId, grnItemIds));
                 for (const link of rackLinks) {
+                    const rackLabel = link.rackRow && link.rackLevel && link.rackColumn
+                        ? `${link.rackRow}-${link.rackLevel}-${link.rackColumn}`
+                        : null;
                     const current = rackMap.get(link.grnItemId) ?? [];
-                    current.push({ rackId: link.rackId });
+                    current.push({
+                        rackId: link.rackId,
+                        quantity: link.quantity != null ? Number(link.quantity) : null,
+                        rackLabel,
+                    });
                     rackMap.set(link.grnItemId, current);
                 }
             }
