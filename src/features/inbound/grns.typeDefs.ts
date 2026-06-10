@@ -258,10 +258,11 @@ export const typeDefs = `#graphql
 
     extend type Query {
         """
-        List advance notices from NetSuite that have not yet been linked to a GRN.
-        Used to populate the ASN dropdown when creating a new GRN.
+        List outstanding advance notices for the Create GRN picker.
+        Without search: paginated pending (unlinked) ASNs only.
+        With search: pending + partially-fulfilled linked ASNs matching PO, entity, due date, or SKU.
         """
-        listPendingAdvanceNotices: [AdvanceNotice!]! @auth
+        listPendingAdvanceNotices(search: String, pageSize: Int, pageNumber: Int): AdvanceNoticePaginatedResponse! @auth
 
         """
         Look up the advance notice (linked or not) for a given PO/tranid.
@@ -316,6 +317,11 @@ export const typeDefs = `#graphql
 
     type GrnPaginatedResponse {
         query: [Grn!]!
+        pagination: Pagination!
+    }
+
+    type AdvanceNoticePaginatedResponse {
+        query: [AdvanceNotice!]!
         pagination: Pagination!
     }
 

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, isNull, lte, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, ilike, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '@/db/index';
 import { logger } from '@/util/logger.js';
 import { EsAdvanceNoticeLogTable, EsAdvanceNoticesTable, EsAdvanceNoticeType, EsItemReceiptsTable } from './es.model.js';
@@ -18,6 +18,18 @@ export type EsItemReceiptFilter = {
   poNumber?: string;
   status?: string; // "success" | "error"
 };
+
+function buildAdvanceNoticeSearchCondition(search?: string) {
+  const term = search?.trim();
+  if (!term) return undefined;
+  const pattern = `%${term}%`;
+  return or(
+    ilike(EsAdvanceNoticesTable.tranid, pattern),
+    sql`${EsAdvanceNoticesTable.payload}->>'entity' ILIKE ${pattern}`,
+    sql`${EsAdvanceNoticesTable.payload}->>'duedate' ILIKE ${pattern}`,
+    sql`${EsAdvanceNoticesTable.payload}::text ILIKE ${pattern}`,
+  );
+}
 
 export class EsRepositoryClass {
   /**
@@ -96,6 +108,77 @@ export class EsRepositoryClass {
       return await query;
     } catch (error) {
       logger.error('❌ [EsRepository.findLinked] Error:', error);
+      throw error;
+    }
+  }
+
+  /** Pending ASNs with optional server-side search (PO, entity, due date, line SKU). */
+  async findPendingFiltered(search?: string): Promise<EsAdvanceNoticeType[]> {
+    try {
+      const searchCond = buildAdvanceNoticeSearchCondition(search);
+      const whereClause = searchCond
+        ? and(isNull(EsAdvanceNoticesTable.linkedGrnId), searchCond)
+        : isNull(EsAdvanceNoticesTable.linkedGrnId);
+      return await db
+        .select()
+        .from(EsAdvanceNoticesTable)
+        .where(whereClause)
+        .orderBy(EsAdvanceNoticesTable.receivedAt);
+    } catch (error) {
+      logger.error('❌ [EsRepository.findPendingFiltered] Error:', error);
+      throw error;
+    }
+  }
+
+  /** Linked ASNs with optional server-side search, most-recent first. */
+  async findLinkedFiltered(search?: string): Promise<EsAdvanceNoticeType[]> {
+    try {
+      const searchCond = buildAdvanceNoticeSearchCondition(search);
+      const linkedCond = sql`${EsAdvanceNoticesTable.linkedGrnId} IS NOT NULL`;
+      const whereClause = searchCond ? and(linkedCond, searchCond) : linkedCond;
+      return await db
+        .select()
+        .from(EsAdvanceNoticesTable)
+        .where(whereClause)
+        .orderBy(desc(EsAdvanceNoticesTable.receivedAt));
+    } catch (error) {
+      logger.error('❌ [EsRepository.findLinkedFiltered] Error:', error);
+      throw error;
+    }
+  }
+
+  /** Paginated pending ASNs (no search = browse unlinked notices). */
+  async findPendingPaginated(
+    paginationParams: PaginationParams,
+    search?: string,
+  ): Promise<PaginatedResponse<EsAdvanceNoticeType>> {
+    try {
+      const searchCond = buildAdvanceNoticeSearchCondition(search);
+      const whereClause = searchCond
+        ? and(isNull(EsAdvanceNoticesTable.linkedGrnId), searchCond)
+        : isNull(EsAdvanceNoticesTable.linkedGrnId);
+      const baseQuery = db
+        .select()
+        .from(EsAdvanceNoticesTable)
+        .where(whereClause)
+        .orderBy(EsAdvanceNoticesTable.receivedAt);
+      const pageSize = paginationParams.pageSize || 20;
+      const pageNumber = paginationParams.pageNumber || 1;
+      const countRows = await db
+        .select({ total: count() })
+        .from(EsAdvanceNoticesTable)
+        .where(whereClause);
+      const totalCount = Number(countRows[0]?.total ?? 0);
+      const paginatedQuery = pagination(
+        baseQuery as unknown as PgQueryType,
+        pageSize,
+        pageNumber,
+        totalCount,
+      );
+      const data = (await paginatedQuery.query) as EsAdvanceNoticeType[];
+      return { query: data, pagination: paginatedQuery.pagination };
+    } catch (error) {
+      logger.error('❌ [EsRepository.findPendingPaginated] Error:', error);
       throw error;
     }
   }

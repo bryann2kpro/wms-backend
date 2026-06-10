@@ -20,6 +20,7 @@ import { GrnFilter } from './grns.repository';
 import type { GrnItemsType } from './grns-items.repository';
 import { InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
 import type { EsAdvanceNoticeType } from '@/features/es/es.model';
+import type { PaginationMeta } from '@/features/rbac/rbac.model';
 import { recordGrnApprovalStockQuants } from './grn-stock-quant.service';
 import {
     assertGrnItemRackAllocations,
@@ -327,6 +328,65 @@ async function computePoFulfillment(poNo: string | null | undefined): Promise<{
     return { asn, fullyFulfilled: shortfalls.length === 0, shortfalls };
 }
 
+function paginateMappedAdvanceNotices<T>(
+    items: T[],
+    pageSize: number,
+    pageNumber: number,
+): { query: T[]; pagination: PaginationMeta } {
+    const totalCount = items.length;
+    const offset = (pageNumber - 1) * pageSize;
+    const slice = items.slice(offset, offset + pageSize);
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    return {
+        query: slice,
+        pagination: {
+            count: slice.length,
+            totalCount,
+            currentPage: pageNumber,
+            totalPages,
+            hasNextPage: pageNumber < totalPages,
+            hasPrevPage: pageNumber > 1,
+        },
+    };
+}
+
+/** Linked ASNs that still have qty outstanding against their PO lines. */
+async function filterPartialLinkedAdvanceNotices(
+    records: EsAdvanceNoticeType[],
+): Promise<EsAdvanceNoticeType[]> {
+    const partial: EsAdvanceNoticeType[] = [];
+    for (const record of records) {
+        const payload = record.payload as EsAdvanceNoticePayload;
+        const lines = payload.lines ?? [];
+        if (lines.length === 0) continue;
+
+        const grnsForPo = await grnsRepository.getGrns({ poNo: record.tranid }, { pageSize: 100, pageNumber: 1 });
+        const grnList = grnsForPo && 'query' in grnsForPo ? grnsForPo.query : [];
+
+        const receivedByskuId = new Map<string, number>();
+        for (const grn of grnList) {
+            const items = await grnItemsRepository.getGrnItems({ grnId: grn.id });
+            for (const item of items || []) {
+                receivedByskuId.set(item.skuId, (receivedByskuId.get(item.skuId) ?? 0) + Number(item.qty || 0));
+            }
+        }
+
+        let receivedBySku = new Map<string, number>();
+        if (receivedByskuId.size > 0) {
+            const skuResult = await skuRepository.getSku({ skuId: [...receivedByskuId.keys()] }, undefined, undefined, undefined);
+            receivedBySku = new Map(
+                skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuCode, receivedByskuId.get(s.skuId) ?? 0]),
+            );
+        }
+
+        const hasOutstandingQty = lines.some((l) => l.quantity - (receivedBySku.get(l.itemid) ?? 0) > 0);
+        if (hasOutstandingQty) {
+            partial.push(record);
+        }
+    }
+    return partial;
+}
+
 export const resolvers = {
     Query: {
         grns: async (_: unknown, args: {
@@ -396,50 +456,34 @@ export const resolvers = {
                 throw error;
             }
         },
-        listPendingAdvanceNotices: async () => {
+        listPendingAdvanceNotices: async (
+            _: unknown,
+            args: { search?: string | null; pageSize?: number | null; pageNumber?: number | null },
+        ) => {
             try {
-                const [pending, linked] = await Promise.all([
-                    esRepository.findPending(),
-                    // Must scan all linked ASNs — a low limit hides older partially-fulfilled POs.
-                    esRepository.findLinked(),
-                ]);
+                const search = args.search?.trim() || undefined;
+                const pageSize = args.pageSize ?? 20;
+                const pageNumber = args.pageNumber ?? 1;
 
-                const pendingResults = pending.map((r) => mapAdvanceNoticeRecord(r, 'PENDING'));
-
-                // For linked ASNs, work out whether the PO still has qty outstanding
-                // (i.e. more deliveries are expected) — only surface those as "partial".
-                const partialResults: ReturnType<typeof mapAdvanceNoticeRecord>[] = [];
-                for (const record of linked) {
-                    const payload = record.payload as EsAdvanceNoticePayload;
-                    const lines = payload.lines ?? [];
-                    if (lines.length === 0) continue;
-
-                    const grnsForPo = await grnsRepository.getGrns({ poNo: record.tranid }, { pageSize: 100, pageNumber: 1 });
-                    const grnList = grnsForPo && 'query' in grnsForPo ? grnsForPo.query : [];
-
-                    const receivedByskuId = new Map<string, number>();
-                    for (const grn of grnList) {
-                        const items = await grnItemsRepository.getGrnItems({ grnId: grn.id });
-                        for (const item of items || []) {
-                            receivedByskuId.set(item.skuId, (receivedByskuId.get(item.skuId) ?? 0) + Number(item.qty || 0));
-                        }
-                    }
-
-                    let receivedBySku = new Map<string, number>();
-                    if (receivedByskuId.size > 0) {
-                        const skuResult = await skuRepository.getSku({ skuId: [...receivedByskuId.keys()] }, undefined, undefined, undefined);
-                        receivedBySku = new Map(
-                            skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuCode, receivedByskuId.get(s.skuId) ?? 0]),
-                        );
-                    }
-
-                    const hasOutstandingQty = lines.some((l) => l.quantity - (receivedBySku.get(l.itemid) ?? 0) > 0);
-                    if (hasOutstandingQty) {
-                        partialResults.push(mapAdvanceNoticeRecord(record, 'PARTIAL'));
-                    }
+                if (search) {
+                    const [pendingRecords, linkedCandidates] = await Promise.all([
+                        esRepository.findPendingFiltered(search),
+                        esRepository.findLinkedFiltered(search),
+                    ]);
+                    const partialRecords = await filterPartialLinkedAdvanceNotices(linkedCandidates);
+                    const merged = [
+                        ...pendingRecords.map((r) => mapAdvanceNoticeRecord(r, 'PENDING')),
+                        ...partialRecords.map((r) => mapAdvanceNoticeRecord(r, 'PARTIAL')),
+                    ];
+                    merged.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+                    return paginateMappedAdvanceNotices(merged, pageSize, pageNumber);
                 }
 
-                return [...pendingResults, ...partialResults];
+                const page = await esRepository.findPendingPaginated({ pageSize, pageNumber });
+                return {
+                    query: page.query.map((r) => mapAdvanceNoticeRecord(r, 'PENDING')),
+                    pagination: page.pagination,
+                };
             } catch (error) {
                 logger.error('[grns.resolvers] listPendingAdvanceNotices Error:', error);
                 throw error;
