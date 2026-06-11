@@ -25,9 +25,18 @@ function makeMockRepo(): ReservationRepository {
     getById: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
+    list: vi.fn(),
     listActiveBySku: vi.fn(),
+    listExpiredActive: vi.fn(),
     adjustInventoryReservedQty: vi.fn(),
     getInventoryBalanceBySku: vi.fn(),
+    getInventoryBalanceBySkuForUpdate: vi.fn(),
+    listCustomerPriorities: vi.fn(),
+    getCustomerPriorityByCode: vi.fn(),
+    getMaxRank: vi.fn(),
+    insertCustomerPriority: vi.fn(),
+    updateCustomerPriority: vi.fn(),
+    reorderCustomerPriorities: vi.fn(),
   } as unknown as ReservationRepository;
 }
 
@@ -89,7 +98,7 @@ describe("ReservationService.createReservation", () => {
   });
 
   test("creates reservation and bumps balance when qty is available", async () => {
-    (mockRepo.getInventoryBalanceBySku as ReturnType<typeof vi.fn>).mockResolvedValue(
+    (mockRepo.getInventoryBalanceBySkuForUpdate as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeBalance("100.00", "10.00"),
     );
     (mockRepo.insert as ReturnType<typeof vi.fn>).mockResolvedValue(makeReservation());
@@ -107,6 +116,11 @@ describe("ReservationService.createReservation", () => {
     });
 
     expect(result.reservationNo).toBe("RSV-20260609-0001");
+    expect(mockRepo.getInventoryBalanceBySkuForUpdate).toHaveBeenCalledWith(
+      ORG,
+      SKU,
+      expect.anything(),
+    );
     expect(mockRepo.adjustInventoryReservedQty).toHaveBeenCalledWith(
       ORG,
       BAL_ID,
@@ -115,8 +129,30 @@ describe("ReservationService.createReservation", () => {
     );
   });
 
+  test("uses row lock when reserving stock", async () => {
+    (mockRepo.getInventoryBalanceBySkuForUpdate as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeBalance("100.00", "0.00"),
+    );
+    (mockRepo.insert as ReturnType<typeof vi.fn>).mockResolvedValue(makeReservation());
+    (mockRepo.adjustInventoryReservedQty as ReturnType<typeof vi.fn>).mockResolvedValue({
+      reservedQty: "10.00",
+      onHandQty: "100.00",
+    });
+
+    await service.createReservation(ORG, USER, {
+      customerCode: "ES",
+      skuId: SKU,
+      qtyReserved: 10,
+      reserveStart: new Date("2026-06-01"),
+      reserveEnd: new Date("2026-06-30"),
+    });
+
+    expect(mockRepo.getInventoryBalanceBySkuForUpdate).toHaveBeenCalled();
+    expect(mockRepo.getInventoryBalanceBySku).not.toHaveBeenCalled();
+  });
+
   test("throws when requested qty exceeds available ATP", async () => {
-    (mockRepo.getInventoryBalanceBySku as ReturnType<typeof vi.fn>).mockResolvedValue(
+    (mockRepo.getInventoryBalanceBySkuForUpdate as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeBalance("100.00", "80.00"), // only 20 available
     );
 
@@ -156,7 +192,7 @@ describe("ReservationService.createReservation", () => {
   });
 
   test("throws when no inventory balance exists for SKU", async () => {
-    (mockRepo.getInventoryBalanceBySku as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (mockRepo.getInventoryBalanceBySkuForUpdate as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     await expect(
       service.createReservation(ORG, USER, {
@@ -183,7 +219,7 @@ describe("ReservationService.updateReservation", () => {
     (mockRepo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeReservation({ qtyReserved: "50.00" }),
     );
-    (mockRepo.getInventoryBalanceBySku as ReturnType<typeof vi.fn>).mockResolvedValue(
+    (mockRepo.getInventoryBalanceBySkuForUpdate as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeBalance("100.00", "50.00"),
     );
     (mockRepo.update as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -312,5 +348,132 @@ describe("ReservationService.cancelReservation", () => {
     await expect(
       service.cancelReservation(ORG, USER, RES_ID),
     ).rejects.toThrow("not found");
+  });
+});
+
+describe("ReservationService.listReservations", () => {
+  let service: ReservationService;
+  let mockRepo: ReturnType<typeof makeMockRepo>;
+
+  beforeEach(() => {
+    mockRepo = makeMockRepo();
+    service = new ReservationService(mockRepo, makeMockRunningNoRepo());
+  });
+
+  test("passes status filter to repository", async () => {
+    (mockRepo.list as ReturnType<typeof vi.fn>).mockResolvedValue({
+      query: [makeReservation()],
+      pagination: {
+        count: 1,
+        totalCount: 1,
+        currentPage: 1,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
+      },
+    });
+
+    const result = await service.listReservations(
+      ORG,
+      { status: "ACTIVE" },
+      { pageSize: 10, pageNumber: 1 },
+    );
+
+    expect(result.query).toHaveLength(1);
+    expect(mockRepo.list).toHaveBeenCalledWith(
+      ORG,
+      { status: "ACTIVE" },
+      { pageSize: 10, pageNumber: 1 },
+    );
+  });
+});
+
+describe("ReservationService.expireReservations", () => {
+  let service: ReservationService;
+  let mockRepo: ReturnType<typeof makeMockRepo>;
+
+  beforeEach(() => {
+    mockRepo = makeMockRepo();
+    service = new ReservationService(mockRepo, makeMockRunningNoRepo());
+  });
+
+  test("expires ACTIVE reservations past reserveEnd and releases qty", async () => {
+    const pastEnd = new Date("2026-06-01");
+    (mockRepo.listExpiredActive as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeReservation({ reserveEnd: pastEnd }),
+    ]);
+    (mockRepo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeReservation({ reserveEnd: pastEnd }),
+    );
+    (mockRepo.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeReservation({ status: "EXPIRED" }),
+    );
+    (mockRepo.adjustInventoryReservedQty as ReturnType<typeof vi.fn>).mockResolvedValue({
+      reservedQty: "0.00",
+      onHandQty: "100.00",
+    });
+
+    const result = await service.expireReservations(new Date("2026-06-10"));
+
+    expect(result.expiredCount).toBe(1);
+    expect(mockRepo.update).toHaveBeenCalledWith(
+      ORG,
+      RES_ID,
+      expect.objectContaining({ status: "EXPIRED" }),
+      expect.anything(),
+    );
+    expect(mockRepo.adjustInventoryReservedQty).toHaveBeenCalledWith(
+      ORG,
+      BAL_ID,
+      "-50.00",
+      expect.anything(),
+    );
+  });
+
+  test("skips reservations that are not yet expired", async () => {
+    (mockRepo.listExpiredActive as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeReservation({ reserveEnd: new Date("2026-12-31") }),
+    ]);
+    (mockRepo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeReservation({ reserveEnd: new Date("2026-12-31") }),
+    );
+
+    const result = await service.expireReservations(new Date("2026-06-10"));
+
+    expect(result.expiredCount).toBe(0);
+    expect(mockRepo.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("ReservationService.reorderCustomerPriorities", () => {
+  let service: ReservationService;
+  let mockRepo: ReturnType<typeof makeMockRepo>;
+
+  beforeEach(() => {
+    mockRepo = makeMockRepo();
+    service = new ReservationService(mockRepo, makeMockRunningNoRepo());
+  });
+
+  test("delegates atomic reorder to repository", async () => {
+    const reordered = [
+      { id: "cp-1", customerCode: "LH", rank: 1 },
+      { id: "cp-2", customerCode: "ES", rank: 2 },
+    ];
+    (mockRepo.reorderCustomerPriorities as ReturnType<typeof vi.fn>).mockResolvedValue(
+      reordered,
+    );
+
+    const result = await service.reorderCustomerPriorities(ORG, USER, [
+      { customerCode: "LH" },
+      { customerCode: "ES" },
+    ]);
+
+    expect(result).toEqual(reordered);
+    expect(mockRepo.reorderCustomerPriorities).toHaveBeenCalledWith(
+      ORG,
+      USER,
+      [{ customerCode: "LH" }, { customerCode: "ES" }],
+      expect.anything(),
+    );
   });
 });
