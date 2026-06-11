@@ -184,6 +184,7 @@ export const resolvers = {
         skuCode?: string;
         skuCodes?: string[];
         skuDescription?: string;
+        search?: string;
         isActive?: boolean;
         sortBy?: string;
         sortOrder?: string;
@@ -212,7 +213,11 @@ export const resolvers = {
           if (args.filter.skuDescription) {
             filter.skuDescription = args.filter.skuDescription;
           }
-          
+
+          if (args.filter.search) {
+            filter.search = args.filter.search;
+          }
+
           if (args.filter.isActive !== undefined) {
             filter.isActive = args.filter.isActive;
           }
