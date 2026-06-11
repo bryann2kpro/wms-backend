@@ -26,6 +26,8 @@ export type SkuFilter = {
   skuId?: string | string[];
   skuCode?: string | string[];
   skuDescription?: string;
+  /** Free-text search across skuCode and skuDescription (case-insensitive, partial match) */
+  search?: string;
   isActive?: boolean;
   /** Sort field: SKU_CODE, SKU_DESCRIPTION, UPDATED_AT, CREATED_AT. Default: SKU_CODE */
   sortBy?: string;
@@ -70,6 +72,16 @@ export class SkuRepositoryClass {
 
       if (filter.skuDescription) {
         whereCondition.push(like(SkuTable.skuDescription, `%${filter.skuDescription}%`));
+      }
+
+      if (filter.search) {
+        const pattern = `%${filter.search}%`;
+        whereCondition.push(
+          or(
+            ilike(SkuTable.skuCode, pattern),
+            ilike(SkuTable.skuDescription, pattern),
+          )!,
+        );
       }
 
       if (filter.isActive !== undefined) {

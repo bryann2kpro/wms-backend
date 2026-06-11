@@ -138,6 +138,8 @@ export const typeDefs = `#graphql
     skuCode: String
     skuCodes: [String!]
     skuDescription: String
+    """Free-text search across skuCode and skuDescription (case-insensitive, partial match)"""
+    search: String
     isActive: Boolean
     """Sort field: SKU_CODE, SKU_DESCRIPTION, UPDATED_AT, CREATED_AT. Default: SKU_CODE"""
     sortBy: String
