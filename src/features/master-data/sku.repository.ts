@@ -9,7 +9,7 @@ import { SkuTable } from './sku.model';
 import { SuppliersTable } from './suppliers.model';
 import { InventoryBalancesTable } from '@/features/inventory/inventory-balance/inventory.model';
 import { InventoryMovementsTable } from '@/features/inventory/inventory-movement/inventory.model';
-import { eq, and, like, ilike, or, inArray, asc, desc } from 'drizzle-orm';
+import { eq, and, like, ilike, inArray, asc, desc } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
@@ -66,7 +66,8 @@ export class SkuRepositoryClass {
       if (Array.isArray(filter.skuCode)) {
         whereCondition.push(inArray(SkuTable.skuCode, filter.skuCode));
       } else if (filter.skuCode) {
-        whereCondition.push(eq(SkuTable.skuCode, filter.skuCode));
+        // Partial, case-insensitive match so combobox search finds codes like RAW-E0012
+        whereCondition.push(ilike(SkuTable.skuCode, `%${filter.skuCode}%`));
       }
 
       if (filter.skuDescription) {
