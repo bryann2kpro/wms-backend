@@ -170,6 +170,42 @@ export class RacksRepositoryClass {
   }
 
   /**
+   * Get rack dimensions (length/width/height/weight) for all racks in an organization
+   * @param organizationId - Organization ID for multi-tenant filtering
+   */
+  async getAllRackDimensions(organizationId?: string): Promise<Array<{
+    rackId: string;
+    length: string | null;
+    width: string | null;
+    height: string | null;
+    weight: string | null;
+  }>> {
+    try {
+      logger.info('ℹ️ [RacksRepository.getAllRackDimensions] Getting rack dimensions...');
+      const whereCondition = [];
+      if (organizationId) {
+        whereCondition.push(eq(RacksTable.organizationId, organizationId));
+      }
+      const rows = await db
+        .select({
+          rackId: RacksTable.rackId,
+          length: RacksTable.length,
+          width: RacksTable.width,
+          height: RacksTable.height,
+          weight: RacksTable.weight,
+        })
+        .from(RacksTable)
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+
+      logger.info('✅ [RacksRepository.getAllRackDimensions] Rack dimensions fetched successfully');
+      return rows;
+    } catch (error) {
+      logger.error('❌ [RacksRepository.getAllRackDimensions] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create a new rack
    * @param rack - Rack data
    * @param organizationId - Organization ID for multi-tenant filtering
