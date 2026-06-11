@@ -1,5 +1,5 @@
 import { MainSchema } from "@/db/db.schema";
-import { uuid, text, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
+import { uuid, text, numeric, boolean, timestamp, index } from "drizzle-orm/pg-core";
 import { SkuTable } from "@/features/master-data/sku.model";
 import { RacksTable } from "../master-data/racks.model";
 import { OrganizationsTable } from "../master-data/organization.model";
@@ -18,4 +18,7 @@ export const StockQuantTable = MainSchema.table('stock_quant', {
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     createdBy: text('created_by').notNull(),
     updatedBy: text('updated_by'),
-});
+}, (t) => ({
+    /** Rack capacity usage: aggregate quantity per rack within a tenant. */
+    byOrgRack: index("stock_quant_org_rack_idx").on(t.organizationId, t.rackId),
+}));
