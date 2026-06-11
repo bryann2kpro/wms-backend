@@ -1,1 +1,1 @@
-ALTER TABLE "main"."grn_item_racks" ADD COLUMN "quantity" numeric(10, 2) DEFAULT '0' NOT NULL;
+ALTER TABLE "main"."grn_item_racks" ADD COLUMN IF NOT EXISTS "quantity" numeric(10, 2) DEFAULT '0' NOT NULL;
