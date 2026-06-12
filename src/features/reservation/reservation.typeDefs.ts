@@ -36,6 +36,24 @@ export const typeDefs = `#graphql
     updatedBy: String
   }
 
+  """
+  Tenant-wide ranked customer list used by the allocation engine.
+  Lower rank = higher priority (1 is highest).
+  """
+  type CustomerPriority {
+    id: ID!
+    organizationId: ID!
+    customerCode: String!
+    customerName: String
+    rank: Int!
+    isActive: Boolean!
+    notes: String
+    createdAt: String!
+    updatedAt: String!
+    createdBy: String!
+    updatedBy: String
+  }
+
   # ─── Inputs ────────────────────────────────────────────────────────────────
 
   input CreateReservationInput {
@@ -74,6 +92,37 @@ export const typeDefs = `#graphql
     notes: String
   }
 
+  input StockReservationFilterInput {
+    id: ID
+    ids: [ID!]
+    reservationNo: String
+    customerCode: String
+    customerCodes: [String!]
+    skuId: ID
+    skuIds: [ID!]
+    grnItemId: ID
+    grnItemIds: [ID!]
+    status: String
+    statuses: [String!]
+  }
+
+  input UpsertCustomerPriorityInput {
+    customerCode: String!
+    customerName: String
+    rank: Int
+    isActive: Boolean
+    notes: String
+  }
+
+  input CustomerPriorityRankInput {
+    customerCode: String!
+  }
+
+  type StockReservationPaginatedResponse {
+    query: [StockReservation!]!
+    pagination: Pagination!
+  }
+
   # ─── Queries ───────────────────────────────────────────────────────────────
 
   extend type Query {
@@ -81,6 +130,20 @@ export const typeDefs = `#graphql
     Fetch a single reservation by internal UUID.
     """
     reservation(id: ID!): StockReservation
+
+    """
+    List reservations with optional filters (status, customer, SKU) and pagination.
+    """
+    reservations(
+      filter: StockReservationFilterInput
+      pageSize: Int
+      pageNumber: Int
+    ): StockReservationPaginatedResponse!
+
+    """
+    Ranked customer priority list for the current organization (rank 1 = highest).
+    """
+    customerPriorities: [CustomerPriority!]!
   }
 
   # ─── Mutations ─────────────────────────────────────────────────────────────
@@ -104,5 +167,16 @@ export const typeDefs = `#graphql
     Idempotent check: already-cancelled / released reservations return an error.
     """
     cancelReservation(id: ID!): StockReservation!
+
+    """
+    Create or update a customer priority row for the tenant.
+    """
+    upsertCustomerPriority(input: UpsertCustomerPriorityInput!): CustomerPriority!
+
+    """
+    Rewrite the full customer priority ordering atomically (ranks 1..n).
+    Must include every existing customer code exactly once.
+    """
+    reorderCustomerPriorities(ranking: [CustomerPriorityRankInput!]!): [CustomerPriority!]!
   }
 `;

@@ -8,16 +8,25 @@
  *     applied as a delta to the balance.
  *  3. cancelReservation — flips status to CANCELLED and releases the remaining
  *     unconsumed qty back to the balance.
+ *  4. expireReservations — cron path for ACTIVE rows past reserveEnd.
  *
- * All three operations run inside a single db.transaction to keep the
+ * All stock-qty mutations run inside a single db.transaction to keep the
  * reservation table and the balance counter in sync.
  */
 
 import { db } from "@/db";
 import { logger } from "@/util/logger";
+import type { PaginatedResponse, PaginationParams } from "@/features/rbac/rbac.model";
 import { RunningNoRepositoryClass } from "@/features/running-no/running-no.repository";
-import { ReservationRepository } from "./reservation.repository";
-import type { StockReservationType } from "./reservation.model";
+import {
+  ReservationRepository,
+  type UpsertCustomerPriorityInput,
+} from "./reservation.repository";
+import type {
+  CustomerPriorityType,
+  StockReservationFilter,
+  StockReservationType,
+} from "./reservation.model";
 
 // ---------- helpers ---------------------------------------------------------
 
@@ -55,6 +64,12 @@ export type UpdateReservationInput = {
   notes?: string | null;
 };
 
+export type ExpireReservationsResult = {
+  scannedCount: number;
+  expiredCount: number;
+  errors: Array<{ reservationId: string; message: string }>;
+};
+
 // ---------- service ---------------------------------------------------------
 
 export class ReservationService {
@@ -67,6 +82,14 @@ export class ReservationService {
   ) {
     this.repo = repo;
     this.runningNoRepo = runningNoRepo;
+  }
+
+  async listReservations(
+    organizationId: string,
+    filter: StockReservationFilter = {},
+    paginationParams?: PaginationParams,
+  ): Promise<PaginatedResponse<StockReservationType>> {
+    return this.repo.list(organizationId, filter, paginationParams);
   }
 
   async createReservation(
@@ -82,7 +105,7 @@ export class ReservationService {
     }
 
     return db.transaction(async (tx) => {
-      const balance = await this.repo.getInventoryBalanceBySku(
+      const balance = await this.repo.getInventoryBalanceBySkuForUpdate(
         organizationId,
         input.skuId,
         tx,
@@ -191,7 +214,7 @@ export class ReservationService {
         qtyDelta = input.qtyReserved - parseQty(existing.qtyReserved);
 
         if (qtyDelta > 0) {
-          const balance = await this.repo.getInventoryBalanceBySku(
+          const balance = await this.repo.getInventoryBalanceBySkuForUpdate(
             organizationId,
             existing.skuId,
             tx,
@@ -282,10 +305,182 @@ export class ReservationService {
     });
   }
 
+  async expireReservation(
+    organizationId: string,
+    userId: string,
+    id: string,
+    asOf: Date = new Date(),
+  ): Promise<StockReservationType | null> {
+    return db.transaction(async (tx) => {
+      const existing = await this.repo.getById(organizationId, id, tx);
+      if (!existing || existing.status !== "ACTIVE") return null;
+      if (existing.reserveEnd >= asOf) return null;
+
+      const unconsumed =
+        parseQty(existing.qtyReserved) - parseQty(existing.qtyConsumed);
+
+      const expired = await this.repo.update(
+        organizationId,
+        id,
+        { status: "EXPIRED", updatedBy: userId },
+        tx,
+      );
+      if (!expired) return null;
+
+      if (unconsumed > 0) {
+        await this.repo.adjustInventoryReservedQty(
+          organizationId,
+          existing.inventoryBalanceId,
+          toDbQty(-unconsumed),
+          tx,
+        );
+      }
+
+      logger.info(
+        `[ReservationService.expire] ${existing.reservationNo} released=${unconsumed}`,
+      );
+      return expired;
+    });
+  }
+
+  async expireReservations(
+    asOf: Date = new Date(),
+    organizationId?: string,
+    userId = "00000000-0000-0000-0000-000000000000",
+  ): Promise<ExpireReservationsResult> {
+    const candidates = await this.repo.listExpiredActive(asOf, organizationId);
+    const errors: Array<{ reservationId: string; message: string }> = [];
+    let expiredCount = 0;
+
+    for (const row of candidates) {
+      try {
+        const expired = await this.expireReservation(
+          row.organizationId,
+          userId,
+          row.id,
+          asOf,
+        );
+        if (expired) expiredCount += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push({ reservationId: row.id, message });
+        logger.error(`[ReservationService.expireReservations] ${row.id}:`, error);
+      }
+    }
+
+    return {
+      scannedCount: candidates.length,
+      expiredCount,
+      errors,
+    };
+  }
+
   async getReservation(
     organizationId: string,
     id: string,
   ): Promise<StockReservationType | null> {
     return this.repo.getById(organizationId, id);
+  }
+
+  // ─── Customer priority ───────────────────────────────────────────────────
+
+  async listCustomerPriorities(
+    organizationId: string,
+  ): Promise<CustomerPriorityType[]> {
+    return this.repo.listCustomerPriorities(organizationId);
+  }
+
+  async upsertCustomerPriority(
+    organizationId: string,
+    userId: string,
+    input: UpsertCustomerPriorityInput,
+  ): Promise<CustomerPriorityType> {
+    const code = input.customerCode.trim();
+    if (!code) throw new Error("customerCode is required.");
+
+    return db.transaction(async (tx) => {
+      const existing = await this.repo.getCustomerPriorityByCode(
+        organizationId,
+        code,
+        tx,
+      );
+
+      if (existing) {
+        const patch: Parameters<ReservationRepository["updateCustomerPriority"]>[2] =
+          { updatedBy: userId };
+        if (input.customerName !== undefined) patch.customerName = input.customerName;
+        if (input.isActive !== undefined) patch.isActive = input.isActive;
+        if (input.notes !== undefined) patch.notes = input.notes;
+
+        if (input.rank != null) {
+          if (input.rank <= 0) throw new Error("rank must be a positive integer.");
+          const peers = await this.repo.listCustomerPriorities(organizationId, tx);
+          const occupant = peers.find(
+            (p) => p.rank === input.rank && p.customerCode !== code,
+          );
+          if (occupant) {
+            await this.repo.updateCustomerPriority(
+              organizationId,
+              occupant.customerCode,
+              { rank: existing.rank, updatedBy: userId },
+              tx,
+            );
+          }
+          patch.rank = input.rank;
+        }
+
+        const updated = await this.repo.updateCustomerPriority(
+          organizationId,
+          code,
+          patch,
+          tx,
+        );
+        if (!updated) throw new Error(`Failed to update customer priority for ${code}.`);
+        return updated;
+      }
+
+      let rank = input.rank;
+      if (rank == null) {
+        rank = (await this.repo.getMaxRank(organizationId, tx)) + 1;
+      } else if (rank <= 0) {
+        throw new Error("rank must be a positive integer.");
+      }
+
+      const peers = await this.repo.listCustomerPriorities(organizationId, tx);
+      const occupant = peers.find((p) => p.rank === rank);
+      if (occupant) {
+        const maxRank = await this.repo.getMaxRank(organizationId, tx);
+        await this.repo.updateCustomerPriority(
+          organizationId,
+          occupant.customerCode,
+          { rank: maxRank + 1, updatedBy: userId },
+          tx,
+        );
+      }
+
+      return this.repo.insertCustomerPriority(
+        {
+          organizationId,
+          customerCode: code,
+          customerName: input.customerName ?? null,
+          rank,
+          isActive: input.isActive ?? true,
+          notes: input.notes ?? null,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+        tx,
+      );
+    });
+  }
+
+  async reorderCustomerPriorities(
+    organizationId: string,
+    userId: string,
+    ranking: Array<{ customerCode: string }>,
+  ): Promise<CustomerPriorityType[]> {
+    return db.transaction(async (tx) =>
+      this.repo.reorderCustomerPriorities(organizationId, userId, ranking, tx),
+    );
   }
 }
