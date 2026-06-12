@@ -18,6 +18,7 @@ import type { GrnItemsType } from "./grns-items.repository";
 import { GrnItemRacksTable } from "./grns.model";
 import {
   grnItemNetQty,
+  resolveGrnItemRackAllocations,
   type ResolvedGrnRackAllocation,
 } from "./grn-rack-allocation.util";
 
@@ -26,31 +27,40 @@ const stockQuantTransactionRepository = new StockQuantTransactionRepositoryClass
 const skuRepository = new SkuRepositoryClass();
 
 async function loadGrnItemRackAllocations(
-  grnItemIds: string[],
+  items: GrnItemsType[],
   tx: DbTransaction,
 ): Promise<Map<string, ResolvedGrnRackAllocation[]>> {
   const map = new Map<string, ResolvedGrnRackAllocation[]>();
+  const grnItemIds = items.map((item) => item.id);
   if (grnItemIds.length === 0) return map;
 
   const rows = await tx
     .select({
       grnItemId: GrnItemRacksTable.grnItemId,
       rackId: GrnItemRacksTable.rackId,
-      quantity: GrnItemRacksTable.quantity,
     })
     .from(GrnItemRacksTable)
     .where(inArray(GrnItemRacksTable.grnItemId, grnItemIds));
 
+  const rackIdsByItemId = new Map<string, string[]>();
   for (const row of rows) {
-    const qty = roundQtyPutaway(Number(row.quantity ?? 0));
-    if (!row.rackId || qty <= 0) continue;
-    const current = map.get(row.grnItemId) ?? [];
-    current.push({
-      rackId: row.rackId,
-      quantity: qty,
-      quantityStr: String(qty),
+    if (!row.rackId) continue;
+    const current = rackIdsByItemId.get(row.grnItemId) ?? [];
+    current.push(row.rackId);
+    rackIdsByItemId.set(row.grnItemId, current);
+  }
+
+  for (const item of items) {
+    const rackIds = rackIdsByItemId.get(item.id) ?? [];
+    if (rackIds.length === 0) continue;
+    const allocations = resolveGrnItemRackAllocations({
+      qty: item.qty,
+      lossQty: item.lossQty,
+      rackIds,
     });
-    map.set(row.grnItemId, current);
+    if (allocations.length > 0) {
+      map.set(item.id, allocations);
+    }
   }
 
   return map;
@@ -78,10 +88,7 @@ export async function recordGrnApprovalStockQuants(params: {
     }
   }
 
-  const allocationsByItemId = await loadGrnItemRackAllocations(
-    items.map((item) => item.id),
-    tx,
-  );
+  const allocationsByItemId = await loadGrnItemRackAllocations(items, tx);
 
   for (const item of items) {
     const netQty = grnItemNetQty(item);

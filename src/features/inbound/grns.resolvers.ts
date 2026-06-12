@@ -13,12 +13,14 @@ import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { GraphQLError } from 'graphql';
 import { GrnType, GrnItemRacksTable } from './grns.model';
+import { RacksTable } from '@/features/master-data/racks.model';
+import { eq, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { GrnFilter } from './grns.repository';
 import type { GrnItemsType } from './grns-items.repository';
-import { inArray } from 'drizzle-orm';
 import { InventoryMovementType } from '../inventory/inventory-movement/inventory.model';
 import type { EsAdvanceNoticeType } from '@/features/es/es.model';
+import type { PaginationMeta } from '@/features/rbac/rbac.model';
 import { recordGrnApprovalStockQuants } from './grn-stock-quant.service';
 import {
     assertGrnItemRackAllocations,
@@ -60,14 +62,33 @@ function transformGrn(grn: GrnType) {
 function transformGrnItem(
     item: GrnItemsType,
     skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>,
-    rackMap?: Map<string, Array<{ rackId: string }>>,
+    rackMap?: Map<string, Array<{ rackId: string; quantity: number | null; rackLabel: string | null }>>,
 ) {
     const sku = skuMap?.get(item.skuId);
     const rackLinks = rackMap?.get(item.id) ?? [];
     const rackIds = rackLinks.length > 0
         ? rackLinks.map((link) => link.rackId)
         : (item.rackId ? [item.rackId] : []);
-    const rackAllocations: Array<{ rackId: string; quantity: number }> = [];
+    let rackAllocations = rackLinks
+        .filter((link) => link.quantity != null && link.quantity > 0)
+        .map((link) => ({
+            rackId: link.rackId,
+            quantity: link.quantity as number,
+            rackLabel: link.rackLabel ?? null,
+        }));
+    if (rackAllocations.length === 0 && rackLinks.length > 0) {
+        const resolved = resolveGrnItemRackAllocations({
+            qty: item.qty,
+            lossQty: item.lossQty,
+            rackIds: rackLinks.map((link) => link.rackId),
+        });
+        const labelByRackId = new Map(rackLinks.map((link) => [link.rackId, link.rackLabel]));
+        rackAllocations = resolved.map((row) => ({
+            rackId: row.rackId,
+            quantity: row.quantity,
+            rackLabel: labelByRackId.get(row.rackId) ?? null,
+        }));
+    }
     const primaryRackId = rackIds[0] ?? null;
     return {
         id: item.id,
@@ -307,6 +328,65 @@ async function computePoFulfillment(poNo: string | null | undefined): Promise<{
     return { asn, fullyFulfilled: shortfalls.length === 0, shortfalls };
 }
 
+function paginateMappedAdvanceNotices<T>(
+    items: T[],
+    pageSize: number,
+    pageNumber: number,
+): { query: T[]; pagination: PaginationMeta } {
+    const totalCount = items.length;
+    const offset = (pageNumber - 1) * pageSize;
+    const slice = items.slice(offset, offset + pageSize);
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    return {
+        query: slice,
+        pagination: {
+            count: slice.length,
+            totalCount,
+            currentPage: pageNumber,
+            totalPages,
+            hasNextPage: pageNumber < totalPages,
+            hasPrevPage: pageNumber > 1,
+        },
+    };
+}
+
+/** Linked ASNs that still have qty outstanding against their PO lines. */
+async function filterPartialLinkedAdvanceNotices(
+    records: EsAdvanceNoticeType[],
+): Promise<EsAdvanceNoticeType[]> {
+    const partial: EsAdvanceNoticeType[] = [];
+    for (const record of records) {
+        const payload = record.payload as EsAdvanceNoticePayload;
+        const lines = payload.lines ?? [];
+        if (lines.length === 0) continue;
+
+        const grnsForPo = await grnsRepository.getGrns({ poNo: record.tranid }, { pageSize: 100, pageNumber: 1 });
+        const grnList = grnsForPo && 'query' in grnsForPo ? grnsForPo.query : [];
+
+        const receivedByskuId = new Map<string, number>();
+        for (const grn of grnList) {
+            const items = await grnItemsRepository.getGrnItems({ grnId: grn.id });
+            for (const item of items || []) {
+                receivedByskuId.set(item.skuId, (receivedByskuId.get(item.skuId) ?? 0) + Number(item.qty || 0));
+            }
+        }
+
+        let receivedBySku = new Map<string, number>();
+        if (receivedByskuId.size > 0) {
+            const skuResult = await skuRepository.getSku({ skuId: [...receivedByskuId.keys()] }, undefined, undefined, undefined);
+            receivedBySku = new Map(
+                skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuCode, receivedByskuId.get(s.skuId) ?? 0]),
+            );
+        }
+
+        const hasOutstandingQty = lines.some((l) => l.quantity - (receivedBySku.get(l.itemid) ?? 0) > 0);
+        if (hasOutstandingQty) {
+            partial.push(record);
+        }
+    }
+    return partial;
+}
+
 export const resolvers = {
     Query: {
         grns: async (_: unknown, args: {
@@ -376,49 +456,34 @@ export const resolvers = {
                 throw error;
             }
         },
-        listPendingAdvanceNotices: async () => {
+        listPendingAdvanceNotices: async (
+            _: unknown,
+            args: { search?: string | null; pageSize?: number | null; pageNumber?: number | null },
+        ) => {
             try {
-                const [pending, linked] = await Promise.all([
-                    esRepository.findPending(),
-                    esRepository.findLinked(),
-                ]);
+                const search = args.search?.trim() || undefined;
+                const pageSize = args.pageSize ?? 20;
+                const pageNumber = args.pageNumber ?? 1;
 
-                const pendingResults = pending.map((r) => mapAdvanceNoticeRecord(r, 'PENDING'));
-
-                // For linked ASNs, work out whether the PO still has qty outstanding
-                // (i.e. more deliveries are expected) — only surface those as "partial".
-                const partialResults: ReturnType<typeof mapAdvanceNoticeRecord>[] = [];
-                for (const record of linked) {
-                    const payload = record.payload as EsAdvanceNoticePayload;
-                    const lines = payload.lines ?? [];
-                    if (lines.length === 0) continue;
-
-                    const grnsForPo = await grnsRepository.getGrns({ poNo: record.tranid }, { pageSize: 100, pageNumber: 1 });
-                    const grnList = grnsForPo && 'query' in grnsForPo ? grnsForPo.query : [];
-
-                    const receivedByskuId = new Map<string, number>();
-                    for (const grn of grnList) {
-                        const items = await grnItemsRepository.getGrnItems({ grnId: grn.id });
-                        for (const item of items || []) {
-                            receivedByskuId.set(item.skuId, (receivedByskuId.get(item.skuId) ?? 0) + Number(item.qty || 0));
-                        }
-                    }
-
-                    let receivedBySku = new Map<string, number>();
-                    if (receivedByskuId.size > 0) {
-                        const skuResult = await skuRepository.getSku({ skuId: [...receivedByskuId.keys()] }, undefined, undefined, undefined);
-                        receivedBySku = new Map(
-                            skuResult.query.map((s: { skuId: string; skuCode: string }) => [s.skuCode, receivedByskuId.get(s.skuId) ?? 0]),
-                        );
-                    }
-
-                    const hasOutstandingQty = lines.some((l) => l.quantity - (receivedBySku.get(l.itemid) ?? 0) > 0);
-                    if (hasOutstandingQty) {
-                        partialResults.push(mapAdvanceNoticeRecord(record, 'PARTIAL'));
-                    }
+                if (search) {
+                    const [pendingRecords, linkedCandidates] = await Promise.all([
+                        esRepository.findPendingFiltered(search),
+                        esRepository.findLinkedFiltered(search),
+                    ]);
+                    const partialRecords = await filterPartialLinkedAdvanceNotices(linkedCandidates);
+                    const merged = [
+                        ...pendingRecords.map((r) => mapAdvanceNoticeRecord(r, 'PENDING')),
+                        ...partialRecords.map((r) => mapAdvanceNoticeRecord(r, 'PARTIAL')),
+                    ];
+                    merged.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+                    return paginateMappedAdvanceNotices(merged, pageSize, pageNumber);
                 }
 
-                return [...pendingResults, ...partialResults];
+                const page = await esRepository.findPendingPaginated({ pageSize, pageNumber });
+                return {
+                    query: page.query.map((r) => mapAdvanceNoticeRecord(r, 'PENDING')),
+                    pagination: page.pagination,
+                };
             } catch (error) {
                 logger.error('[grns.resolvers] listPendingAdvanceNotices Error:', error);
                 throw error;
@@ -464,6 +529,7 @@ export const resolvers = {
                 skuCode?: string | null;
                 quantity: number;
                 forRackId?: string | null;
+                excludeRackIds?: string[] | null;
             },
             context: GraphQLContext,
         ) => {
@@ -478,6 +544,30 @@ export const resolvers = {
                 skuCode: args.skuCode,
                 quantity: args.quantity,
                 forRackId: args.forRackId,
+                excludeRackIds: args.excludeRackIds,
+            });
+        },
+        listRacksWithCapacity: async (
+            _: unknown,
+            args: {
+                skuId?: string | null;
+                skuCode?: string | null;
+                quantity: number;
+                excludeRackIds?: string[] | null;
+            },
+            context: GraphQLContext,
+        ) => {
+            if (!context.organizationId) {
+                throw new GraphQLError('Organization context is required', {
+                    extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                });
+            }
+            return inboundPutawaySuggestionService.listRacksWithCapacity({
+                organizationId: context.organizationId,
+                skuId: args.skuId,
+                skuCode: args.skuCode,
+                quantity: args.quantity,
+                excludeRackIds: args.excludeRackIds,
             });
         },
     },
@@ -529,15 +619,29 @@ export const resolvers = {
             }
 
             const grnItemIds = result.map((r) => r.id);
-            let rackMap = new Map<string, Array<{ rackId: string }>>();
+            let rackMap = new Map<string, Array<{ rackId: string; quantity: number | null; rackLabel: string | null }>>();
             if (grnItemIds.length > 0) {
                 const rackLinks = await db
-                    .select()
+                    .select({
+                        grnItemId: GrnItemRacksTable.grnItemId,
+                        rackId: GrnItemRacksTable.rackId,
+                        rackRow: RacksTable.rackRow,
+                        rackLevel: RacksTable.rackLevel,
+                        rackColumn: RacksTable.rackColumn,
+                    })
                     .from(GrnItemRacksTable)
+                    .leftJoin(RacksTable, eq(GrnItemRacksTable.rackId, RacksTable.rackId))
                     .where(inArray(GrnItemRacksTable.grnItemId, grnItemIds));
                 for (const link of rackLinks) {
+                    const rackLabel = link.rackRow && link.rackLevel && link.rackColumn
+                        ? `${link.rackRow}-${link.rackLevel}-${link.rackColumn}`
+                        : null;
                     const current = rackMap.get(link.grnItemId) ?? [];
-                    current.push({ rackId: link.rackId });
+                    current.push({
+                        rackId: link.rackId,
+                        quantity: null,
+                        rackLabel,
+                    });
                     rackMap.set(link.grnItemId, current);
                 }
             }
@@ -1019,6 +1123,13 @@ export const resolvers = {
                             logger.error('[grns.resolvers]: Failed to get GRN items');
                             throw new Error('Failed to get GRN items for approval');
                         }
+                        const approvalOrganizationId =
+                            context.organizationId ?? existingGrn.organizationId ?? grn.organizationId;
+                        if (!approvalOrganizationId) {
+                            throw new GraphQLError('Organization context is required to approve a GRN', {
+                                extensions: { code: 'UNAUTHORIZED', http: { status: 401 } },
+                            });
+                        }
 
                         await inventoryMovementRepository.createInventoryMovement(grnItems.map(item => ({
                             skuId: item.skuId,
@@ -1028,10 +1139,10 @@ export const resolvers = {
                             createdBy: updatedBy,
                             updatedBy: updatedBy,
                             movementType: InventoryMovementType.INBOUND,
-                        })), updatedBy, context.organizationId!, context.tx);
+                        })), updatedBy, approvalOrganizationId, context.tx);
 
                         await recordGrnApprovalStockQuants({
-                            organizationId: context.organizationId!,
+                            organizationId: approvalOrganizationId,
                             userId: updatedBy,
                             items: grnItems,
                             tx: context.tx!,

@@ -1,0 +1,1 @@
+CREATE INDEX "stock_quant_org_rack_idx" ON "main"."stock_quant" USING btree ("organization_id","rack_id");

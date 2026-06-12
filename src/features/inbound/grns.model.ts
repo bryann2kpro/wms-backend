@@ -110,6 +110,7 @@ export const GrnItemRacksTable = MainSchema.table('grn_item_racks', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
   grnItemId: uuid('grn_item_id').notNull(),
   rackId: uuid('rack_id').notNull(),
+  quantity: numeric('quantity', { precision: 10, scale: 2 }).notNull().default('0'),
 });
 
 export type GrnItemRackType = typeof GrnItemRacksTable.$inferSelect;
