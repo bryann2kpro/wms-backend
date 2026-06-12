@@ -13,6 +13,7 @@ import { GraphQLError } from "graphql";
 import { logger } from "@/util/logger";
 import { DeliveryOrderType, DeliveryOrderFilter, DeliveryOrderItemFilter } from "./delivery-orders.model";
 import { DeliveryOrderItemWithDetails } from "./delivery-orders.repository";
+import type { ReturnLineInput } from "@/features/returns/returns.service";
 import { PurchaseOrderType, PurchaseOrderFilter } from "./purchase-orders.model";
 
 // ============================================
@@ -223,6 +224,8 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
     qtyRequired: item.qtyRequired,
     qtyPicked: item.qtyPicked ?? "0",
     qtyPacked: item.qtyPacked ?? "0",
+    lotNo: item.lotNo ?? null,
+    expiryDate: item.expiryDate ? item.expiryDate.toISOString() : null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
     createdBy: item.createdBy,
@@ -799,7 +802,15 @@ export const resolvers = {
 
     submitDeliveryProof: withAudit<
       unknown,
-      { doId: string; fileUrl: string; fileName: string; fileSizeBytes: number; mimeType: string },
+      {
+        doId: string;
+        fileUrl: string;
+        fileName: string;
+        fileSizeBytes: number;
+        mimeType: string;
+        returns?: ReturnLineInput[] | null;
+        returnNotes?: string | null;
+      },
       unknown
     >(
       {
@@ -808,7 +819,11 @@ export const resolvers = {
         getEntityId: (result) =>
           result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
       },
-      async (_: unknown, { doId, fileUrl, fileName, fileSizeBytes, mimeType }, context: GraphQLContext) => {
+      async (
+        _: unknown,
+        { doId, fileUrl, fileName, fileSizeBytes, mimeType, returns, returnNotes },
+        context: GraphQLContext
+      ) => {
         const userId = context.user?.id ?? null;
         if (!userId) {
           throw new GraphQLError("Authentication required to submit delivery proof", {
@@ -823,6 +838,8 @@ export const resolvers = {
           fileSizeBytes,
           mimeType,
           userId,
+          returns: returns ?? null,
+          returnNotes: returnNotes ?? null,
         });
         logger.info("✅ [outbound.resolvers.submitDeliveryProof] Proof submitted, DO marked DELIVERED:", doId);
         return transformDeliveryOrder(deliveryOrder);

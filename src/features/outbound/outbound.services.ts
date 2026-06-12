@@ -14,6 +14,7 @@ import { PurchaseOrdersRepositoryClass } from "./purchase-orders.repository";
 import { PurchaseOrderType, PurchaseOrderItemsTable } from "./purchase-orders.model";
 import { DocumentsRepository } from "../documents/documents.repository";
 import { PickFaceStrategyRepositoryClass } from "../master-data/pick-face-strategy.repository";
+import type { ReturnsServiceClass, ReturnLineInput } from "../returns/returns.service";
 
 import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "../inventory/inventory-movement/inventory.repository";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
@@ -67,6 +68,10 @@ export class OutboundServices {
         private readonly inventoryMovementRepository: InventoryMovementRepositoryClass,
         private readonly documentsRepository: DocumentsRepository,
         private readonly pickFaceStrategyRepository?: PickFaceStrategyRepositoryClass,
+        // Optional to keep existing tests/wiring working; required for the
+        // proof-of-delivery returns capture. ReturnsService must NOT import
+        // OutboundServices (circular dependency).
+        private readonly returnsService?: ReturnsServiceClass,
     ) {}
 
     /**
@@ -1005,6 +1010,9 @@ export class OutboundServices {
         fileSizeBytes: number;
         mimeType: string;
         userId: string;
+        /** Optional returned goods captured by the driver at the outlet (atomic with the DELIVERED flip). */
+        returns?: ReturnLineInput[] | null;
+        returnNotes?: string | null;
     }): Promise<DeliveryOrderType> {
         logger.info('ℹ️ [OutboundServices.submitDeliveryProof] Submitting delivery proof...');
         try {
@@ -1013,6 +1021,9 @@ export class OutboundServices {
             const effectiveStatus = existing.status === 'CREATED' ? 'NEW' : existing.status;
             if (effectiveStatus !== 'SHIPPED') {
                 throw new Error(`Delivery order must be SHIPPED to submit proof. Current status: "${existing.status}".`);
+            }
+            if (data.returns?.length && !this.returnsService) {
+                throw new Error('Returns capture is not available.');
             }
 
             const updated = await db.transaction(async (tx) => {
@@ -1034,6 +1045,21 @@ export class OutboundServices {
                     undefined,
                     tx,
                 );
+
+                // Same tx: the DO is never DELIVERED with the return lost (and vice versa)
+                if (data.returns?.length && this.returnsService) {
+                    await this.returnsService.createReturnForDeliveryOrder(
+                        {
+                            doId: data.doId,
+                            items: data.returns,
+                            notes: data.returnNotes ?? null,
+                            userId: data.userId,
+                            organizationId: existing.organizationId,
+                        },
+                        tx,
+                    );
+                }
+
                 return updatedDo;
             });
 

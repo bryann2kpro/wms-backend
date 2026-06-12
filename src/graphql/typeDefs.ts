@@ -50,6 +50,7 @@ import { typeDefs as emailSettingsTypeDefs } from '@/features/notifications/emai
 import { typeDefs as esTypeDefs } from '@/features/es/es.typeDefs';
 import { typeDefs as whatsAppTypeDefs } from '@/features/whatsapp/whatsapp.typeDefs';
 import { typeDefs as reservationTypeDefs } from '@/features/reservation/reservation.typeDefs';
+import { typeDefs as returnsTypeDefs } from '@/features/returns/returns.typeDefs';
 
 // Directive type definitions
 import { directiveTypeDefs } from './directives';
@@ -158,4 +159,5 @@ export const typeDefs = [
   esTypeDefs,
   whatsAppTypeDefs,
   reservationTypeDefs,
+  returnsTypeDefs,
 ];
