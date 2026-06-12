@@ -70,4 +70,4 @@ CMD ["node", "dist/main.js"]
 # CMD ["sh", "-c", "if [ \"$RUN_MIGRATIONS_ON_START\" = \"true\" ]; then pnpm run migrate:deploy; fi; node dist/main.js"]
 
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD wget --quiet --spider http://localhost:7777/api/v1/health || exit 1
+  CMD node -e "require('http').get('http://localhost:7777/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
