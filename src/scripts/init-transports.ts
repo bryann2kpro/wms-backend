@@ -71,15 +71,3 @@ export async function initTransports(): Promise<void> {
     logger.info(`✅ Created transport ${transport.code}`);
   }
 }
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  initTransports()
-    .then(() => {
-      logger.info('✅ Transport initialization complete!');
-      process.exit(0);
-    })
-    .catch((error) => {
-      logger.error('❌ Error initializing transports:', error);
-      process.exit(1);
-    });
-}
