@@ -40,6 +40,18 @@ export const typeDefs = `#graphql
   }
 
   """
+  Aggregated capacity/usage for a rack, derived from m_racks dimensions and
+  current stock_quant + m_skus data. Volumes are m³, weights are kg.
+  """
+  type RackUtilization {
+    rackId: ID!
+    volCapacity: Float
+    volCurrent: Float!
+    weightCapacity: Float
+    weightCurrent: Float!
+  }
+
+  """
   Input for sorting racks
   """
   input RackSortInput {
@@ -117,6 +129,13 @@ export const typeDefs = `#graphql
     Requires authentication.
     """
     rack(id: ID!): Rack @auth
+
+    """
+    Get aggregated volume/weight capacity and current usage for all racks
+    in the caller's organization.
+    Requires authentication.
+    """
+    rackUtilization: [RackUtilization!]! @auth
   }
 
   extend type Mutation {

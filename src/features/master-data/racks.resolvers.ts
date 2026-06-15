@@ -5,12 +5,13 @@
  * Uses RacksRepository for data access.
  */
 
-import { racksRepository } from '@/composition-root';
+import { racksRepository, stockQuantRepository } from '@/composition-root';
 import { RackFilter } from './racks.repository';
 import { withAudit } from '../audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { z } from 'zod';
 import { GraphQLError } from 'graphql';
+import { rackVolumeMm3, computeRackUsage, type RackOccupant } from '@/features/inbound/rack-capacity.util';
 
 const rackFilterSchema = z.object({
   rackId: z.string().uuid().optional(),
@@ -193,6 +194,47 @@ export const resolvers = {
       const rack = await racksRepository.getRackById(id, context.organizationId || undefined);
       if (!rack) return null;
       return transformRack(rack);
+    },
+
+    /**
+     * Get aggregated volume/weight capacity (from rack dimensions) and current
+     * usage (from stock_quant + m_skus) for all racks in the caller's organization.
+     */
+    rackUtilization: async (_: unknown, __: unknown, context: GraphQLContext) => {
+      type RackOccupancyMap = Awaited<ReturnType<typeof stockQuantRepository.listAllRackOccupancy>>;
+
+      const [racks, occupancyByRackId] = await Promise.all([
+        racksRepository.getAllRackDimensions(context.organizationId || undefined),
+        context.organizationId
+          ? stockQuantRepository.listAllRackOccupancy(context.organizationId)
+          : Promise.resolve(new Map() as RackOccupancyMap),
+      ]);
+
+      return racks.map((rack) => {
+        const volCapacityMm3 = rackVolumeMm3(rack);
+        const weightCapacityKg = rack.weight != null ? Number(rack.weight) : null;
+
+        const occupants: RackOccupant[] = (occupancyByRackId.get(rack.rackId) ?? []).map((o) => ({
+          quantity: o.quantity,
+          sku: {
+            caseExtLengthMm: o.caseExtLengthMm,
+            caseExtWidthMm: o.caseExtWidthMm,
+            caseExtHeightMm: o.caseExtHeightMm,
+            caseGrossWeightKg: o.caseGrossWeightKg,
+            casesPerLayer: o.casesPerLayer,
+            noOfLayers: o.noOfLayers,
+          },
+        }));
+        const { usedVolumeMm3, usedWeightKg } = computeRackUsage(occupants);
+
+        return {
+          rackId: rack.rackId,
+          volCapacity: volCapacityMm3 != null ? volCapacityMm3 / 1e9 : null,
+          volCurrent: usedVolumeMm3 / 1e9,
+          weightCapacity: weightCapacityKg != null && weightCapacityKg > 0 ? weightCapacityKg : null,
+          weightCurrent: usedWeightKg,
+        };
+      });
     },
   },
 
