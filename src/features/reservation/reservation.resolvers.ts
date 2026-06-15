@@ -1,9 +1,37 @@
 import { GraphQLError } from "graphql";
+import { z } from "zod";
 import type { GraphQLContext } from "@/graphql/context";
 import { logger } from "@/util/logger";
+import type { StockReservationFilter } from "./reservation.model";
 import { ReservationService } from "./reservation.service";
 
 const service = new ReservationService();
+
+const reservationFilterSchema = z.object({
+  id: z.string().optional(),
+  ids: z.array(z.string()).optional(),
+  reservationNo: z.string().optional(),
+  customerCode: z.string().optional(),
+  customerCodes: z.array(z.string()).optional(),
+  skuId: z.string().optional(),
+  skuIds: z.array(z.string()).optional(),
+  grnItemId: z.string().optional(),
+  grnItemIds: z.array(z.string()).optional(),
+  status: z.string().optional(),
+  statuses: z.array(z.string()).optional(),
+});
+
+const upsertCustomerPrioritySchema = z.object({
+  customerCode: z.string().min(1),
+  customerName: z.string().nullable().optional(),
+  rank: z.number().int().positive().optional(),
+  isActive: z.boolean().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+const reorderCustomerPrioritiesSchema = z.array(
+  z.object({ customerCode: z.string().min(1) }),
+);
 
 function toIso(value: Date | string | null | undefined): string | null {
   if (value == null) return null;
@@ -22,6 +50,33 @@ function transformReservation(row: any) {
     reserveStart: toIso(row.reserveStart),
     reserveEnd: toIso(row.reserveEnd),
   };
+}
+
+function transformCustomerPriority(row: any) {
+  return {
+    ...row,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
+  };
+}
+
+function normalizeReservationFilter(
+  raw?: z.infer<typeof reservationFilterSchema>,
+): StockReservationFilter {
+  if (!raw) return {};
+  const filter: StockReservationFilter = {};
+  if (raw.ids?.length) filter.id = raw.ids;
+  else if (raw.id) filter.id = raw.id;
+  if (raw.reservationNo) filter.reservationNo = raw.reservationNo;
+  if (raw.customerCodes?.length) filter.customerCode = raw.customerCodes;
+  else if (raw.customerCode) filter.customerCode = raw.customerCode;
+  if (raw.skuIds?.length) filter.skuId = raw.skuIds;
+  else if (raw.skuId) filter.skuId = raw.skuId;
+  if (raw.grnItemIds?.length) filter.grnItemId = raw.grnItemIds;
+  else if (raw.grnItemId) filter.grnItemId = raw.grnItemId;
+  if (raw.statuses?.length) filter.status = raw.statuses;
+  else if (raw.status) filter.status = raw.status;
+  return filter;
 }
 
 function requireAuth(context: GraphQLContext) {
@@ -46,6 +101,60 @@ export const resolvers = {
         return row ? transformReservation(row) : null;
       } catch (error) {
         logger.error("[reservation resolver]", error);
+        throw error;
+      }
+    },
+
+    reservations: async (
+      _: unknown,
+      args: {
+        filter?: z.infer<typeof reservationFilterSchema>;
+        pageSize?: number;
+        pageNumber?: number;
+      },
+      context: GraphQLContext,
+    ) => {
+      try {
+        const { organizationId } = requireAuth(context);
+        const parsed = reservationFilterSchema.safeParse(args.filter ?? {});
+        if (!parsed.success) {
+          throw new GraphQLError("Invalid reservation filter", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+              errors: parsed.error.flatten().fieldErrors,
+            },
+          });
+        }
+
+        const result = await service.listReservations(
+          organizationId,
+          normalizeReservationFilter(parsed.data),
+          {
+            pageSize: args.pageSize,
+            pageNumber: args.pageNumber,
+          },
+        );
+
+        return {
+          query: result.query.map(transformReservation),
+          pagination: result.pagination,
+        };
+      } catch (error) {
+        logger.error("[reservations resolver]", error);
+        if (error instanceof GraphQLError) throw error;
+        throw new GraphQLError((error as Error).message, {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        });
+      }
+    },
+
+    customerPriorities: async (_: unknown, __: unknown, context: GraphQLContext) => {
+      try {
+        const { organizationId } = requireAuth(context);
+        const rows = await service.listCustomerPriorities(organizationId);
+        return rows.map(transformCustomerPriority);
+      } catch (error) {
+        logger.error("[customerPriorities resolver]", error);
         throw error;
       }
     },
@@ -159,6 +268,70 @@ export const resolvers = {
         return transformReservation(row);
       } catch (error) {
         logger.error("[cancelReservation resolver]", error);
+        if (error instanceof GraphQLError) throw error;
+        throw new GraphQLError((error as Error).message, {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+    },
+
+    upsertCustomerPriority: async (
+      _: unknown,
+      args: { input: z.infer<typeof upsertCustomerPrioritySchema> },
+      context: GraphQLContext,
+    ) => {
+      try {
+        const { organizationId, userId } = requireAuth(context);
+        const parsed = upsertCustomerPrioritySchema.safeParse(args.input);
+        if (!parsed.success) {
+          throw new GraphQLError("Invalid customer priority input", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+              errors: parsed.error.flatten().fieldErrors,
+            },
+          });
+        }
+
+        const row = await service.upsertCustomerPriority(
+          organizationId,
+          userId,
+          parsed.data,
+        );
+        return transformCustomerPriority(row);
+      } catch (error) {
+        logger.error("[upsertCustomerPriority resolver]", error);
+        if (error instanceof GraphQLError) throw error;
+        throw new GraphQLError((error as Error).message, {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+    },
+
+    reorderCustomerPriorities: async (
+      _: unknown,
+      args: { ranking: Array<{ customerCode: string }> },
+      context: GraphQLContext,
+    ) => {
+      try {
+        const { organizationId, userId } = requireAuth(context);
+        const parsed = reorderCustomerPrioritiesSchema.safeParse(args.ranking);
+        if (!parsed.success) {
+          throw new GraphQLError("Invalid customer priority ranking", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+              errors: parsed.error.flatten().fieldErrors,
+            },
+          });
+        }
+
+        const rows = await service.reorderCustomerPriorities(
+          organizationId,
+          userId,
+          parsed.data,
+        );
+        return rows.map(transformCustomerPriority);
+      } catch (error) {
+        logger.error("[reorderCustomerPriorities resolver]", error);
         if (error instanceof GraphQLError) throw error;
         throw new GraphQLError((error as Error).message, {
           extensions: { code: "BAD_USER_INPUT" },
