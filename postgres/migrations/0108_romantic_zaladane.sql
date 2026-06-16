@@ -1,0 +1,1 @@
+ALTER TYPE "main"."stock_transfer_status" ADD VALUE 'DRAFT' BEFORE 'IN_TRANSIT';

@@ -22,11 +22,13 @@ export const typeDefs = `#graphql
 
     """
     Stock transfer status.
+    - DRAFT: saved, awaiting approval; no stock movement yet.
     - IN_TRANSIT: W2W dispatched, awaiting receive (source already debited).
-    - COMPLETED: terminal. B2B is created directly as COMPLETED; W2W reaches it on receive.
-    - CANCELLED: terminal. Only reachable from IN_TRANSIT (W2W); source is re-credited.
+    - COMPLETED: terminal. B2B reaches this on approve; W2W reaches it on receive.
+    - CANCELLED: terminal. W2W in-transit cancel re-credits source; draft reject also uses this.
     """
     enum StockTransferStatus {
+        DRAFT
         IN_TRANSIT
         COMPLETED
         CANCELLED
@@ -117,7 +119,7 @@ export const typeDefs = `#graphql
         transferNo: String
         """BIN_TO_BIN or WAREHOUSE_TO_WAREHOUSE"""
         type: StockTransferType
-        """IN_TRANSIT, COMPLETED or CANCELLED"""
+        """IN_TRANSIT, COMPLETED, CANCELLED or DRAFT"""
         status: StockTransferStatus
         """Search across transfer number (case-insensitive)."""
         search: String
@@ -147,11 +149,21 @@ export const typeDefs = `#graphql
 
     extend type Mutation {
         """
-        Create and execute a stock transfer. B2B completes instantly; W2W is
-        dispatched IN_TRANSIT (source debited, destination credited on receive).
+        Save a stock transfer as draft. No stock is moved until approved.
         Requires authentication.
         """
         createStockTransfer(input: CreateStockTransferInput!): StockTransfer! @auth
+        """
+        Approve a draft transfer and execute stock movements. B2B completes
+        instantly; W2W is dispatched IN_TRANSIT (source debited, destination
+        credited on receive). Requires authentication.
+        """
+        approveStockTransfer(id: ID!): StockTransfer! @auth
+        """
+        Reject a draft transfer without moving stock. Marks the document CANCELLED.
+        Requires authentication.
+        """
+        rejectStockTransfer(id: ID!): StockTransfer! @auth
         """
         Receive an in-transit (W2W) transfer: credit the destination racks and
         complete the document. Requires authentication.

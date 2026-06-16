@@ -244,7 +244,15 @@ function makeTx(transferRepo: ReturnType<typeof makeStockTransferRepo>) {
       return chain;
     }),
   };
-  return tx as unknown as Parameters<StockTransferServiceClass["createTransfer"]>[1];
+  return tx as unknown as Parameters<StockTransferServiceClass["createTransferDraft"]>[1];
+}
+
+async function createAndApprove(
+  ctx: ReturnType<typeof buildService>,
+  input: Parameters<StockTransferServiceClass["createTransferDraft"]>[0],
+) {
+  const draft = await ctx.service.createTransferDraft(input, ctx.tx, USER, ORG);
+  return ctx.service.approveTransfer(draft.id, ORG, USER, ctx.tx);
 }
 
 // ─── Wiring helper ──────────────────────────────────────────────────────────────
@@ -271,12 +279,12 @@ function buildService(rackToWarehouse: Record<string, string | null>) {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe("StockTransferService.createTransfer — type derivation", () => {
-  test("same warehouse → BIN_TO_BIN (completed)", async () => {
+describe("StockTransferService.createTransferDraft — type derivation", () => {
+  test("same warehouse → BIN_TO_BIN draft", async () => {
     const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
-    const result = await ctx.service.createTransfer(
+    const result = await ctx.service.createTransferDraft(
       { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
       ctx.tx,
       USER,
@@ -284,14 +292,14 @@ describe("StockTransferService.createTransfer — type derivation", () => {
     );
 
     expect(result.type).toBe(STOCK_TRANSFER_TYPE.BIN_TO_BIN);
-    expect(result.status).toBe(STOCK_TRANSFER_STATUS.COMPLETED);
+    expect(result.status).toBe(STOCK_TRANSFER_STATUS.DRAFT);
   });
 
-  test("different warehouses → WAREHOUSE_TO_WAREHOUSE (in transit)", async () => {
+  test("different warehouses → WAREHOUSE_TO_WAREHOUSE draft", async () => {
     const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
-    const result = await ctx.service.createTransfer(
+    const result = await ctx.service.createTransferDraft(
       { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "10" }] },
       ctx.tx,
       USER,
@@ -299,14 +307,14 @@ describe("StockTransferService.createTransfer — type derivation", () => {
     );
 
     expect(result.type).toBe(STOCK_TRANSFER_TYPE.WAREHOUSE_TO_WAREHOUSE);
-    expect(result.status).toBe(STOCK_TRANSFER_STATUS.IN_TRANSIT);
+    expect(result.status).toBe(STOCK_TRANSFER_STATUS.DRAFT);
   });
 
-  test("unzoned ↔ unzoned → BIN_TO_BIN", async () => {
+  test("unzoned ↔ unzoned → BIN_TO_BIN draft", async () => {
     const ctx = buildService({ [RACK_UZ1]: null, [RACK_UZ2]: null });
     ctx.store.seed(QUANT_A1, RACK_UZ1, "100");
 
-    const result = await ctx.service.createTransfer(
+    const result = await ctx.service.createTransferDraft(
       { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_UZ2, quantity: "10" }] },
       ctx.tx,
       USER,
@@ -314,7 +322,7 @@ describe("StockTransferService.createTransfer — type derivation", () => {
     );
 
     expect(result.type).toBe(STOCK_TRANSFER_TYPE.BIN_TO_BIN);
-    expect(result.status).toBe(STOCK_TRANSFER_STATUS.COMPLETED);
+    expect(result.status).toBe(STOCK_TRANSFER_STATUS.DRAFT);
   });
 
   test("unzoned ↔ zoned → rejected", async () => {
@@ -322,7 +330,7 @@ describe("StockTransferService.createTransfer — type derivation", () => {
     ctx.store.seed(QUANT_A1, RACK_UZ1, "100");
 
     await expect(
-      ctx.service.createTransfer(
+      ctx.service.createTransferDraft(
         { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A1, quantity: "10" }] },
         ctx.tx,
         USER,
@@ -332,13 +340,13 @@ describe("StockTransferService.createTransfer — type derivation", () => {
   });
 });
 
-describe("StockTransferService.createTransfer — validation & guards", () => {
+describe("StockTransferService — validation & guards", () => {
   test("same-rack line → validation error", async () => {
     const ctx = buildService({ [RACK_A1]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
     await expect(
-      ctx.service.createTransfer(
+      ctx.service.createTransferDraft(
         { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A1, quantity: "10" }] },
         ctx.tx,
         USER,
@@ -352,7 +360,7 @@ describe("StockTransferService.createTransfer — validation & guards", () => {
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
     await expect(
-      ctx.service.createTransfer(
+      ctx.service.createTransferDraft(
         { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "0" }] },
         ctx.tx,
         USER,
@@ -361,35 +369,49 @@ describe("StockTransferService.createTransfer — validation & guards", () => {
     ).rejects.toThrow("positive number");
   });
 
-  test("reserved-qty guard: debit rejects when available < qty", async () => {
+  test("draft does not move stock", async () => {
     const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
-    // 100 on hand, 95 reserved → only 5 available.
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+    const before = ctx.store.totalOnHand();
+
+    await ctx.service.createTransferDraft(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("100");
+    expect(ctx.store.totalOnHand()).toBe(before);
+  });
+
+  test("reserved-qty guard: approve rejects when available < qty", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100", "95");
 
+    const draft = await ctx.service.createTransferDraft(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+
     await expect(
-      ctx.service.createTransfer(
-        { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
-        ctx.tx,
-        USER,
-        ORG,
-      ),
+      ctx.service.approveTransfer(draft.id, ORG, USER, ctx.tx),
     ).rejects.toThrow("Insufficient available stock");
   });
 });
 
-describe("StockTransferService.createTransfer — B2B happy path", () => {
+describe("StockTransferService.approveTransfer — B2B happy path", () => {
   test("debits source, credits dest, writes OUT+IN movements, net movement zero, invariant held", async () => {
     const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
     const before = ctx.store.totalOnHand();
 
-    await ctx.service.createTransfer(
-      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "30" }] },
-      ctx.tx,
-      USER,
-      ORG,
-    );
+    await createAndApprove(ctx, {
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "30" }],
+    });
 
     // Source debited.
     expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("70.00");
@@ -422,12 +444,9 @@ describe("StockTransferService — W2W dispatch / receive / cancel", () => {
 
     const created = (ctx.movementRepo as unknown as { __created: InventoryMovementsInsertType[] }).__created;
 
-    const dispatched = await ctx.service.createTransfer(
-      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }] },
-      ctx.tx,
-      USER,
-      ORG,
-    );
+    const dispatched = await createAndApprove(ctx, {
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }],
+    });
 
     expect(dispatched.status).toBe(STOCK_TRANSFER_STATUS.IN_TRANSIT);
     // Source debited, dest NOT yet credited.
@@ -449,12 +468,9 @@ describe("StockTransferService — W2W dispatch / receive / cancel", () => {
     const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
-    await ctx.service.createTransfer(
-      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }] },
-      ctx.tx,
-      USER,
-      ORG,
-    );
+    await createAndApprove(ctx, {
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }],
+    });
 
     await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
 
@@ -469,12 +485,9 @@ describe("StockTransferService — W2W dispatch / receive / cancel", () => {
 
     const before = ctx.store.totalOnHand();
 
-    await ctx.service.createTransfer(
-      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }] },
-      ctx.tx,
-      USER,
-      ORG,
-    );
+    await createAndApprove(ctx, {
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }],
+    });
 
     // Mid-flight: source debited, stock "in transit".
     expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("60.00");
@@ -500,12 +513,9 @@ describe("StockTransferService — W2W dispatch / receive / cancel", () => {
     const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
-    await ctx.service.createTransfer(
-      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
-      ctx.tx,
-      USER,
-      ORG,
-    );
+    await createAndApprove(ctx, {
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }],
+    });
 
     await expect(
       ctx.service.cancelTransfer("transfer-1", ORG, USER, "nope", ctx.tx),
@@ -513,13 +523,13 @@ describe("StockTransferService — W2W dispatch / receive / cancel", () => {
   });
 });
 
-describe("StockTransferService.createTransfer — duplicate lines", () => {
+describe("StockTransferService.createTransferDraft — duplicate lines", () => {
   test("duplicate (source,dest,sku,lot,expiry) pair → rejected", async () => {
     const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
     await expect(
-      ctx.service.createTransfer(
+      ctx.service.createTransferDraft(
         {
           lines: [
             { sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" },
