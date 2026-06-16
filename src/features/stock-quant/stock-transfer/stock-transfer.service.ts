@@ -112,140 +112,42 @@ export class StockTransferServiceClass {
   ) {}
 
   // ============================================
-  // CREATE
+  // CREATE DRAFT
   // ============================================
 
   /**
-   * Create and execute a stock transfer.
-   *
-   * B2B → debits source + credits dest in one tx, status COMPLETED.
-   * W2W → debits source only, status IN_TRANSIT (dest credited on receive).
-   *
-   * @param input  lines (sourceStockQuantId, destinationRackId, quantity) + remarks
-   * @param tx     transaction the caller opened (all work runs inside it)
-   * @param userId acting user
-   * @param organizationId tenant
+   * Validate and persist a stock transfer draft. No stock movement until approved.
    */
-  async createTransfer(
+  async createTransferDraft(
     input: CreateTransferInput,
     tx: DbTransaction,
     userId: string,
     organizationId: string,
   ): Promise<StockTransferWithItems> {
-    if (!input.lines || input.lines.length === 0) {
-      throw new Error("A stock transfer must have at least one line.");
-    }
-
-    // 1. Resolve every line: validate qty, load source quant snapshot.
-    const resolved: ResolvedLine[] = [];
-    for (const line of input.lines) {
-      parsePositiveQty(line.quantity);
-
-      const source = await this.stockQuantRepository.getStockQuantById(
-        organizationId,
-        line.sourceStockQuantId,
-        tx,
-      );
-      if (!source) {
-        throw new Error(
-          `Source stock quant not found (id=${line.sourceStockQuantId}). It may have been removed or transferred already.`,
-        );
-      }
-
-      if (line.destinationRackId === source.rackId) {
-        throw new Error("Destination rack must be different from the source rack.");
-      }
-
-      resolved.push({
-        sourceStockQuantId: source.id,
-        skuId: source.skuId,
-        sourceRackId: source.rackId,
-        destinationRackId: line.destinationRackId,
-        lotNo: normalizeLot(source.lotNo),
-        expiryDate: source.expiryDate ?? null,
-        description: source.description ?? null,
-        quantity: line.quantity,
-      });
-    }
-
-    // 2. Reject duplicate (source, dest, sku, lot, expiry) pairs.
-    const seen = new Set<string>();
-    for (const line of resolved) {
-      const key = lineDedupeKey(line);
-      if (seen.has(key)) {
-        throw new Error(
-          "Duplicate transfer line: same source rack, destination rack, SKU, lot and expiry appears more than once.",
-        );
-      }
-      seen.add(key);
-    }
-
-    // 3. Derive warehouses and the transfer type.
+    const resolved = await this.resolveTransferLines(input, organizationId, tx);
     const { type, sourceWarehouseId, destinationWarehouseId } =
       await this.deriveTransferType(resolved, organizationId, tx);
 
-    const now = new Date();
-    const isBinToBin = type === STOCK_TRANSFER_TYPE.BIN_TO_BIN;
-    const status = isBinToBin
-      ? STOCK_TRANSFER_STATUS.COMPLETED
-      : STOCK_TRANSFER_STATUS.IN_TRANSIT;
-
-    // 4. Generate the transfer number (inside the same tx).
     const transferNo = await this.stockTransferRepository.generateTransferNo(tx);
 
-    // 5. Persist the header.
     const header = await this.stockTransferRepository.createStockTransfer(
       {
         organizationId,
         transferNo,
         type,
-        status,
+        status: STOCK_TRANSFER_STATUS.DRAFT,
         sourceWarehouseId,
         destinationWarehouseId,
         remarks: input.remarks ?? null,
-        dispatchedAt: now,
-        receivedAt: isBinToBin ? now : null,
-        receivedBy: isBinToBin ? userId : null,
+        dispatchedAt: null,
+        receivedAt: null,
+        receivedBy: null,
         createdBy: userId,
         updatedBy: userId,
       },
       tx,
     );
 
-    // 6. Per line: DEBIT source (+ TRANSFER_OUT), and for B2B also CREDIT dest (+ TRANSFER_IN).
-    for (const line of resolved) {
-      // Atomic, reserved-qty aware debit. Throws (aborting the tx) if
-      // (quantity - reservedQty) < qty or the row vanished.
-      await this.stockQuantRepository.debitStockQuantIfAvailable(
-        organizationId,
-        line.sourceStockQuantId,
-        line.quantity,
-        userId,
-        tx,
-      );
-
-      await this.recordOut(line, transferNo, organizationId, userId, tx);
-
-      if (isBinToBin) {
-        await this.stockQuantRepository.creditStockQuant(
-          {
-            organizationId,
-            skuId: line.skuId,
-            rackId: line.destinationRackId,
-            lotNo: line.lotNo,
-            expiryDate: line.expiryDate,
-            qty: line.quantity,
-            userId,
-            description: line.description,
-          },
-          tx,
-        );
-
-        await this.recordIn(line, transferNo, organizationId, userId, tx);
-      }
-    }
-
-    // 7. Persist items (with the sourceStockQuantId snapshot).
     const items = await this.stockTransferRepository.createStockTransferItems(
       resolved.map((line) => ({
         stockTransferId: header.id,
@@ -261,14 +163,132 @@ export class StockTransferServiceClass {
       tx,
     );
 
-    logger.info("✅ [StockTransferService.createTransfer] Created", {
+    logger.info("✅ [StockTransferService.createTransferDraft] Created draft", {
       transferNo,
       type,
-      status,
       lines: items.length,
     });
 
     return { ...header, items };
+  }
+
+  // ============================================
+  // APPROVE DRAFT
+  // ============================================
+
+  /**
+   * Approve a draft transfer and execute stock movements.
+   * B2B → debits source + credits dest in one tx, status COMPLETED.
+   * W2W → debits source only, status IN_TRANSIT (dest credited on receive).
+   */
+  async approveTransfer(
+    id: string,
+    organizationId: string,
+    userId: string,
+    tx: DbTransaction,
+  ): Promise<StockTransferWithItems> {
+    const header = await this.stockTransferRepository.getStockTransferById(
+      id,
+      organizationId,
+      tx,
+      true,
+    );
+    if (!header) {
+      throw new Error(`Stock transfer not found (id=${id}).`);
+    }
+    if (header.status !== STOCK_TRANSFER_STATUS.DRAFT) {
+      throw new Error(
+        `Only draft transfers can be approved (current status: ${header.status}).`,
+      );
+    }
+
+    const items = await this.stockTransferRepository.getStockTransferItems(id, tx);
+    const resolved = await this.resolveStoredLinesForApproval(items, organizationId, tx);
+
+    const now = new Date();
+    const isBinToBin = header.type === STOCK_TRANSFER_TYPE.BIN_TO_BIN;
+    const status = isBinToBin
+      ? STOCK_TRANSFER_STATUS.COMPLETED
+      : STOCK_TRANSFER_STATUS.IN_TRANSIT;
+
+    await this.executeTransferMovements(
+      resolved,
+      header.transferNo,
+      isBinToBin,
+      organizationId,
+      userId,
+      tx,
+    );
+
+    const finalHeader = await this.patchHeaderStatus(
+      id,
+      organizationId,
+      {
+        status,
+        dispatchedAt: now,
+        receivedAt: isBinToBin ? now : null,
+        receivedBy: isBinToBin ? userId : null,
+        updatedBy: userId,
+      },
+      tx,
+    );
+
+    logger.info("✅ [StockTransferService.approveTransfer] Approved", {
+      transferNo: header.transferNo,
+      status,
+    });
+
+    return { ...finalHeader, items };
+  }
+
+  // ============================================
+  // REJECT DRAFT
+  // ============================================
+
+  /**
+   * Reject a draft transfer without moving stock. Marks the document CANCELLED.
+   */
+  async rejectTransferDraft(
+    id: string,
+    organizationId: string,
+    userId: string,
+    tx: DbTransaction,
+  ): Promise<StockTransferWithItems> {
+    const header = await this.stockTransferRepository.getStockTransferById(
+      id,
+      organizationId,
+      tx,
+      true,
+    );
+    if (!header) {
+      throw new Error(`Stock transfer not found (id=${id}).`);
+    }
+    if (header.status !== STOCK_TRANSFER_STATUS.DRAFT) {
+      throw new Error(
+        `Only draft transfers can be rejected (current status: ${header.status}).`,
+      );
+    }
+
+    const items = await this.stockTransferRepository.getStockTransferItems(id, tx);
+
+    const finalHeader = await this.patchHeaderStatus(
+      id,
+      organizationId,
+      {
+        status: STOCK_TRANSFER_STATUS.CANCELLED,
+        cancelledAt: new Date(),
+        cancelledBy: userId,
+        cancelReason: "Rejected before approval",
+        updatedBy: userId,
+      },
+      tx,
+    );
+
+    logger.info("✅ [StockTransferService.rejectTransferDraft] Rejected draft", {
+      transferNo: header.transferNo,
+    });
+
+    return { ...finalHeader, items };
   }
 
   // ============================================
@@ -422,6 +442,151 @@ export class StockTransferServiceClass {
   // ============================================
   // INTERNAL HELPERS
   // ============================================
+
+  /** Resolve and validate create-request lines (no stock movement). */
+  private async resolveTransferLines(
+    input: CreateTransferInput,
+    organizationId: string,
+    tx: DbTransaction,
+  ): Promise<ResolvedLine[]> {
+    if (!input.lines || input.lines.length === 0) {
+      throw new Error("A stock transfer must have at least one line.");
+    }
+
+    const resolved: ResolvedLine[] = [];
+    for (const line of input.lines) {
+      parsePositiveQty(line.quantity);
+
+      const source = await this.stockQuantRepository.getStockQuantById(
+        organizationId,
+        line.sourceStockQuantId,
+        tx,
+      );
+      if (!source) {
+        throw new Error(
+          `Source stock quant not found (id=${line.sourceStockQuantId}). It may have been removed or transferred already.`,
+        );
+      }
+
+      if (line.destinationRackId === source.rackId) {
+        throw new Error("Destination rack must be different from the source rack.");
+      }
+
+      resolved.push({
+        sourceStockQuantId: source.id,
+        skuId: source.skuId,
+        sourceRackId: source.rackId,
+        destinationRackId: line.destinationRackId,
+        lotNo: normalizeLot(source.lotNo),
+        expiryDate: source.expiryDate ?? null,
+        description: source.description ?? null,
+        quantity: line.quantity,
+      });
+    }
+
+    const seen = new Set<string>();
+    for (const line of resolved) {
+      const key = lineDedupeKey(line);
+      if (seen.has(key)) {
+        throw new Error(
+          "Duplicate transfer line: same source rack, destination rack, SKU, lot and expiry appears more than once.",
+        );
+      }
+      seen.add(key);
+    }
+
+    return resolved;
+  }
+
+  /** Re-validate persisted items at approval time and rebuild resolved lines. */
+  private async resolveStoredLinesForApproval(
+    items: StockTransferItemType[],
+    organizationId: string,
+    tx: DbTransaction,
+  ): Promise<ResolvedLine[]> {
+    if (items.length === 0) {
+      throw new Error("A stock transfer must have at least one line.");
+    }
+
+    const resolved: ResolvedLine[] = [];
+    for (const item of items) {
+      parsePositiveQty(item.quantity);
+
+      const source = await this.stockQuantRepository.getStockQuantById(
+        organizationId,
+        item.sourceStockQuantId,
+        tx,
+      );
+      if (!source) {
+        throw new Error(
+          `Source stock quant not found (id=${item.sourceStockQuantId}). It may have been removed or transferred already.`,
+        );
+      }
+
+      if (source.rackId !== item.sourceRackId) {
+        throw new Error(
+          `Source stock quant (id=${item.sourceStockQuantId}) is no longer on the expected rack.`,
+        );
+      }
+
+      if (item.destinationRackId === source.rackId) {
+        throw new Error("Destination rack must be different from the source rack.");
+      }
+
+      resolved.push({
+        sourceStockQuantId: source.id,
+        skuId: item.skuId,
+        sourceRackId: item.sourceRackId,
+        destinationRackId: item.destinationRackId,
+        lotNo: normalizeLot(item.lotNo),
+        expiryDate: item.expiryDate ?? null,
+        description: source.description ?? null,
+        quantity: item.quantity,
+      });
+    }
+
+    return resolved;
+  }
+
+  /** Debit source (+ TRANSFER_OUT); B2B also credits dest (+ TRANSFER_IN). */
+  private async executeTransferMovements(
+    lines: ResolvedLine[],
+    transferNo: string,
+    isBinToBin: boolean,
+    organizationId: string,
+    userId: string,
+    tx: DbTransaction,
+  ): Promise<void> {
+    for (const line of lines) {
+      await this.stockQuantRepository.debitStockQuantIfAvailable(
+        organizationId,
+        line.sourceStockQuantId,
+        line.quantity,
+        userId,
+        tx,
+      );
+
+      await this.recordOut(line, transferNo, organizationId, userId, tx);
+
+      if (isBinToBin) {
+        await this.stockQuantRepository.creditStockQuant(
+          {
+            organizationId,
+            skuId: line.skuId,
+            rackId: line.destinationRackId,
+            lotNo: line.lotNo,
+            expiryDate: line.expiryDate,
+            qty: line.quantity,
+            userId,
+            description: line.description,
+          },
+          tx,
+        );
+
+        await this.recordIn(line, transferNo, organizationId, userId, tx);
+      }
+    }
+  }
 
   /**
    * Derive the transfer type from rack→warehouse resolution.

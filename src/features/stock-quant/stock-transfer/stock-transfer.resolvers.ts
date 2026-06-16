@@ -60,8 +60,8 @@ function transformStockTransfer(transfer: StockTransferType) {
     cancelledAt: transfer.cancelledAt ? transfer.cancelledAt.toISOString() : null,
     cancelledBy: transfer.cancelledBy ?? null,
     cancelReason: transfer.cancelReason ?? null,
-    createdAt: transfer.createdAt,
-    updatedAt: transfer.updatedAt,
+    createdAt: transfer.createdAt.toISOString(),
+    updatedAt: transfer.updatedAt.toISOString(),
     createdBy: transfer.createdBy,
     updatedBy: transfer.updatedBy ?? null,
   };
@@ -166,7 +166,7 @@ export const resolvers = {
           sourceRackId: item.sourceRackId,
           destinationRackId: item.destinationRackId,
           sourceStockQuantId: item.sourceStockQuantId,
-          createdAt: item.createdAt,
+          createdAt: item.createdAt.toISOString(),
         };
       });
     },
@@ -241,7 +241,7 @@ export const resolvers = {
           throw new GraphQLError('At least one transfer line is required');
         }
 
-        const transfer = await stockTransferService.createTransfer(
+        const transfer = await stockTransferService.createTransferDraft(
           {
             remarks: input.remarks ?? null,
             lines: input.lines.map((line) => ({
@@ -253,6 +253,72 @@ export const resolvers = {
           tx,
           userId,
           organizationId,
+        );
+
+        return transformStockTransfer(transfer);
+      },
+    ),
+
+    approveStockTransfer: withAudit(
+      {
+        entity: 'StockTransfer',
+        action: 'UPDATE',
+        getEntityId: (_result, args) => (args as { id: string }).id,
+      },
+      async (
+        _: unknown,
+        { id }: { id: string },
+        context: GraphQLContext,
+      ) => {
+        const tx = context.tx!;
+        const userId = context.user?.id;
+        const organizationId = context.organizationId;
+
+        if (!userId) {
+          throw new GraphQLError('Authentication required');
+        }
+        if (!organizationId) {
+          throw new GraphQLError('Organization context required');
+        }
+
+        const transfer = await stockTransferService.approveTransfer(
+          id,
+          organizationId,
+          userId,
+          tx,
+        );
+
+        return transformStockTransfer(transfer);
+      },
+    ),
+
+    rejectStockTransfer: withAudit(
+      {
+        entity: 'StockTransfer',
+        action: 'UPDATE',
+        getEntityId: (_result, args) => (args as { id: string }).id,
+      },
+      async (
+        _: unknown,
+        { id }: { id: string },
+        context: GraphQLContext,
+      ) => {
+        const tx = context.tx!;
+        const userId = context.user?.id;
+        const organizationId = context.organizationId;
+
+        if (!userId) {
+          throw new GraphQLError('Authentication required');
+        }
+        if (!organizationId) {
+          throw new GraphQLError('Organization context required');
+        }
+
+        const transfer = await stockTransferService.rejectTransferDraft(
+          id,
+          organizationId,
+          userId,
+          tx,
         );
 
         return transformStockTransfer(transfer);

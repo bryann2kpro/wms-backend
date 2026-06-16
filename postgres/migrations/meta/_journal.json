@@ -750,6 +750,13 @@
       "when": 1781575359245,
       "tag": "0107_minor_the_santerians",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1781582395977,
+      "tag": "0108_romantic_zaladane",
+      "breakpoints": true
     }
   ]
 }
