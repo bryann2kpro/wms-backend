@@ -55,6 +55,9 @@ import { InboundServices } from './features/inbound/inbound.services';
 import { GrnPutawayService } from './features/inbound/grn-putaway.service';
 import { InboundPutawaySuggestionService } from './features/inbound/inbound-putaway-suggestion.service';
 import { StockQuantRepositoryClass } from './features/stock-quant/stock-quant.repository';
+import { StockTransferRepositoryClass } from './features/stock-quant/stock-transfer/stock-transfer.repository';
+import { StockTransferServiceClass } from './features/stock-quant/stock-transfer/stock-transfer.service';
+import { StockQuantTransactionRepositoryClass } from './features/stock-quant/stock-quant-transaction/stock-quant-transaction.repository';
 // Outbound Repositories & Services
 import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
@@ -226,6 +229,15 @@ export const inboundServices = new InboundServices(
 export const apiKeysRepository = new ApiKeysRepositoryClass();
 export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
 
+export const stockQuantTransactionRepository = new StockQuantTransactionRepositoryClass();
+export const stockTransferRepository = new StockTransferRepositoryClass(runningNoRepository);
+export const stockTransferService = new StockTransferServiceClass(
+  stockTransferRepository,
+  stockQuantRepository,
+  stockQuantTransactionRepository,
+  inventoryMovementRepository,
+  racksRepository,
+);
 export const inboundPutawaySuggestionService = new InboundPutawaySuggestionService(
   pickFaceStrategiesRepository,
   skuRepository,

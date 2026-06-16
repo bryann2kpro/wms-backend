@@ -22,6 +22,7 @@ import { typeDefs as stockAdjustmentTypeDefs } from '@/features/inventory/stock-
 import { typeDefs as stockQuantTypeDefs } from '@/features/stock-quant/stock-quant.typeDefs';
 import { typeDefs as stockQuantTransactionTypeDefs } from '@/features/stock-quant/stock-quant-transaction/stock-quant-transaction.typeDefs';
 import { typeDefs as putawayTypeDefs } from '@/features/stock-quant/putaway/putaway.typeDefs';
+import { typeDefs as stockTransferTypeDefs } from '@/features/stock-quant/stock-transfer/stock-transfer.typeDefs';
 // Master Data typeDefs
 import { typeDefs as organizationTypeDefs } from '@/features/master-data/organization.typeDefs';
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
@@ -130,6 +131,7 @@ export const typeDefs = [
   stockQuantTypeDefs,
   stockQuantTransactionTypeDefs,
   putawayTypeDefs,
+  stockTransferTypeDefs,
   // Master Data
   organizationTypeDefs,
   regionTypeDefs,
