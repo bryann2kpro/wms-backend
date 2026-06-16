@@ -13,6 +13,7 @@ import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
 import { RackInsertType, RacksTable, RackType } from './racks.model';
+import { ZonesTable } from './zone.model';
 
 // ============================================
 // FILTER TYPES
@@ -20,6 +21,7 @@ import { RackInsertType, RacksTable, RackType } from './racks.model';
 
 export type RackFilter = {
   rackId?: string | string[];
+  warehouseId?: string;
   rackName?: string;
   rackRow?: string | string[];
   rackColumn?: string | string[];
@@ -56,6 +58,16 @@ export class RacksRepositoryClass {
         whereCondition.push(inArray(RacksTable.rackId, filter.rackId));
       } else if (filter.rackId) {
         whereCondition.push(eq(RacksTable.rackId, filter.rackId));
+      }
+
+      if (filter.warehouseId) {
+        // Racks may link to a warehouse directly or via their zone.
+        whereCondition.push(
+          or(
+            eq(RacksTable.warehouseId, filter.warehouseId),
+            eq(ZonesTable.warehouseId, filter.warehouseId),
+          )!,
+        );
       }
 
       if (Array.isArray(filter.rackRow)) {
@@ -101,6 +113,7 @@ export class RacksRepositoryClass {
       const baseQuery = db
         .select({
           rackId: RacksTable.rackId,
+          warehouseId: sql<string | null>`COALESCE(${RacksTable.warehouseId}, ${ZonesTable.warehouseId})`.as('warehouse_id'),
           zoneId: RacksTable.zoneId,
           areaId: RacksTable.areaId,
           rackRow: RacksTable.rackRow,
@@ -121,6 +134,7 @@ export class RacksRepositoryClass {
           updatedBy: RacksTable.updatedBy,
         })
         .from(RacksTable)
+        .leftJoin(ZonesTable, eq(RacksTable.zoneId, ZonesTable.zoneId))
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
         .orderBy(
           asc(RacksTable.rackRow),
@@ -201,6 +215,40 @@ export class RacksRepositoryClass {
       return rows;
     } catch (error) {
       logger.error('❌ [RacksRepository.getAllRackDimensions] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Resolve the warehouse for a set of racks via m_racks → m_zones.
+   * A rack with no zone (zoneId NULL) resolves to a null warehouse — every
+   * requested rackId is present in the returned map.
+   * @param rackIds - Rack IDs to resolve
+   * @param organizationId - Organization ID for multi-tenant filtering
+   * @param tx - Optional transaction
+   * @returns Map of rackId → warehouseId (null when unzoned)
+   */
+  async getRackWarehouseIds(rackIds: string[], organizationId: string, tx?: DbTransaction): Promise<Map<string, string | null>> {
+    const result = new Map<string, string | null>();
+    if (rackIds.length === 0) return result;
+    try {
+      const dbClient = tx || db;
+      // Warehouse is resolved from the direct rack column or via zone.
+      const rows = await dbClient
+        .select({
+          rackId: RacksTable.rackId,
+          warehouseId: sql<string | null>`COALESCE(${RacksTable.warehouseId}, ${ZonesTable.warehouseId})`.as('warehouse_id'),
+        })
+        .from(RacksTable)
+        .leftJoin(ZonesTable, eq(RacksTable.zoneId, ZonesTable.zoneId))
+        .where(and(eq(RacksTable.organizationId, organizationId), inArray(RacksTable.rackId, rackIds)));
+
+      for (const row of rows) {
+        result.set(row.rackId, row.warehouseId ?? null);
+      }
+      return result;
+    } catch (error) {
+      logger.error('❌ [RacksRepository.getRackWarehouseIds] Error:', error);
       throw error;
     }
   }

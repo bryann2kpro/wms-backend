@@ -22,6 +22,7 @@ import { typeDefs as stockAdjustmentTypeDefs } from '@/features/inventory/stock-
 import { typeDefs as stockQuantTypeDefs } from '@/features/stock-quant/stock-quant.typeDefs';
 import { typeDefs as stockQuantTransactionTypeDefs } from '@/features/stock-quant/stock-quant-transaction/stock-quant-transaction.typeDefs';
 import { typeDefs as putawayTypeDefs } from '@/features/stock-quant/putaway/putaway.typeDefs';
+import { typeDefs as stockTransferTypeDefs } from '@/features/stock-quant/stock-transfer/stock-transfer.typeDefs';
 // Master Data typeDefs
 import { typeDefs as organizationTypeDefs } from '@/features/master-data/organization.typeDefs';
 import { typeDefs as regionTypeDefs } from '@/features/master-data/region.typeDefs';
@@ -50,6 +51,7 @@ import { typeDefs as emailSettingsTypeDefs } from '@/features/notifications/emai
 import { typeDefs as esTypeDefs } from '@/features/es/es.typeDefs';
 import { typeDefs as whatsAppTypeDefs } from '@/features/whatsapp/whatsapp.typeDefs';
 import { typeDefs as reservationTypeDefs } from '@/features/reservation/reservation.typeDefs';
+import { typeDefs as returnsTypeDefs } from '@/features/returns/returns.typeDefs';
 
 // Directive type definitions
 import { directiveTypeDefs } from './directives';
@@ -129,6 +131,7 @@ export const typeDefs = [
   stockQuantTypeDefs,
   stockQuantTransactionTypeDefs,
   putawayTypeDefs,
+  stockTransferTypeDefs,
   // Master Data
   organizationTypeDefs,
   regionTypeDefs,
@@ -158,4 +161,5 @@ export const typeDefs = [
   esTypeDefs,
   whatsAppTypeDefs,
   reservationTypeDefs,
+  returnsTypeDefs,
 ];

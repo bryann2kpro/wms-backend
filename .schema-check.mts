@@ -1,0 +1,17 @@
+import { makeExecutableSchema } from "@graphql-tools/schema";
+import { typeDefs } from "./src/graphql/typeDefs";
+import { resolvers } from "./src/graphql/resolvers";
+const schema = makeExecutableSchema({ typeDefs, resolvers });
+const m = schema.getMutationType()!.getFields();
+const q = schema.getQueryType()!.getFields();
+const has = (b: boolean) => (b ? "OK" : "MISSING");
+console.log("StockTransfer type:", has(!!schema.getType("StockTransfer")));
+console.log("StockTransferItem type:", has(!!schema.getType("StockTransferItem")));
+console.log("Enum StockTransferType:", has(!!schema.getType("StockTransferType")));
+console.log("Enum StockTransferStatus:", has(!!schema.getType("StockTransferStatus")));
+console.log("Mutation createStockTransfer:", has(!!m.createStockTransfer));
+console.log("Mutation receiveStockTransfer:", has(!!m.receiveStockTransfer));
+console.log("Mutation cancelStockTransfer:", has(!!m.cancelStockTransfer));
+console.log("Query stockTransfers:", has(!!q.stockTransfers));
+console.log("Query stockTransfer:", has(!!q.stockTransfer));
+console.log("SCHEMA_COMPOSED_OK");

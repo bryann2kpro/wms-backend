@@ -163,6 +163,7 @@ export class InventoryMovementRepositoryClass {
             im.expiry_date,
             im.movement_type,
             im.quantity,
+            im.loss_qty,
             im.created_at,
             -- For INBOUND movements, expand across all racks recorded in grn_item_racks.
             -- For other movements, use the rack_id stored directly on the movement row.
@@ -186,7 +187,7 @@ export class InventoryMovementRepositoryClass {
           rack.rack_level AS "rackLevel",
           SUM(
             CASE
-              WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT') THEN r.quantity
+              WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT', 'RETURN_IN') THEN r.quantity
               WHEN r.movement_type IN ('SHIPMENT', 'DAMAGED') THEN -r.quantity
               ELSE 0
             END
@@ -194,6 +195,7 @@ export class InventoryMovementRepositoryClass {
           SUM(
             CASE
               WHEN r.movement_type = 'DAMAGED' THEN r.quantity
+              WHEN r.movement_type = 'INBOUND' THEN COALESCE(r.loss_qty, 0)
               ELSE 0
             END
           )::text AS "lossQty",
@@ -212,7 +214,7 @@ export class InventoryMovementRepositoryClass {
         GROUP BY r.lot_no, r.expiry_date, r.resolved_rack_id, rack.rack_row, rack.rack_column, rack.rack_level
         HAVING SUM(
           CASE
-            WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT') THEN r.quantity
+            WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT', 'RETURN_IN') THEN r.quantity
             WHEN r.movement_type IN ('SHIPMENT', 'DAMAGED') THEN -r.quantity
             ELSE 0
           END
@@ -303,10 +305,12 @@ export class InventoryMovementRepositoryClass {
 
         let { onHand, loss, reserved } = current;
         const quantity = Number(movement.quantity ?? "0");
+        const movementLossQty = Number(movement.lossQty ?? "0");
 
         switch (movement.movementType) {
           case InventoryMovementType.INBOUND:
             onHand += quantity;
+            loss += movementLossQty;
             break;
           case InventoryMovementType.RESERVED:
             reserved += quantity;
@@ -324,6 +328,14 @@ export class InventoryMovementRepositoryClass {
             break;
           case InventoryMovementType.LOSS_ADJUSTMENT:
             loss += quantity; // quantity can be negative
+            break;
+          case InventoryMovementType.TRANSFER_OUT:
+          case InventoryMovementType.TRANSFER_IN:
+            // No-op on org-level balance by design. inventory_balances are
+            // org+SKU level totals; rack-to-rack transfers relocate stock
+            // between racks without changing the org's on-hand/loss/reserved
+            // for the SKU. The movement rows are still recorded for rack-level
+            // traceability, but they must not adjust the org balance.
             break;
         }
 
@@ -595,9 +607,13 @@ export class InventoryMovementRepositoryClass {
 
     for (const movement of movements) {
       const qty = Number(movement.quantity ?? '0');
+      const lossQty = Number(movement.lossQty ?? '0');
 
       switch (movement.movementType) {
         case InventoryMovementType.INBOUND:
+          onHand += qty;
+          loss += lossQty;
+          break;
         case InventoryMovementType.ADJUSTMENT:
           onHand += qty;
           break;
@@ -614,6 +630,16 @@ export class InventoryMovementRepositoryClass {
           break;
         case InventoryMovementType.LOSS_ADJUSTMENT:
           loss += qty; // quantity can be negative
+          break;
+        case InventoryMovementType.TRANSFER_OUT:
+        case InventoryMovementType.TRANSFER_IN:
+          // No-op: rack-to-rack transfers don't change org+SKU level balance.
+          break;
+        case InventoryMovementType.RETURN_IN:
+          onHand += qty;
+          break;
+        case InventoryMovementType.RETURN_DAMAGED:
+          loss += qty;
           break;
       }
 

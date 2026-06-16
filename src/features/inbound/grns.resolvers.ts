@@ -1134,6 +1134,7 @@ export const resolvers = {
                         await inventoryMovementRepository.createInventoryMovement(grnItems.map(item => ({
                             skuId: item.skuId,
                             quantity: item.qty,
+                            lossQty: item.lossQty ?? undefined,
                             referenceNo: grn.grnNo,
                             reason: 'Inbound',
                             createdBy: updatedBy,

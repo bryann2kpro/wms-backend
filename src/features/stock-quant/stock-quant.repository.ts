@@ -539,4 +539,137 @@ export class StockQuantRepositoryClass {
       throw error;
     }
   }
+
+  /**
+   * Atomic conditional debit of a stock_quant row. Decrements `quantity` by `qty`
+   * only when the row has enough *available* stock (quantity - reserved_qty >= qty).
+   * The guard lives in the UPDATE's WHERE clause so concurrent debits are serialized
+   * by the row lock — no read-then-write race. Zero rows updated means the row was
+   * missing, belonged to another org, or lacked available stock: an Error is thrown
+   * so the caller's transaction aborts.
+   *
+   * After a successful debit, if the row is fully drained (quantity = 0 AND
+   * reserved_qty = 0) it is deleted within the same transaction; the (now-deleted)
+   * row is still returned to the caller.
+   */
+  async debitStockQuantIfAvailable(
+    organizationId: string,
+    quantId: string,
+    qty: string,
+    userId: string,
+    tx: DbTransaction,
+  ): Promise<StockQuantType> {
+    try {
+      const [updated] = await tx
+        .update(StockQuantTable)
+        .set({
+          quantity: sql`${StockQuantTable.quantity} - ${qty}::numeric`,
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(StockQuantTable.id, quantId),
+            eq(StockQuantTable.organizationId, organizationId),
+            sql`(${StockQuantTable.quantity} - ${StockQuantTable.reservedQty}) >= ${qty}::numeric`,
+          ),
+        )
+        .returning();
+
+      if (!updated) {
+        throw new Error(
+          `[StockQuantRepository.debitStockQuantIfAvailable] Insufficient available stock or row not found (id=${quantId}, qty=${qty})`,
+        );
+      }
+
+      if (Number(updated.quantity) === 0 && Number(updated.reservedQty) === 0) {
+        await tx
+          .delete(StockQuantTable)
+          .where(
+            and(
+              eq(StockQuantTable.organizationId, organizationId),
+              eq(StockQuantTable.id, quantId),
+            ),
+          );
+      }
+
+      return updated;
+    } catch (error) {
+      logger.error("❌ [StockQuantRepository.debitStockQuantIfAvailable]", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Credit-side upsert keyed by (orgId, skuId, rackId, lotNo, expiryDate). Increments
+   * an existing matching row's quantity, or inserts a new row when none exists. Used
+   * by the transfer credit side (receive / B2B destination). Quantities are strings
+   * to match Drizzle numeric handling.
+   */
+  async creditStockQuant(
+    params: {
+      organizationId: string;
+      skuId: string;
+      rackId: string;
+      lotNo?: string | null;
+      expiryDate?: Date | null;
+      qty: string;
+      userId: string;
+      description?: string | null;
+    },
+    tx?: DbTransaction,
+  ): Promise<StockQuantType> {
+    try {
+      const client = tx ?? db;
+      const { organizationId, skuId, rackId, lotNo, expiryDate, qty, userId, description } = params;
+
+      const existing = await this.getStockQuantByRackSkuLotAndExpiry(
+        organizationId,
+        rackId,
+        skuId,
+        lotNo,
+        expiryDate,
+        tx,
+      );
+
+      if (existing) {
+        const [row] = await client
+          .update(StockQuantTable)
+          .set({
+            quantity: sql`${StockQuantTable.quantity} + ${qty}::numeric`,
+            updatedBy: userId,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(StockQuantTable.organizationId, organizationId),
+              eq(StockQuantTable.id, existing.id),
+            ),
+          )
+          .returning();
+        return row;
+      }
+
+      const lotTrimmed = (lotNo ?? "").trim();
+      const [row] = await client
+        .insert(StockQuantTable)
+        .values({
+          organizationId,
+          skuId,
+          rackId,
+          lotNo: lotTrimmed === "" ? null : lotTrimmed,
+          expiryDate: expiryDate ?? null,
+          description: description ?? null,
+          quantity: qty,
+          reservedQty: "0",
+          createdBy: userId,
+          updatedBy: userId,
+        })
+        .returning();
+      return row;
+    } catch (error) {
+      logger.error("❌ [StockQuantRepository.creditStockQuant]", error);
+      throw error;
+    }
+  }
 }

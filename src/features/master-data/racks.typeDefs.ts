@@ -11,6 +11,7 @@ export const typeDefs = `#graphql
   """
   type Rack {
     rackId: ID!
+    warehouseId: ID
     zoneId: ID
     areaId: ID
     rackRow: String!
@@ -64,6 +65,7 @@ export const typeDefs = `#graphql
   """
   input RackFilterInput {
     rackId: ID
+    warehouseId: ID
     rackRow: String
     rackColumn: String
     rackLevel: String
@@ -78,6 +80,7 @@ export const typeDefs = `#graphql
   Input for creating a new Rack
   """
   input CreateRackInput {
+    warehouseId: ID
     zoneId: ID
     areaId: ID
     rackRow: String!
@@ -100,6 +103,7 @@ export const typeDefs = `#graphql
   Input for updating an existing Rack
   """
   input UpdateRackInput {
+    warehouseId: ID
     zoneId: ID
     areaId: ID
     rackRow: String

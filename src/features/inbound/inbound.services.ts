@@ -91,6 +91,13 @@ export class InboundServices {
         const result = await db.transaction(async (tx: DbTransaction) => {
             try {
                 logger.info('ℹ️ [InboundServices.createInbound] Starting Inbound Flow...');
+
+                // Over-receipt enforcement: when this GRN is tied to a PO that has an ASN,
+                // reject any line that would push cumulative received qty past the ASN-expected
+                // qty. Runs inside the tx so a violation rolls back everything (no GRN, no DO).
+                // No ASN for the PO -> skipped entirely (preserves manual-GRN behavior).
+                await this.enforceAsnExpectedQuantities(data, tx);
+
                 const resolvedSupplierId = await this.resolveSupplierId(data, tx);
 
                 const updatedBy = createdBy;
@@ -212,6 +219,142 @@ export class InboundServices {
             logger.error('❌ [InboundServices.createInbound] Failed to create inbound');
         } else {
             logger.info('✅ [InboundServices.createInbound] Inbound created successfully');
+        }
+        return result;
+    }
+
+    /**
+     * Enforce ASN expected quantities for a PO-linked GRN (over-receipt guard).
+     *
+     * Formula (matches the standup "remaining = expected − amount created"):
+     *   remaining(skuCode) = asnExpected(skuCode) − sumOfPriorGrnReceived(skuCode)
+     * and we require: incoming(skuCode) <= remaining(skuCode).
+     *
+     * Counting policy: ALL prior GRNs against the PO count toward "already created",
+     * regardless of their status (Draft, approved, sent, etc.). The ASN payload is the
+     * single source of truth for expected qty and keys lines by `itemid` (= skuCode).
+     *
+     * Behavior:
+     *  - No poNo                        -> skip (manual GRN, nothing to validate against).
+     *  - poNo set but no ASN exists     -> skip (preserve current no-regression behavior).
+     *  - poNo + ASN exists              -> validate every incoming line; throw on the first
+     *                                      violation with skuCode/expected/alreadyReceived/
+     *                                      remaining/incoming details.
+     *
+     * @param excludeGrnId  When validating an UPDATE to an existing GRN, pass that GRN's id
+     *                      so its current items are excluded from the prior-received sum
+     *                      (the incoming quantities replace them).
+     */
+    private async enforceAsnExpectedQuantities(
+        data: Pick<CreateInboundInput, 'poNo' | 'items' | 'organizationId'>,
+        tx: DbTransaction,
+        excludeGrnId?: string,
+    ): Promise<void> {
+        const poNo = data.poNo?.trim();
+        if (!poNo) return; // manual GRN — no PO to validate against
+
+        if (!data.items?.length) return;
+
+        // 1. Find the ASN for this PO. ASN.tranid === PO number. No ASN -> skip enforcement.
+        const asn = await this.esAdvanceNoticeRepository.findByTranid(poNo);
+        if (!asn) {
+            logger.info(`ℹ️ [InboundServices.enforceAsnExpectedQuantities] No ASN for poNo=${poNo} — skipping over-receipt enforcement`);
+            return;
+        }
+
+        // 2. Build expected-qty map per skuCode from the ASN payload lines (itemid = skuCode).
+        const payload = asn.payload as { lines?: Array<{ itemid?: string; quantity?: number | string }> } | undefined;
+        const expectedBySkuCode = new Map<string, number>();
+        for (const line of payload?.lines ?? []) {
+            const code = line.itemid?.trim();
+            if (!code) continue;
+            const qty = Number(line.quantity ?? 0);
+            if (!Number.isFinite(qty)) continue;
+            expectedBySkuCode.set(code, (expectedBySkuCode.get(code) ?? 0) + qty);
+        }
+        // ASN has no usable expected lines -> nothing to enforce.
+        if (expectedBySkuCode.size === 0) return;
+
+        // 3. Sum incoming qty per skuCode from this request.
+        const incomingBySkuCode = new Map<string, number>();
+        for (const item of data.items) {
+            const code = item.skuCode?.trim();
+            if (!code) continue; // items without a skuCode cannot be matched to an ASN line
+            const qty = Number(item.qty ?? 0);
+            if (!Number.isFinite(qty)) continue;
+            incomingBySkuCode.set(code, (incomingBySkuCode.get(code) ?? 0) + qty);
+        }
+        if (incomingBySkuCode.size === 0) return;
+
+        // 4. Sum already-received qty per skuCode across ALL prior GRNs for this PO
+        //    (all statuses count). Exclude the GRN currently being updated, if any.
+        const alreadyReceivedBySkuCode = await this.sumPriorGrnReceivedBySkuCode(
+            poNo,
+            data.organizationId,
+            tx,
+            excludeGrnId,
+        );
+
+        // 5. Validate each incoming skuCode against remaining = expected − alreadyReceived.
+        for (const [skuCode, incoming] of incomingBySkuCode) {
+            const expected = expectedBySkuCode.get(skuCode);
+            if (expected === undefined) continue; // not on the ASN — not governed by it
+            const alreadyReceived = alreadyReceivedBySkuCode.get(skuCode) ?? 0;
+            const remaining = expected - alreadyReceived;
+            if (incoming > remaining) {
+                throw new Error(
+                    `Over-receipt blocked for SKU ${skuCode} on PO ${poNo}: ` +
+                    `expected ${expected}, already received ${alreadyReceived}, ` +
+                    `remaining ${remaining}, attempted to receive ${incoming}.`,
+                );
+            }
+        }
+    }
+
+    /**
+     * Sum received quantity per skuCode across all prior GRNs for a PO.
+     * All GRN statuses count toward the total (over-receipt policy). When excludeGrnId is
+     * provided, that GRN's items are omitted (used by the update path so the GRN being
+     * edited does not double-count against itself).
+     */
+    private async sumPriorGrnReceivedBySkuCode(
+        poNo: string,
+        organizationId: string,
+        tx: DbTransaction,
+        excludeGrnId?: string,
+    ): Promise<Map<string, number>> {
+        const result = new Map<string, number>();
+
+        // All GRNs for the PO (no status filter -> every status is included).
+        const grnsResult = await this.grnsRepository.getGrns({ poNo }, undefined, organizationId);
+        const grns = grnsResult && 'query' in grnsResult ? grnsResult.query : [];
+        if (!grns.length) return result;
+
+        // Collect all prior GRN items, then resolve their skuId -> skuCode in one batch.
+        const totalsBySkuId = new Map<string, number>();
+        for (const grn of grns) {
+            if (excludeGrnId && grn.id === excludeGrnId) continue;
+            const items = await this.grnItemsRepository.getGrnItems({ grnId: grn.id }, tx);
+            if (!items) continue;
+            for (const item of items) {
+                const qty = Number(item.qty ?? 0);
+                if (!Number.isFinite(qty)) continue;
+                totalsBySkuId.set(item.skuId, (totalsBySkuId.get(item.skuId) ?? 0) + qty);
+            }
+        }
+        if (totalsBySkuId.size === 0) return result;
+
+        const skuIds = [...totalsBySkuId.keys()];
+        const skuResult = await this.skuRepository.getSku({ skuId: skuIds }, undefined, tx);
+        const codeBySkuId = new Map<string, string>();
+        for (const sku of skuResult.query as Array<{ skuId: string; skuCode: string }>) {
+            codeBySkuId.set(sku.skuId, sku.skuCode);
+        }
+
+        for (const [skuId, qty] of totalsBySkuId) {
+            const code = codeBySkuId.get(skuId);
+            if (!code) continue;
+            result.set(code, (result.get(code) ?? 0) + qty);
         }
         return result;
     }

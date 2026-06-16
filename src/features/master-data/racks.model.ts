@@ -4,6 +4,7 @@ import { RegionTable } from "./region.model";
 import { OrganizationsTable } from "@/features/master-data/organization.model";
 import { ZonesTable } from "@/features/master-data/zone.model";
 import { AreaTable } from "@/features/master-data/area.model";
+import { WarehousesTable } from "@/features/master-data/warehouses.model";
 
 /**
  * Racks Table
@@ -21,6 +22,8 @@ import { AreaTable } from "@/features/master-data/area.model";
 export const RacksTable = MainSchema.table('m_racks', {
   rackId: uuid('rack_id').defaultRandom().notNull().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => OrganizationsTable.organizationId),
+  /** Direct warehouse link (nullable). Preferred over deriving warehouse via zone/area. */
+  warehouseId: uuid('warehouse_id').references(() => WarehousesTable.warehouseId),
   zoneId: uuid('zone_id').references(() => ZonesTable.zoneId),
   rackRow: varchar('rack_row').notNull(),
   rackColumn: varchar('rack_column').notNull(),

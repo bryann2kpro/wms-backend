@@ -16,6 +16,7 @@ import { rackVolumeMm3, computeRackUsage, type RackOccupant } from '@/features/i
 const rackFilterSchema = z.object({
   rackId: z.string().uuid().optional(),
   rackIds: z.array(z.string().uuid()).optional(),
+  warehouseId: z.string().uuid().optional(),
   rackRow: z.string().optional(),
   rackRows: z.array(z.string()).optional(),
   rackColumn: z.string().optional(),
@@ -43,6 +44,7 @@ const numericFieldSchema = z
   });
 
 const createRackSchema = z.object({
+  warehouseId: z.string().uuid().optional().nullable(),
   zoneId: z.string().uuid().optional().nullable(),
   areaId: z.string().uuid().optional().nullable(),
   rackRow: z.string().min(1, 'Rack row is required'),
@@ -62,6 +64,7 @@ const createRackSchema = z.object({
 });
 
 const updateRackSchema = z.object({
+  warehouseId: z.string().uuid().optional().nullable(),
   zoneId: z.string().uuid().optional().nullable(),
   areaId: z.string().uuid().optional().nullable(),
   rackRow: z.string().min(1).optional(),
@@ -85,6 +88,7 @@ const updateRackSchema = z.object({
 
 function transformRack(rack: {
   rackId: string;
+  warehouseId?: string | null;
   zoneId?: string | null;
   areaId?: string | null;
   rackRow: string;
@@ -106,6 +110,7 @@ function transformRack(rack: {
 }) {
   return {
     rackId: rack.rackId,
+    warehouseId: rack.warehouseId ?? null,
     zoneId: rack.zoneId ?? null,
     areaId: rack.areaId ?? null,
     rackRow: rack.rackRow,
@@ -140,12 +145,17 @@ export const resolvers = {
       filter?: {
         rackId?: string;
         rackIds?: string[];
+        warehouseId?: string;
         rackRow?: string;
         rackRows?: string[];
         rackColumn?: string;
         rackColumns?: string[];
         rackLevel?: string;
         rackLevels?: string[];
+        binCode?: string;
+        binType?: string;
+        isActive?: boolean;
+        search?: string;
       };
       sort?: {
         sortBy?: string;
@@ -165,6 +175,7 @@ export const resolvers = {
         if (data.rackRows) filter.rackRow = data.rackRows;
         if (data.rackColumns) filter.rackColumn = data.rackColumns;
         if (data.rackLevels) filter.rackLevel = data.rackLevels;
+        if (data.warehouseId) filter.warehouseId = data.warehouseId;
         if (data.binCode) filter.binCode = data.binCode;
         if (data.binType) filter.binType = data.binType;
         if (data.isActive !== undefined) filter.isActive = data.isActive;
@@ -266,6 +277,7 @@ export const resolvers = {
         }
         const rack = await racksRepository.createRack({
           organizationId: context.organizationId,
+          warehouseId: data.warehouseId ?? undefined,
           zoneId: data.zoneId ?? undefined,
           areaId: data.areaId ?? undefined,
           rackRow: data.rackRow,
@@ -310,6 +322,7 @@ export const resolvers = {
           throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: uError.flatten().fieldErrors } });
         }
         const rack = await racksRepository.updateRack({
+          warehouseId: uData.warehouseId ?? undefined,
           zoneId: uData.zoneId ?? undefined,
           areaId: uData.areaId ?? undefined,
           rackRow: uData.rackRow,

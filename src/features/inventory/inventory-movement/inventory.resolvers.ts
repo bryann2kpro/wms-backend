@@ -20,6 +20,7 @@ function transformInventoryMovement(inventoryMovement: {
   regionId?: string | null;
   movementType: string;
   quantity: string | number;
+  lossQty?: string | number | null;
   balanceAfter: string | number | null;
   referenceNo: string | null;
   reason: string | null;
@@ -35,6 +36,7 @@ function transformInventoryMovement(inventoryMovement: {
     regionId: inventoryMovement.regionId ?? null,
     movementType: inventoryMovement.movementType,
     quantity: String(inventoryMovement.quantity ?? '0'),
+    lossQty: inventoryMovement.lossQty != null ? String(inventoryMovement.lossQty) : null,
     balanceAfter: String(inventoryMovement.balanceAfter ?? '0'),
     referenceNo: inventoryMovement.referenceNo,
     reason: inventoryMovement.reason,

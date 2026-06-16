@@ -24,11 +24,9 @@ export type ResolvedGrnRackAllocation = {
   quantityStr: string;
 };
 
-export function grnItemNetQty(item: Pick<GrnItemRackInput, "qty" | "lossQty">): number {
-  const grossQty = Number(item.qty ?? 0);
-  const lossQty = Number(item.lossQty ?? 0);
-  const netQty = roundQtyPutaway(grossQty - lossQty);
-  return Number.isFinite(netQty) && netQty > 0 ? netQty : 0;
+export function grnItemNetQty(item: Pick<GrnItemRackInput, "qty">): number {
+  const qty = roundQtyPutaway(Number(item.qty ?? 0));
+  return Number.isFinite(qty) && qty > 0 ? qty : 0;
 }
 
 export function resolveGrnItemRackAllocations(
