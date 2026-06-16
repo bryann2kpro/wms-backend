@@ -163,6 +163,7 @@ export class InventoryMovementRepositoryClass {
             im.expiry_date,
             im.movement_type,
             im.quantity,
+            im.loss_qty,
             im.created_at,
             -- For INBOUND movements, expand across all racks recorded in grn_item_racks.
             -- For other movements, use the rack_id stored directly on the movement row.
@@ -193,7 +194,8 @@ export class InventoryMovementRepositoryClass {
           )::text AS "onHandQty",
           SUM(
             CASE
-              WHEN r.movement_type IN ('DAMAGED', 'RETURN_DAMAGED') THEN r.quantity
+              WHEN r.movement_type = 'DAMAGED' THEN r.quantity
+              WHEN r.movement_type = 'INBOUND' THEN COALESCE(r.loss_qty, 0)
               ELSE 0
             END
           )::text AS "lossQty",
@@ -303,10 +305,12 @@ export class InventoryMovementRepositoryClass {
 
         let { onHand, loss, reserved } = current;
         const quantity = Number(movement.quantity ?? "0");
+        const movementLossQty = Number(movement.lossQty ?? "0");
 
         switch (movement.movementType) {
           case InventoryMovementType.INBOUND:
             onHand += quantity;
+            loss += movementLossQty;
             break;
           case InventoryMovementType.RESERVED:
             reserved += quantity;
@@ -603,9 +607,13 @@ export class InventoryMovementRepositoryClass {
 
     for (const movement of movements) {
       const qty = Number(movement.quantity ?? '0');
+      const lossQty = Number(movement.lossQty ?? '0');
 
       switch (movement.movementType) {
         case InventoryMovementType.INBOUND:
+          onHand += qty;
+          loss += lossQty;
+          break;
         case InventoryMovementType.ADJUSTMENT:
           onHand += qty;
           break;

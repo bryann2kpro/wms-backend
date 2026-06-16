@@ -1131,15 +1131,21 @@ export const resolvers = {
                             });
                         }
 
-                        await inventoryMovementRepository.createInventoryMovement(grnItems.map(item => ({
-                            skuId: item.skuId,
-                            quantity: item.qty,
-                            referenceNo: grn.grnNo,
-                            reason: 'Inbound',
-                            createdBy: updatedBy,
-                            updatedBy: updatedBy,
-                            movementType: InventoryMovementType.INBOUND,
-                        })), updatedBy, approvalOrganizationId, context.tx);
+                        await inventoryMovementRepository.createInventoryMovement(grnItems.map(item => {
+                            const grossQty = Number(item.qty ?? 0);
+                            const lossQty = Number(item.lossQty ?? 0);
+                            const netQty = Math.max(0, grossQty - lossQty);
+                            return {
+                                skuId: item.skuId,
+                                quantity: netQty.toString(),
+                                lossQty: lossQty > 0 ? lossQty.toString() : undefined,
+                                referenceNo: grn.grnNo,
+                                reason: 'Inbound',
+                                createdBy: updatedBy,
+                                updatedBy: updatedBy,
+                                movementType: InventoryMovementType.INBOUND,
+                            };
+                        }), updatedBy, approvalOrganizationId, context.tx);
 
                         await recordGrnApprovalStockQuants({
                             organizationId: approvalOrganizationId,

@@ -59,6 +59,7 @@ export const InventoryMovementsTable = MainSchema.table('inventory_movements', {
   regionId: uuid('region_id').references(() => RegionTable.regionId),
   movementType: InventoryMovementTypeEnum('movement_type').notNull(),
   quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull(),
+  lossQty: numeric('loss_qty', { precision: 12, scale: 2 }).default('0'),
   balanceAfter: numeric('balance_after', { precision: 12, scale: 2 }).default('0'),
   referenceNo: text('reference_no'),
   stockAdjustmentId: uuid('stock_adjustment_id').references(() => StockAdjustmentsTable.id),
