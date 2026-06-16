@@ -1,0 +1,1 @@
+ALTER TABLE "main"."inventory_movements" ADD COLUMN "loss_qty" numeric(12, 2) DEFAULT '0';
