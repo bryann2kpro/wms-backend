@@ -25,6 +25,7 @@ import { resolvers as stockAdjustmentResolvers } from '@/features/inventory/stoc
 import { resolvers as stockQuantResolvers } from '@/features/stock-quant/stock-quant.resolvers';
 import { resolvers as stockQuantTransactionResolvers } from '@/features/stock-quant/stock-quant-transaction/stock-quant-transaction.resolvers';
 import { resolvers as putawayResolvers } from '@/features/stock-quant/putaway/putaway.resolvers';
+import { resolvers as stockTransferResolvers } from '@/features/stock-quant/stock-transfer/stock-transfer.resolvers';
 // Master Data resolvers
 import { resolvers as organizationResolvers } from '@/features/master-data/organization.resolver';
 import { resolvers as regionResolvers } from '@/features/master-data/region.resolvers';
@@ -134,6 +135,7 @@ export const resolvers = mergeResolvers([
   stockQuantResolvers,
   stockQuantTransactionResolvers,
   putawayResolvers,
+  stockTransferResolvers,
   // Master Data
   organizationResolvers,
   regionResolvers,

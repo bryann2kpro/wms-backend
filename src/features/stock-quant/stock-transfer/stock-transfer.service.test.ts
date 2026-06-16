@@ -1,0 +1,535 @@
+import { vi, describe, test, expect, beforeEach } from "vitest";
+
+// ─── Module-level mocks ───────────────────────────────────────────────────────
+
+vi.mock("@/util/logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+// ─── Imports ─────────────────────────────────────────────────────────────────
+
+import { StockTransferServiceClass } from "./stock-transfer.service";
+import {
+  STOCK_TRANSFER_STATUS,
+  STOCK_TRANSFER_TYPE,
+  type StockTransferType,
+  type StockTransferItemType,
+} from "./stock-transfer.model";
+import { InventoryMovementType } from "@/features/inventory/inventory-movement/inventory.model";
+import type { StockTransferRepositoryClass } from "./stock-transfer.repository";
+import type { StockQuantRepositoryClass, StockQuantType } from "../stock-quant.repository";
+import type { StockQuantTransactionRepositoryClass } from "../stock-quant-transaction/stock-quant-transaction.repository";
+import type {
+  InventoryMovementRepositoryClass,
+  InventoryMovementsInsertType,
+} from "@/features/inventory/inventory-movement/inventory.repository";
+import type { RacksRepositoryClass } from "@/features/master-data/racks.repository";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const ORG = "org-1";
+const USER = "user-1";
+const SKU = "sku-1";
+
+const WH_A = "wh-a";
+const WH_B = "wh-b";
+
+const RACK_A1 = "rack-a1";
+const RACK_A2 = "rack-a2";
+const RACK_B1 = "rack-b1";
+const RACK_UZ1 = "rack-uz1"; // unzoned
+const RACK_UZ2 = "rack-uz2"; // unzoned
+
+const QUANT_A1 = "quant-a1";
+
+// ─── In-memory stock_quant store (proves the SUM invariant) ─────────────────────
+
+type QuantRow = StockQuantType;
+
+function makeQuantStore() {
+  const rows = new Map<string, QuantRow>();
+
+  const seed = (
+    id: string,
+    rackId: string,
+    quantity: string,
+    reservedQty = "0",
+    overrides: Partial<QuantRow> = {},
+  ): QuantRow => {
+    const row = {
+      id,
+      skuId: SKU,
+      lotNo: null,
+      expiryDate: null,
+      description: null,
+      quantity,
+      reservedQty,
+      rackId,
+      organizationId: ORG,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: USER,
+      updatedBy: USER,
+      ...overrides,
+    } as QuantRow;
+    rows.set(id, row);
+    return row;
+  };
+
+  const totalOnHand = () =>
+    Array.from(rows.values()).reduce((sum, r) => sum + Number(r.quantity), 0);
+
+  return { rows, seed, totalOnHand };
+}
+
+// ─── Mock repositories ──────────────────────────────────────────────────────────
+
+function makeStockTransferRepo(store: ReturnType<typeof makeQuantStore>) {
+  let headerHolder: StockTransferType | null = null;
+  let itemsHolder: StockTransferItemType[] = [];
+
+  const repo = {
+    generateTransferNo: vi.fn().mockResolvedValue("TRF-20260614-0001"),
+
+    createStockTransfer: vi.fn(async (data: Record<string, unknown>) => {
+      headerHolder = {
+        id: "transfer-1",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        cancelledAt: null,
+        cancelledBy: null,
+        cancelReason: null,
+        ...data,
+      } as StockTransferType;
+      return headerHolder;
+    }),
+
+    createStockTransferItems: vi.fn(async (items: Record<string, unknown>[]) => {
+      itemsHolder = items.map((it, idx) => ({
+        id: `item-${idx}`,
+        createdAt: new Date(),
+        ...it,
+      })) as StockTransferItemType[];
+      return itemsHolder;
+    }),
+
+    getStockTransferById: vi.fn(async () => headerHolder),
+    getStockTransferItems: vi.fn(async () => itemsHolder),
+
+    // test helpers
+    __setHeader: (h: StockTransferType) => {
+      headerHolder = h;
+    },
+    __setItems: (i: StockTransferItemType[]) => {
+      itemsHolder = i;
+    },
+    __getHeader: () => headerHolder,
+  };
+
+  return repo as unknown as StockTransferRepositoryClass & {
+    __setHeader: (h: StockTransferType) => void;
+    __setItems: (i: StockTransferItemType[]) => void;
+    __getHeader: () => StockTransferType | null;
+  };
+}
+
+function makeStockQuantRepo(store: ReturnType<typeof makeQuantStore>) {
+  const repo = {
+    getStockQuantById: vi.fn(async (_org: string, id: string) => store.rows.get(id) ?? null),
+
+    debitStockQuantIfAvailable: vi.fn(
+      async (_org: string, id: string, qty: string, _user: string) => {
+        const row = store.rows.get(id);
+        if (!row) throw new Error("row not found");
+        const available = Number(row.quantity) - Number(row.reservedQty);
+        if (available < Number(qty)) {
+          throw new Error("Insufficient available stock or row not found");
+        }
+        const newQty = Number(row.quantity) - Number(qty);
+        row.quantity = newQty.toFixed(2);
+        if (Number(row.quantity) === 0 && Number(row.reservedQty) === 0) {
+          store.rows.delete(id);
+        }
+        return row;
+      },
+    ),
+
+    creditStockQuant: vi.fn(
+      async (params: { rackId: string; qty: string; lotNo?: string | null }) => {
+        const existing = Array.from(store.rows.values()).find(
+          (r) => r.rackId === params.rackId && (r.lotNo ?? null) === (params.lotNo ?? null),
+        );
+        if (existing) {
+          existing.quantity = (Number(existing.quantity) + Number(params.qty)).toFixed(2);
+          return existing;
+        }
+        const id = `quant-${params.rackId}-${store.rows.size}`;
+        const row = {
+          id,
+          skuId: SKU,
+          lotNo: params.lotNo ?? null,
+          expiryDate: null,
+          description: null,
+          quantity: Number(params.qty).toFixed(2),
+          reservedQty: "0",
+          rackId: params.rackId,
+          organizationId: ORG,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: USER,
+          updatedBy: USER,
+        } as QuantRow;
+        store.rows.set(id, row);
+        return row;
+      },
+    ),
+  };
+  return repo as unknown as StockQuantRepositoryClass;
+}
+
+function makeStockQuantTransactionRepo() {
+  return {
+    createStockQuantTransaction: vi.fn(async (data: unknown) => data),
+  } as unknown as StockQuantTransactionRepositoryClass;
+}
+
+function makeInventoryMovementRepo() {
+  const created: InventoryMovementsInsertType[] = [];
+  const repo = {
+    createInventoryMovement: vi.fn(
+      async (data: InventoryMovementsInsertType | InventoryMovementsInsertType[]) => {
+        const arr = Array.isArray(data) ? data : [data];
+        created.push(...arr);
+        return data;
+      },
+    ),
+    __created: created,
+  };
+  return repo as unknown as InventoryMovementRepositoryClass & {
+    __created: InventoryMovementsInsertType[];
+  };
+}
+
+function makeRacksRepo(rackToWarehouse: Record<string, string | null>) {
+  return {
+    getRackWarehouseIds: vi.fn(async (rackIds: string[]) => {
+      const map = new Map<string, string | null>();
+      for (const id of rackIds) {
+        map.set(id, rackToWarehouse[id] ?? null);
+      }
+      return map;
+    }),
+  } as unknown as RacksRepositoryClass;
+}
+
+// A `tx` mock whose `update().set().where().returning()` chain returns the
+// merged header row (mirrors patchHeaderStatus behaviour against the header).
+function makeTx(transferRepo: ReturnType<typeof makeStockTransferRepo>) {
+  const tx = {
+    update: vi.fn(() => {
+      let patch: Record<string, unknown> = {};
+      const chain = {
+        set: vi.fn((p: Record<string, unknown>) => {
+          patch = p;
+          return chain;
+        }),
+        where: vi.fn(() => chain),
+        returning: vi.fn(async () => {
+          const current = transferRepo.__getHeader();
+          const merged = { ...(current ?? {}), ...patch } as StockTransferType;
+          transferRepo.__setHeader(merged);
+          return [merged];
+        }),
+      };
+      return chain;
+    }),
+  };
+  return tx as unknown as Parameters<StockTransferServiceClass["createTransfer"]>[1];
+}
+
+// ─── Wiring helper ──────────────────────────────────────────────────────────────
+
+function buildService(rackToWarehouse: Record<string, string | null>) {
+  const store = makeQuantStore();
+  const transferRepo = makeStockTransferRepo(store);
+  const quantRepo = makeStockQuantRepo(store);
+  const txnRepo = makeStockQuantTransactionRepo();
+  const movementRepo = makeInventoryMovementRepo();
+  const racksRepo = makeRacksRepo(rackToWarehouse);
+  const tx = makeTx(transferRepo);
+
+  const service = new StockTransferServiceClass(
+    transferRepo,
+    quantRepo,
+    txnRepo,
+    movementRepo,
+    racksRepo,
+  );
+
+  return { service, store, transferRepo, quantRepo, txnRepo, movementRepo, racksRepo, tx };
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+describe("StockTransferService.createTransfer — type derivation", () => {
+  test("same warehouse → BIN_TO_BIN (completed)", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    const result = await ctx.service.createTransfer(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+
+    expect(result.type).toBe(STOCK_TRANSFER_TYPE.BIN_TO_BIN);
+    expect(result.status).toBe(STOCK_TRANSFER_STATUS.COMPLETED);
+  });
+
+  test("different warehouses → WAREHOUSE_TO_WAREHOUSE (in transit)", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    const result = await ctx.service.createTransfer(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "10" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+
+    expect(result.type).toBe(STOCK_TRANSFER_TYPE.WAREHOUSE_TO_WAREHOUSE);
+    expect(result.status).toBe(STOCK_TRANSFER_STATUS.IN_TRANSIT);
+  });
+
+  test("unzoned ↔ unzoned → BIN_TO_BIN", async () => {
+    const ctx = buildService({ [RACK_UZ1]: null, [RACK_UZ2]: null });
+    ctx.store.seed(QUANT_A1, RACK_UZ1, "100");
+
+    const result = await ctx.service.createTransfer(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_UZ2, quantity: "10" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+
+    expect(result.type).toBe(STOCK_TRANSFER_TYPE.BIN_TO_BIN);
+    expect(result.status).toBe(STOCK_TRANSFER_STATUS.COMPLETED);
+  });
+
+  test("unzoned ↔ zoned → rejected", async () => {
+    const ctx = buildService({ [RACK_UZ1]: null, [RACK_A1]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_UZ1, "100");
+
+    await expect(
+      ctx.service.createTransfer(
+        { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A1, quantity: "10" }] },
+        ctx.tx,
+        USER,
+        ORG,
+      ),
+    ).rejects.toThrow("rack has no zone/warehouse assigned");
+  });
+});
+
+describe("StockTransferService.createTransfer — validation & guards", () => {
+  test("same-rack line → validation error", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    await expect(
+      ctx.service.createTransfer(
+        { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A1, quantity: "10" }] },
+        ctx.tx,
+        USER,
+        ORG,
+      ),
+    ).rejects.toThrow("Destination rack must be different");
+  });
+
+  test("non-positive qty → validation error", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    await expect(
+      ctx.service.createTransfer(
+        { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "0" }] },
+        ctx.tx,
+        USER,
+        ORG,
+      ),
+    ).rejects.toThrow("positive number");
+  });
+
+  test("reserved-qty guard: debit rejects when available < qty", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    // 100 on hand, 95 reserved → only 5 available.
+    ctx.store.seed(QUANT_A1, RACK_A1, "100", "95");
+
+    await expect(
+      ctx.service.createTransfer(
+        { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
+        ctx.tx,
+        USER,
+        ORG,
+      ),
+    ).rejects.toThrow("Insufficient available stock");
+  });
+});
+
+describe("StockTransferService.createTransfer — B2B happy path", () => {
+  test("debits source, credits dest, writes OUT+IN movements, net movement zero, invariant held", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    const before = ctx.store.totalOnHand();
+
+    await ctx.service.createTransfer(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "30" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+
+    // Source debited.
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("70.00");
+    // Dest credited (a new row on RACK_A2 with qty 30).
+    const destRow = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_A2);
+    expect(destRow?.quantity).toBe("30.00");
+
+    // Invariant: B2B does not change total on-hand.
+    expect(ctx.store.totalOnHand()).toBe(before);
+
+    // One TRANSFER_OUT and one TRANSFER_IN movement written.
+    const created = (ctx.movementRepo as unknown as { __created: InventoryMovementsInsertType[] }).__created;
+    const out = created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_OUT);
+    const inn = created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_IN);
+    expect(out).toHaveLength(1);
+    expect(inn).toHaveLength(1);
+    // Net movement quantity is zero (out qty == in qty).
+    const net = inn.reduce((s, m) => s + Number(m.quantity), 0) - out.reduce((s, m) => s + Number(m.quantity), 0);
+    expect(net).toBe(0);
+    // OUT recorded at source rack, IN at dest rack.
+    expect(out[0].rackId).toBe(RACK_A1);
+    expect(inn[0].rackId).toBe(RACK_A2);
+  });
+});
+
+describe("StockTransferService — W2W dispatch / receive / cancel", () => {
+  test("dispatch → IN_TRANSIT writes only TRANSFER_OUT; receive → COMPLETED credits dest", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    const created = (ctx.movementRepo as unknown as { __created: InventoryMovementsInsertType[] }).__created;
+
+    const dispatched = await ctx.service.createTransfer(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+
+    expect(dispatched.status).toBe(STOCK_TRANSFER_STATUS.IN_TRANSIT);
+    // Source debited, dest NOT yet credited.
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("60.00");
+    expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_B1)).toBe(false);
+    // Only TRANSFER_OUT so far.
+    expect(created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_OUT)).toHaveLength(1);
+    expect(created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_IN)).toHaveLength(0);
+
+    // Receive.
+    const received = await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
+    expect(received.status).toBe(STOCK_TRANSFER_STATUS.COMPLETED);
+    const destRow = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_B1);
+    expect(destRow?.quantity).toBe("40.00");
+    expect(created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_IN)).toHaveLength(1);
+  });
+
+  test("double-receive is rejected", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    await ctx.service.createTransfer(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+
+    await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
+
+    await expect(
+      ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx),
+    ).rejects.toThrow("Only in-transit transfers can be received");
+  });
+
+  test("cancel → CANCELLED re-credits SOURCE rack", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    const before = ctx.store.totalOnHand();
+
+    await ctx.service.createTransfer(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+
+    // Mid-flight: source debited, stock "in transit".
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("60.00");
+
+    const cancelled = await ctx.service.cancelTransfer(
+      "transfer-1",
+      ORG,
+      USER,
+      "changed mind",
+      ctx.tx,
+    );
+
+    expect(cancelled.status).toBe(STOCK_TRANSFER_STATUS.CANCELLED);
+    expect(cancelled.cancelReason).toBe("changed mind");
+    // Source re-credited to its original total; dest never credited.
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("100.00");
+    expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_B1)).toBe(false);
+    // Invariant restored.
+    expect(ctx.store.totalOnHand()).toBe(before);
+  });
+
+  test("cancel after completion is rejected (B2B is not cancellable)", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    await ctx.service.createTransfer(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+
+    await expect(
+      ctx.service.cancelTransfer("transfer-1", ORG, USER, "nope", ctx.tx),
+    ).rejects.toThrow("Only in-transit transfers can be cancelled");
+  });
+});
+
+describe("StockTransferService.createTransfer — duplicate lines", () => {
+  test("duplicate (source,dest,sku,lot,expiry) pair → rejected", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    await expect(
+      ctx.service.createTransfer(
+        {
+          lines: [
+            { sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" },
+            { sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "5" },
+          ],
+        },
+        ctx.tx,
+        USER,
+        ORG,
+      ),
+    ).rejects.toThrow("Duplicate transfer line");
+  });
+});

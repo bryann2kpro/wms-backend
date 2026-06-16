@@ -12,6 +12,8 @@ const InventoryMovementTypeEnum = MainSchema.enum('inventory_movement_type', [
   'ADJUSTMENT', // Stock count correction
   'DAMAGED', // Found broken item
   'LOSS_ADJUSTMENT', // Stock count loss correction
+  'TRANSFER_OUT', // Stock transfer: debited from source rack
+  'TRANSFER_IN', // Stock transfer: credited to destination rack
 ]);
 
 export enum InventoryMovementType {
@@ -21,6 +23,8 @@ export enum InventoryMovementType {
   ADJUSTMENT = 'ADJUSTMENT', // Stock count correction
   DAMAGED = 'DAMAGED', // Found broken item
   LOSS_ADJUSTMENT = 'LOSS_ADJUSTMENT', // Stock count loss correction
+  TRANSFER_OUT = 'TRANSFER_OUT', // Stock transfer: debited from source rack
+  TRANSFER_IN = 'TRANSFER_IN', // Stock transfer: credited to destination rack
 };
 
 /**

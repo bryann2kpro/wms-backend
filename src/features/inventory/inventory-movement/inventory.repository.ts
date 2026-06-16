@@ -325,6 +325,14 @@ export class InventoryMovementRepositoryClass {
           case InventoryMovementType.LOSS_ADJUSTMENT:
             loss += quantity; // quantity can be negative
             break;
+          case InventoryMovementType.TRANSFER_OUT:
+          case InventoryMovementType.TRANSFER_IN:
+            // No-op on org-level balance by design. inventory_balances are
+            // org+SKU level totals; rack-to-rack transfers relocate stock
+            // between racks without changing the org's on-hand/loss/reserved
+            // for the SKU. The movement rows are still recorded for rack-level
+            // traceability, but they must not adjust the org balance.
+            break;
         }
 
         balanceMap.set(skuId, { onHand, loss, reserved });
@@ -614,6 +622,10 @@ export class InventoryMovementRepositoryClass {
           break;
         case InventoryMovementType.LOSS_ADJUSTMENT:
           loss += qty; // quantity can be negative
+          break;
+        case InventoryMovementType.TRANSFER_OUT:
+        case InventoryMovementType.TRANSFER_IN:
+          // No-op: rack-to-rack transfers don't change org+SKU level balance.
           break;
       }
 
