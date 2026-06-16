@@ -30,15 +30,13 @@ export class GrnPutawayService {
                 for (const item of grnItems) {
                     if (!item.skuId) continue;
 
-                    const grossQty = Number(item.qty ?? 0);
-                    const lossQty = Number(item.lossQty ?? 0);
-                    const netQty = Math.max(0, grossQty - lossQty);
+                    const qty = Math.max(0, Number(item.qty ?? 0));
 
                     const suggestion = await this.putawaySuggestionService.suggestRack(
                         {
                             organizationId,
                             skuId: item.skuId,
-                            quantity: netQty,
+                            quantity: qty,
                         },
                         tx,
                     );

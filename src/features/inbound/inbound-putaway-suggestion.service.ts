@@ -579,13 +579,13 @@ export class InboundPutawaySuggestionService {
         and(
           eq(GrnsTable.organizationId, organizationId),
           inArray(GrnsTable.status, ["DRAFT", "SUBMITTED", "Draft", "Submitted"]),
-          gt(sql`(${GrnItemsTable.qty}::numeric - ${GrnItemsTable.lossQty}::numeric)`, 0),
+          gt(sql`${GrnItemsTable.qty}::numeric`, 0),
         ),
       );
 
     const map = new Map<string, RackOccupant[]>();
     for (const row of rows) {
-      const qty = Number(row.qty) - Number(row.lossQty ?? 0);
+      const qty = Number(row.qty);
       if (!Number.isFinite(qty) || qty <= 0) continue;
       const occupant: RackOccupant = { quantity: qty, sku: toSkuCaseDimensions(row) };
       const existing = map.get(row.rackId);
