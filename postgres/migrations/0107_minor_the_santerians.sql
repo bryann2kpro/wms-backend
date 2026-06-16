@@ -1,0 +1,2 @@
+ALTER TABLE "main"."m_racks" ADD COLUMN "warehouse_id" uuid;--> statement-breakpoint
+ALTER TABLE "main"."m_racks" ADD CONSTRAINT "m_racks_warehouse_id_m_warehouses_warehouse_id_fk" FOREIGN KEY ("warehouse_id") REFERENCES "main"."m_warehouses"("warehouse_id") ON DELETE no action ON UPDATE no action;

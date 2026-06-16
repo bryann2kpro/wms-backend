@@ -43,6 +43,7 @@ const numericFieldSchema = z
   });
 
 const createRackSchema = z.object({
+  warehouseId: z.string().uuid().optional().nullable(),
   zoneId: z.string().uuid().optional().nullable(),
   areaId: z.string().uuid().optional().nullable(),
   rackRow: z.string().min(1, 'Rack row is required'),
@@ -62,6 +63,7 @@ const createRackSchema = z.object({
 });
 
 const updateRackSchema = z.object({
+  warehouseId: z.string().uuid().optional().nullable(),
   zoneId: z.string().uuid().optional().nullable(),
   areaId: z.string().uuid().optional().nullable(),
   rackRow: z.string().min(1).optional(),
@@ -85,6 +87,7 @@ const updateRackSchema = z.object({
 
 function transformRack(rack: {
   rackId: string;
+  warehouseId?: string | null;
   zoneId?: string | null;
   areaId?: string | null;
   rackRow: string;
@@ -106,6 +109,7 @@ function transformRack(rack: {
 }) {
   return {
     rackId: rack.rackId,
+    warehouseId: rack.warehouseId ?? null,
     zoneId: rack.zoneId ?? null,
     areaId: rack.areaId ?? null,
     rackRow: rack.rackRow,
@@ -266,6 +270,7 @@ export const resolvers = {
         }
         const rack = await racksRepository.createRack({
           organizationId: context.organizationId,
+          warehouseId: data.warehouseId ?? undefined,
           zoneId: data.zoneId ?? undefined,
           areaId: data.areaId ?? undefined,
           rackRow: data.rackRow,
@@ -310,6 +315,7 @@ export const resolvers = {
           throw new GraphQLError('Validation failed', { extensions: { code: 'BAD_USER_INPUT', errors: uError.flatten().fieldErrors } });
         }
         const rack = await racksRepository.updateRack({
+          warehouseId: uData.warehouseId ?? undefined,
           zoneId: uData.zoneId ?? undefined,
           areaId: uData.areaId ?? undefined,
           rackRow: uData.rackRow,

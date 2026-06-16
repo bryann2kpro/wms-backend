@@ -13,7 +13,6 @@ import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
 import { RackInsertType, RacksTable, RackType } from './racks.model';
-import { ZonesTable } from './zone.model';
 
 // ============================================
 // FILTER TYPES
@@ -220,13 +219,13 @@ export class RacksRepositoryClass {
     if (rackIds.length === 0) return result;
     try {
       const dbClient = tx || db;
+      // Warehouse is now a direct rack column; no zone join needed.
       const rows = await dbClient
         .select({
           rackId: RacksTable.rackId,
-          warehouseId: ZonesTable.warehouseId,
+          warehouseId: RacksTable.warehouseId,
         })
         .from(RacksTable)
-        .leftJoin(ZonesTable, eq(ZonesTable.zoneId, RacksTable.zoneId))
         .where(and(eq(RacksTable.organizationId, organizationId), inArray(RacksTable.rackId, rackIds)));
 
       for (const row of rows) {
