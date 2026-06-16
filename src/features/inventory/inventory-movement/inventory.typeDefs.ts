@@ -15,6 +15,7 @@ export const typeDefs = `#graphql
     regionId: ID
     movementType: InventoryMovementType!
     quantity: String!
+    lossQty: String
     balanceAfter: String!
     referenceNo: String
     reason: String
