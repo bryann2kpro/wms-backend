@@ -5,6 +5,9 @@ import { RegionTable } from "@/features/master-data/region.model";
 import { RacksTable } from "@/features/master-data/racks.model";
 import { StockAdjustmentsTable } from "@/features/inventory/stock-adjustment/stock-adjustment.model";
 
+// NOTE: this Postgres enum is APPEND-ONLY. Never reorder or remove existing values;
+// new values (e.g. Bin-to-Bin TRANSFER_OUT/TRANSFER_IN) must be appended AFTER
+// RETURN_DAMAGED at the end of the list.
 const InventoryMovementTypeEnum = MainSchema.enum('inventory_movement_type', [
   'INBOUND', // Inventory received from a supplier
   'RESERVED', // Inventory reserved for a shipment
@@ -12,6 +15,8 @@ const InventoryMovementTypeEnum = MainSchema.enum('inventory_movement_type', [
   'ADJUSTMENT', // Stock count correction
   'DAMAGED', // Found broken item
   'LOSS_ADJUSTMENT', // Stock count loss correction
+  'RETURN_IN', // About-to-expire goods returned from outlet, re-entered into stock
+  'RETURN_DAMAGED', // Damaged goods returned from outlet, recorded as loss
 ]);
 
 export enum InventoryMovementType {
@@ -21,6 +26,8 @@ export enum InventoryMovementType {
   ADJUSTMENT = 'ADJUSTMENT', // Stock count correction
   DAMAGED = 'DAMAGED', // Found broken item
   LOSS_ADJUSTMENT = 'LOSS_ADJUSTMENT', // Stock count loss correction
+  RETURN_IN = 'RETURN_IN', // About-to-expire goods returned from outlet, re-entered into stock
+  RETURN_DAMAGED = 'RETURN_DAMAGED', // Damaged goods returned from outlet, recorded as loss
 };
 
 /**

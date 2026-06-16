@@ -6,6 +6,7 @@
 
 import { db } from '@/db';
 import { DocumentsTable } from './documents.model.js';
+import type { DbTransaction } from '@/types/db-transaction';
 
 export type InsertDocumentData = {
   docType: string;
@@ -21,8 +22,9 @@ export type InsertDocumentData = {
 };
 
 export class DocumentsRepository {
-  async insertDocument(data: InsertDocumentData) {
-    const [doc] = await db.insert(DocumentsTable).values(data).returning();
+  async insertDocument(data: InsertDocumentData, tx?: DbTransaction) {
+    const client = tx ?? db;
+    const [doc] = await client.insert(DocumentsTable).values(data).returning();
     return doc;
   }
 }

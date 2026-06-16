@@ -186,14 +186,14 @@ export class InventoryMovementRepositoryClass {
           rack.rack_level AS "rackLevel",
           SUM(
             CASE
-              WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT') THEN r.quantity
+              WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT', 'RETURN_IN') THEN r.quantity
               WHEN r.movement_type IN ('SHIPMENT', 'DAMAGED') THEN -r.quantity
               ELSE 0
             END
           )::text AS "onHandQty",
           SUM(
             CASE
-              WHEN r.movement_type = 'DAMAGED' THEN r.quantity
+              WHEN r.movement_type IN ('DAMAGED', 'RETURN_DAMAGED') THEN r.quantity
               ELSE 0
             END
           )::text AS "lossQty",
@@ -212,7 +212,7 @@ export class InventoryMovementRepositoryClass {
         GROUP BY r.lot_no, r.expiry_date, r.resolved_rack_id, rack.rack_row, rack.rack_column, rack.rack_level
         HAVING SUM(
           CASE
-            WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT') THEN r.quantity
+            WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT', 'RETURN_IN') THEN r.quantity
             WHEN r.movement_type IN ('SHIPMENT', 'DAMAGED') THEN -r.quantity
             ELSE 0
           END
@@ -324,6 +324,12 @@ export class InventoryMovementRepositoryClass {
             break;
           case InventoryMovementType.LOSS_ADJUSTMENT:
             loss += quantity; // quantity can be negative
+            break;
+          case InventoryMovementType.RETURN_IN:
+            onHand += quantity;
+            break;
+          case InventoryMovementType.RETURN_DAMAGED:
+            loss += quantity;
             break;
         }
 
@@ -614,6 +620,12 @@ export class InventoryMovementRepositoryClass {
           break;
         case InventoryMovementType.LOSS_ADJUSTMENT:
           loss += qty; // quantity can be negative
+          break;
+        case InventoryMovementType.RETURN_IN:
+          onHand += qty;
+          break;
+        case InventoryMovementType.RETURN_DAMAGED:
+          loss += qty;
           break;
       }
 
