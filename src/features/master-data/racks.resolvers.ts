@@ -16,6 +16,7 @@ import { rackVolumeMm3, computeRackUsage, type RackOccupant } from '@/features/i
 const rackFilterSchema = z.object({
   rackId: z.string().uuid().optional(),
   rackIds: z.array(z.string().uuid()).optional(),
+  warehouseId: z.string().uuid().optional(),
   rackRow: z.string().optional(),
   rackRows: z.array(z.string()).optional(),
   rackColumn: z.string().optional(),
@@ -144,12 +145,17 @@ export const resolvers = {
       filter?: {
         rackId?: string;
         rackIds?: string[];
+        warehouseId?: string;
         rackRow?: string;
         rackRows?: string[];
         rackColumn?: string;
         rackColumns?: string[];
         rackLevel?: string;
         rackLevels?: string[];
+        binCode?: string;
+        binType?: string;
+        isActive?: boolean;
+        search?: string;
       };
       sort?: {
         sortBy?: string;
@@ -169,6 +175,7 @@ export const resolvers = {
         if (data.rackRows) filter.rackRow = data.rackRows;
         if (data.rackColumns) filter.rackColumn = data.rackColumns;
         if (data.rackLevels) filter.rackLevel = data.rackLevels;
+        if (data.warehouseId) filter.warehouseId = data.warehouseId;
         if (data.binCode) filter.binCode = data.binCode;
         if (data.binType) filter.binType = data.binType;
         if (data.isActive !== undefined) filter.isActive = data.isActive;

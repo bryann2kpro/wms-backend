@@ -65,6 +65,7 @@ export const typeDefs = `#graphql
   """
   input RackFilterInput {
     rackId: ID
+    warehouseId: ID
     rackRow: String
     rackColumn: String
     rackLevel: String

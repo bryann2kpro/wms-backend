@@ -13,6 +13,7 @@ import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
 import { RackInsertType, RacksTable, RackType } from './racks.model';
+import { ZonesTable } from './zone.model';
 
 // ============================================
 // FILTER TYPES
@@ -20,6 +21,7 @@ import { RackInsertType, RacksTable, RackType } from './racks.model';
 
 export type RackFilter = {
   rackId?: string | string[];
+  warehouseId?: string;
   rackName?: string;
   rackRow?: string | string[];
   rackColumn?: string | string[];
@@ -56,6 +58,16 @@ export class RacksRepositoryClass {
         whereCondition.push(inArray(RacksTable.rackId, filter.rackId));
       } else if (filter.rackId) {
         whereCondition.push(eq(RacksTable.rackId, filter.rackId));
+      }
+
+      if (filter.warehouseId) {
+        // Racks may link to a warehouse directly or via their zone.
+        whereCondition.push(
+          or(
+            eq(RacksTable.warehouseId, filter.warehouseId),
+            eq(ZonesTable.warehouseId, filter.warehouseId),
+          )!,
+        );
       }
 
       if (Array.isArray(filter.rackRow)) {
@@ -101,6 +113,7 @@ export class RacksRepositoryClass {
       const baseQuery = db
         .select({
           rackId: RacksTable.rackId,
+          warehouseId: sql<string | null>`COALESCE(${RacksTable.warehouseId}, ${ZonesTable.warehouseId})`.as('warehouse_id'),
           zoneId: RacksTable.zoneId,
           areaId: RacksTable.areaId,
           rackRow: RacksTable.rackRow,
@@ -121,6 +134,7 @@ export class RacksRepositoryClass {
           updatedBy: RacksTable.updatedBy,
         })
         .from(RacksTable)
+        .leftJoin(ZonesTable, eq(RacksTable.zoneId, ZonesTable.zoneId))
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
         .orderBy(
           asc(RacksTable.rackRow),
@@ -219,13 +233,14 @@ export class RacksRepositoryClass {
     if (rackIds.length === 0) return result;
     try {
       const dbClient = tx || db;
-      // Warehouse is now a direct rack column; no zone join needed.
+      // Warehouse is resolved from the direct rack column or via zone.
       const rows = await dbClient
         .select({
           rackId: RacksTable.rackId,
-          warehouseId: RacksTable.warehouseId,
+          warehouseId: sql<string | null>`COALESCE(${RacksTable.warehouseId}, ${ZonesTable.warehouseId})`.as('warehouse_id'),
         })
         .from(RacksTable)
+        .leftJoin(ZonesTable, eq(RacksTable.zoneId, ZonesTable.zoneId))
         .where(and(eq(RacksTable.organizationId, organizationId), inArray(RacksTable.rackId, rackIds)));
 
       for (const row of rows) {
