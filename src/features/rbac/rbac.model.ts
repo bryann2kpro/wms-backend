@@ -272,6 +272,7 @@ export const ModuleName = {
   DELIVERY_ORDER: 'Delivery Order',
   EXCEPTION: 'Exception',
   INVENTORY: 'Inventory',
+  RETURN: 'Return',
   INVOICE: 'Invoice',
   SETTLEMENT: 'Settlement',
   REPORT: 'Report',

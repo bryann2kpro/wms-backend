@@ -57,6 +57,10 @@ export const typeDefs = `#graphql
         qtyRequired: String!
         qtyPicked: String
         qtyPacked: String
+        "Lot / batch number on the DO line (used to prefill return capture)"
+        lotNo: String
+        "Expiry date of the DO line lot (ISO 8601), used to prefill return capture"
+        expiryDate: String
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -394,6 +398,9 @@ export const typeDefs = `#graphql
         """
         Submit proof of delivery for a SHIPPED delivery order.
         Saves a signed DO document record and advances the DO status to DELIVERED.
+        Optionally captures returned goods (damaged / about-to-expire) handed to
+        the driver at the outlet - the return document is created in the same
+        transaction as the DELIVERED flip.
         """
         submitDeliveryProof(
             doId: ID!
@@ -401,6 +408,8 @@ export const typeDefs = `#graphql
             fileName: String!
             fileSizeBytes: Int!
             mimeType: String!
+            returns: [ReturnLineInput!]
+            returnNotes: String
         ): DeliveryOrder!
 
         """

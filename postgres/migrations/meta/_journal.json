@@ -715,6 +715,27 @@
       "when": 1781147551866,
       "tag": "0102_ordinary_silver_sable",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1781441808036,
+      "tag": "0103_thin_hardball",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1781441809036,
+      "tag": "0104_add_transfer_movement_enum",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1781570586978,
+      "tag": "0105_lucky_cerebro",
+      "breakpoints": true
     }
   ]
 }

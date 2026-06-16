@@ -360,3 +360,11 @@ export class EsRepositoryClass {
   }
 
 }
+
+/**
+ * Alias for {@link EsRepositoryClass}.
+ * The inbound flow injects this repository under the `esAdvanceNoticeRepository`
+ * name (it is the source of ASN expected quantities for over-receipt checks),
+ * so it imports it under this clearer alias.
+ */
+export { EsRepositoryClass as EsAdvanceNoticeRepositoryClass };

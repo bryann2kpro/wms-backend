@@ -55,6 +55,9 @@ import { InboundServices } from './features/inbound/inbound.services';
 import { GrnPutawayService } from './features/inbound/grn-putaway.service';
 import { InboundPutawaySuggestionService } from './features/inbound/inbound-putaway-suggestion.service';
 import { StockQuantRepositoryClass } from './features/stock-quant/stock-quant.repository';
+import { StockTransferRepositoryClass } from './features/stock-quant/stock-transfer/stock-transfer.repository';
+import { StockTransferServiceClass } from './features/stock-quant/stock-transfer/stock-transfer.service';
+import { StockQuantTransactionRepositoryClass } from './features/stock-quant/stock-quant-transaction/stock-quant-transaction.repository';
 // Outbound Repositories & Services
 import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
@@ -73,6 +76,9 @@ import { StockAdjustmentRepositoryClass } from './features/inventory/stock-adjus
 import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
 import { InvoicesRepositoryClass } from './features/invoicing/invoices.repository';
 import { RunningNoRepositoryClass } from './features/running-no/running-no.repository';
+// Returns
+import { ReturnsRepositoryClass } from './features/returns/returns.repository';
+import { ReturnsServiceClass } from './features/returns/returns.service';
 // API Keys
 import { ApiKeysRepositoryClass } from '@/features/api-keys/api-keys.repository.js';
 import { ApiKeysControllerClass } from '@/features/api-keys/api-keys.controller.js';
@@ -158,6 +164,22 @@ export const invoicesRepository = new InvoicesRepositoryClass(runningNoRepositor
 
 // Outbound Services
 export const documentsRepository = new DocumentsRepository();
+
+// Stock Quant (needed by returns service; also used by inbound putaway below)
+export const stockQuantRepository = new StockQuantRepositoryClass();
+
+// Returns
+export const returnsRepository = new ReturnsRepositoryClass(runningNoRepository);
+export const returnsService = new ReturnsServiceClass(
+  returnsRepository,
+  deliveryOrdersRepository,
+  documentsRepository,
+  inventoryMovementRepository,
+  stockQuantRepository,
+  racksRepository,
+  zonesRepository,
+);
+
 export const outboundServices = new OutboundServices(
   deliveryOrdersRepository,
   skuRepository,
@@ -168,6 +190,7 @@ export const outboundServices = new OutboundServices(
   inventoryMovementRepository,
   documentsRepository,
   pickFaceStrategiesRepository,
+  returnsService,
 );
 
 // ============================================
@@ -206,7 +229,15 @@ export const inboundServices = new InboundServices(
 export const apiKeysRepository = new ApiKeysRepositoryClass();
 export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
 
-export const stockQuantRepository = new StockQuantRepositoryClass();
+export const stockQuantTransactionRepository = new StockQuantTransactionRepositoryClass();
+export const stockTransferRepository = new StockTransferRepositoryClass(runningNoRepository);
+export const stockTransferService = new StockTransferServiceClass(
+  stockTransferRepository,
+  stockQuantRepository,
+  stockQuantTransactionRepository,
+  inventoryMovementRepository,
+  racksRepository,
+);
 export const inboundPutawaySuggestionService = new InboundPutawaySuggestionService(
   pickFaceStrategiesRepository,
   skuRepository,

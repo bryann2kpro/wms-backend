@@ -442,6 +442,8 @@ export class DeliveryOrdersRepositoryClass {
           qtyRequired: DeliveryOrderItemsTable.qtyRequired,
           qtyPicked: DeliveryOrderItemsTable.qtyPicked,
           qtyPacked: DeliveryOrderItemsTable.qtyPacked,
+          lotNo: DeliveryOrderItemsTable.lotNo,
+          expiryDate: DeliveryOrderItemsTable.expiryDate,
           createdAt: DeliveryOrderItemsTable.createdAt,
           updatedAt: DeliveryOrderItemsTable.updatedAt,
           createdBy: DeliveryOrderItemsTable.createdBy,

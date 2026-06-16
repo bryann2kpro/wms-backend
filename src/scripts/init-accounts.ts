@@ -195,6 +195,42 @@ async function initRbacModule(): Promise<void> {
 }
 
 /**
+ * Initialize the Return module (Return Management) with CRUD permissions.
+ * Used by the warehouse-keeper putaway flow and the Return Management admin page.
+ */
+async function initReturnModule(): Promise<void> {
+  logger.info('📦 Initializing Return module...');
+
+  const returnModule = await getOrCreateModule(ModuleName.RETURN);
+
+  const permissions = [
+    { type: PermissionTypeCode.READ, desc: 'View return documents' },
+    { type: PermissionTypeCode.CREATE, desc: 'Capture returns' },
+    { type: PermissionTypeCode.UPDATE, desc: 'Assign return items to racks (putaway)' },
+    { type: PermissionTypeCode.DELETE, desc: 'Delete return documents' },
+  ];
+
+  const createdPermissions: PermissionType[] = [];
+  for (const perm of permissions) {
+    const permission = await getOrCreatePermission(returnModule.moduleId, perm.type, perm.desc);
+    createdPermissions.push(permission);
+  }
+
+  // Assign to Admin and Storekeeper roles (Super Admin gets them via the backfill)
+  for (const roleName of [RoleCode.ADMIN, RoleCode.STOREKEEPER]) {
+    const role = await authRepository.getRoleByName(roleName);
+    if (role) {
+      logger.info(`🔐 Assigning Return permissions to ${roleName} role...`);
+      for (const permission of createdPermissions) {
+        await assignPermissionToRoleIfNeeded(role.roleId, permission.permissionId);
+      }
+    }
+  }
+
+  logger.info('✅ Return module initialization complete!');
+}
+
+/**
  * Backfill: assign all existing module permissions to Super Admin role.
  * Use for existing deployments where modules were created before auto-assign was added.
  */
@@ -560,6 +596,7 @@ export async function initAccounts() {
     
     // Initialize RBAC modules and permissions
     await initRbacModule();
+    await initReturnModule();
 
     // Backfill Super Admin with all existing module permissions (for existing deployments)
     await initAllModulePermissionsForSuperAdmin();

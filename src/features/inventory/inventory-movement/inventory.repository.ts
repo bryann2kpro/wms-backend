@@ -187,7 +187,7 @@ export class InventoryMovementRepositoryClass {
           rack.rack_level AS "rackLevel",
           SUM(
             CASE
-              WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT') THEN r.quantity
+              WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT', 'RETURN_IN') THEN r.quantity
               WHEN r.movement_type IN ('SHIPMENT', 'DAMAGED') THEN -r.quantity
               ELSE 0
             END
@@ -214,7 +214,7 @@ export class InventoryMovementRepositoryClass {
         GROUP BY r.lot_no, r.expiry_date, r.resolved_rack_id, rack.rack_row, rack.rack_column, rack.rack_level
         HAVING SUM(
           CASE
-            WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT') THEN r.quantity
+            WHEN r.movement_type IN ('INBOUND', 'ADJUSTMENT', 'RETURN_IN') THEN r.quantity
             WHEN r.movement_type IN ('SHIPMENT', 'DAMAGED') THEN -r.quantity
             ELSE 0
           END
@@ -328,6 +328,14 @@ export class InventoryMovementRepositoryClass {
             break;
           case InventoryMovementType.LOSS_ADJUSTMENT:
             loss += quantity; // quantity can be negative
+            break;
+          case InventoryMovementType.TRANSFER_OUT:
+          case InventoryMovementType.TRANSFER_IN:
+            // No-op on org-level balance by design. inventory_balances are
+            // org+SKU level totals; rack-to-rack transfers relocate stock
+            // between racks without changing the org's on-hand/loss/reserved
+            // for the SKU. The movement rows are still recorded for rack-level
+            // traceability, but they must not adjust the org balance.
             break;
         }
 
@@ -622,6 +630,16 @@ export class InventoryMovementRepositoryClass {
           break;
         case InventoryMovementType.LOSS_ADJUSTMENT:
           loss += qty; // quantity can be negative
+          break;
+        case InventoryMovementType.TRANSFER_OUT:
+        case InventoryMovementType.TRANSFER_IN:
+          // No-op: rack-to-rack transfers don't change org+SKU level balance.
+          break;
+        case InventoryMovementType.RETURN_IN:
+          onHand += qty;
+          break;
+        case InventoryMovementType.RETURN_DAMAGED:
+          loss += qty;
           break;
       }
 
