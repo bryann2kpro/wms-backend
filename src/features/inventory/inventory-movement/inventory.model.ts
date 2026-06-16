@@ -5,12 +5,20 @@ import { RegionTable } from "@/features/master-data/region.model";
 import { RacksTable } from "@/features/master-data/racks.model";
 import { StockAdjustmentsTable } from "@/features/inventory/stock-adjustment/stock-adjustment.model";
 
+// NOTE: this Postgres enum is APPEND-ONLY. Never reorder or remove existing values;
+// new values (e.g. Bin-to-Bin TRANSFER_OUT/TRANSFER_IN) must be appended AFTER
+// RETURN_DAMAGED at the end of the list.
 const InventoryMovementTypeEnum = MainSchema.enum('inventory_movement_type', [
   'INBOUND', // Inventory received from a supplier
   'RESERVED', // Inventory reserved for a shipment
   'SHIPMENT', // Truck left warehouse
   'ADJUSTMENT', // Stock count correction
   'DAMAGED', // Found broken item
+  'LOSS_ADJUSTMENT', // Stock count loss correction
+  'RETURN_IN', // About-to-expire goods returned from outlet, re-entered into stock
+  'RETURN_DAMAGED', // Damaged goods returned from outlet, recorded as loss
+  'TRANSFER_OUT', // Stock transfer: debited from source rack
+  'TRANSFER_IN', // Stock transfer: credited to destination rack
 ]);
 
 export enum InventoryMovementType {
@@ -19,6 +27,11 @@ export enum InventoryMovementType {
   SHIPMENT = 'SHIPMENT', // Truck left warehouse
   ADJUSTMENT = 'ADJUSTMENT', // Stock count correction
   DAMAGED = 'DAMAGED', // Found broken item
+  LOSS_ADJUSTMENT = 'LOSS_ADJUSTMENT', // Stock count loss correction
+  TRANSFER_OUT = 'TRANSFER_OUT', // Stock transfer: debited from source rack
+  TRANSFER_IN = 'TRANSFER_IN', // Stock transfer: credited to destination rack
+  RETURN_IN = 'RETURN_IN', // About-to-expire goods returned from outlet, re-entered into stock
+  RETURN_DAMAGED = 'RETURN_DAMAGED', // Damaged goods returned from outlet, recorded as loss
 };
 
 /**
@@ -46,6 +59,7 @@ export const InventoryMovementsTable = MainSchema.table('inventory_movements', {
   regionId: uuid('region_id').references(() => RegionTable.regionId),
   movementType: InventoryMovementTypeEnum('movement_type').notNull(),
   quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull(),
+  lossQty: numeric('loss_qty', { precision: 12, scale: 2 }).default('0'),
   balanceAfter: numeric('balance_after', { precision: 12, scale: 2 }).default('0'),
   referenceNo: text('reference_no'),
   stockAdjustmentId: uuid('stock_adjustment_id').references(() => StockAdjustmentsTable.id),

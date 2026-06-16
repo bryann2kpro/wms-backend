@@ -1,0 +1,1 @@
+ALTER TABLE "main"."stock_quant_transaction" ALTER COLUMN "destination_rack_id" DROP NOT NULL;

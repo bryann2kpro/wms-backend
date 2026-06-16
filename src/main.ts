@@ -26,7 +26,10 @@ import { env } from "./env";
 import { spawn } from "child_process";
 import { initAccounts } from "./scripts/init-accounts";
 import { initMasterData } from "./scripts/init-master-data";
+import { initTransports } from "./scripts/init-transports";
 import { startInvoicesCron } from "./features/invoicing/invoices.cron";
+import { startDailyOpeningStockCron } from "./features/inventory/daily-opening-stock/daily-opening-stock.cron";
+import { startReservationExpiryCron } from "./features/reservation/reservation-expiry.cron";
 import { startEmailNotificationWorker } from "./features/notifications/email-notification.job";
 import { startWhatsAppNotificationWorker } from "./features/whatsapp/whatsapp.job";
 import { whatsAppClient } from "./composition-root";
@@ -293,10 +296,16 @@ server.listen(Number(PORT), async () => {
       logger.info('🚀 Initializing master data...');
       await initMasterData();
       logger.info('✅ Master data initialized successfully');
+
+      logger.info('🚀 Initializing transports...');
+      await initTransports();
+      logger.info('✅ Transports initialized successfully');
     }
 
 
     startInvoicesCron();
+    startDailyOpeningStockCron();
+    startReservationExpiryCron();
     startEmailNotificationWorker();
     if (env.WHATSAPP_ENABLED) {
       whatsAppClient.init();

@@ -25,6 +25,13 @@ export const typeDefs = `#graphql
         warehouse: Warehouse
         nsError: String
         nsSentAt: String
+        """
+        Whether this GRN's PO/ASN is fully received yet. null = nothing to enforce
+        (no linked ASN, or GRN isn't Approved yet — send button not relevant).
+        true/false only computed once Approved, to gate the "Send to ES" action —
+        a partially-received PO is guaranteed to be rejected by NetSuite.
+        """
+        poFulfilled: Boolean
         createdAt: String!
         updatedAt: String!
         createdByUser: GrnAuditUser
@@ -56,6 +63,8 @@ export const typeDefs = `#graphql
         rack: Rack
         """All rack IDs associated with this GRN item."""
         rackIds: [ID!]
+        """Per-rack carton allocations for this GRN item."""
+        rackAllocations: [GrnRackAllocation!]
         """Optional expiry date for this GRN item."""
         expiryDate: String
         """Lot number assigned by supplier/manufacturer to identify this production batch."""
@@ -79,6 +88,8 @@ export const typeDefs = `#graphql
         rackId: ID
         """All rack IDs associated with this GRN item."""
         rackIds: [ID!]
+        """Per-rack carton allocations (preferred over rackIds when splitting putaway)."""
+        rackAllocations: [GrnRackAllocationInput!]
         """Optional expiry date for this GRN item."""
         expiryDate: String
         """Lot number assigned by supplier/manufacturer to identify this production batch."""
@@ -139,6 +150,11 @@ export const typeDefs = `#graphql
         duedate: String!
         receivedAt: String!
         lines: [AdvanceNoticeLine!]!
+        """
+        PENDING = no GRN created yet for this PO. PARTIAL = a GRN exists but quantities
+        remain outstanding (more deliveries expected for this PO).
+        """
+        fulfillmentStatus: String!
     }
 
     """
@@ -163,17 +179,103 @@ export const typeDefs = `#graphql
         grns(filter: GrnFilterInput, pageSize: Int, pageNumber: Int): GrnPaginatedResponse
     }
 
+    """
+    Capacity of a rack for a specific SKU (cartons / cases).
+    currentQuantity reflects all SKUs on the rack, converted to equivalent cartons of this SKU using case volume/weight.
+    """
+    type RackSkuCapacity {
+        rackId: ID!
+        maxCapacity: Float
+        currentQuantity: Float!
+        availableCapacity: Float
+    }
+
+    """
+    Rack suggestion for inbound putaway (pick-face default with capacity check).
+    """
+    type InboundRackSuggestion {
+        rackId: ID
+        rackLabel: String
+        """DEFAULT = pick-face bin; FALLBACK_EMPTY = alternate empty rack; NONE = no suggestion"""
+        source: String!
+        defaultRackId: ID
+        isDefaultFull: Boolean!
+        maxCapacity: Float
+        currentQuantity: Float
+        availableCapacity: Float
+        message: String
+        """When forRackId is passed to suggestInboundRack, capacity for that selected rack."""
+        capacityForRack: RackSkuCapacity
+    }
+
+    """
+    One rack location in a multi-rack inbound putaway plan.
+    """
+    type InboundPutawayAllocation {
+        rackId: ID!
+        rackLabel: String!
+        quantity: Float!
+        maxCapacity: Float
+        availableCapacity: Float
+        """DEFAULT | UNASSIGNED_EMPTY | FALLBACK"""
+        source: String!
+    }
+
+    """Rack with available capacity for a given SKU and quantity (used for manual rack selection)."""
+    type RackCapacityOption {
+        rackId: ID!
+        rackRow: String!
+        rackLevel: String!
+        rackColumn: String!
+        availableCapacity: Float
+    }
+
+    """
+    Multi-rack putaway plan when received quantity exceeds a single rack capacity.
+    """
+    type InboundPutawayPlan {
+        allocations: [InboundPutawayAllocation!]!
+        totalAllocated: Float!
+        remainingQty: Float!
+        message: String
+        defaultRackId: ID
+        capacityForRack: RackSkuCapacity
+    }
+
+    """
+    Rack allocation for a GRN line (rack + carton qty).
+    """
+    type GrnRackAllocation {
+        rackId: ID!
+        quantity: Float!
+        rackLabel: String
+    }
+
+    input GrnRackAllocationInput {
+        rackId: ID!
+        quantity: Float!
+    }
+
     extend type Query {
         """
-        List advance notices from NetSuite that have not yet been linked to a GRN.
-        Used to populate the ASN dropdown when creating a new GRN.
+        List outstanding advance notices for the Create GRN picker.
+        Without search: paginated pending (unlinked) ASNs only.
+        With search: pending + partially-fulfilled linked ASNs matching PO, entity, due date, or SKU.
         """
-        listPendingAdvanceNotices: [AdvanceNotice!]! @auth
+        listPendingAdvanceNotices(search: String, pageSize: Int, pageNumber: Int): AdvanceNoticePaginatedResponse! @auth
+
+        """
+        Look up the advance notice (linked or not) for a given PO/tranid.
+        Used on GRN create to compute remaining-to-receive qty against prior deliveries.
+        """
+        advanceNoticeByPoNo(poNo: String!): AdvanceNotice @auth
     }
 
     input GrnFilterInput {
         id: ID
         grnNo: String
+        """Exact PO reference match — used to look up fulfillment history for a PO."""
+        poNo: String
         """Search across GRN number, PO reference, and Supplier DO (case-insensitive)."""
         search: String
         """When true and status is not set, omit draft GRNs from results (Draft / DRAFT)."""
@@ -196,8 +298,30 @@ export const typeDefs = `#graphql
         nextGrnNumber(date: String): String!
     }
 
+    extend type Query {
+        """
+        Suggest a rack for inbound putaway for a SKU and quantity.
+        Uses pick-face strategy default rack; falls back to an empty rack when full.
+        Requires authentication.
+        """
+        suggestInboundRack(skuId: ID, skuCode: String, quantity: Float!, forRackId: ID): InboundRackSuggestion! @auth
+
+        """
+        Suggest multiple rack locations for inbound putaway when quantity exceeds one rack.
+        Fills pick-face default first, then empty racks not assigned in pick-face table, then any rack with capacity.
+        """
+        suggestInboundPutawayPlan(skuId: ID, skuCode: String, quantity: Float!, forRackId: ID, excludeRackIds: [ID!]): InboundPutawayPlan! @auth
+        """List racks that have enough capacity for the given SKU and quantity (for manual rack picker)."""
+        listRacksWithCapacity(skuId: ID, skuCode: String, quantity: Float!, excludeRackIds: [ID!]): [RackCapacityOption!]! @auth
+    }
+
     type GrnPaginatedResponse {
         query: [Grn!]!
+        pagination: Pagination!
+    }
+
+    type AdvanceNoticePaginatedResponse {
+        query: [AdvanceNotice!]!
         pagination: Pagination!
     }
 
@@ -247,5 +371,12 @@ export const typeDefs = `#graphql
         Requires authentication.
         """
         deleteGrn(id: ID!): Boolean! @auth
+
+        """
+        Manually trigger putaway bin assignment for all items in a GRN.
+        Looks up each SKU's FIXED_BIN pick face strategy and sets grn_items.rackId.
+        Returns count of items updated.
+        """
+        assignPutawayBins(grnId: ID!): Int! @auth
     }
 `

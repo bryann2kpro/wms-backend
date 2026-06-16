@@ -57,6 +57,10 @@ export const typeDefs = `#graphql
         qtyRequired: String!
         qtyPicked: String
         qtyPacked: String
+        "Lot / batch number on the DO line (used to prefill return capture)"
+        lotNo: String
+        "Expiry date of the DO line lot (ISO 8601), used to prefill return capture"
+        expiryDate: String
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -101,6 +105,8 @@ export const typeDefs = `#graphql
         search: String
         "Filter by outlet region ID (uuid)"
         regionId: ID
+        "Filter by any of these outlet region IDs (when non-empty, used instead of regionId)"
+        regionIds: [ID!]
         "Filter by DO expected delivery date range (inclusive, ISO date string)"
         scheduledDeliveryDateFrom: String
         scheduledDeliveryDateTo: String
@@ -278,6 +284,8 @@ export const typeDefs = `#graphql
         skuCode: String!
         skuId: ID
         qtyRequired: Float!
+        """Specific stock_quant row to reserve from (required from UI)."""
+        stockQuantId: ID
     }
 
     """
@@ -390,6 +398,9 @@ export const typeDefs = `#graphql
         """
         Submit proof of delivery for a SHIPPED delivery order.
         Saves a signed DO document record and advances the DO status to DELIVERED.
+        Optionally captures returned goods (damaged / about-to-expire) handed to
+        the driver at the outlet - the return document is created in the same
+        transaction as the DELIVERED flip.
         """
         submitDeliveryProof(
             doId: ID!
@@ -397,6 +408,8 @@ export const typeDefs = `#graphql
             fileName: String!
             fileSizeBytes: Int!
             mimeType: String!
+            returns: [ReturnLineInput!]
+            returnNotes: String
         ): DeliveryOrder!
 
         """

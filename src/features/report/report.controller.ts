@@ -1,5 +1,5 @@
 import z from "zod";
-import { getMovementReportData, getInvoiceSummaryData, renderMovementReportHtml, renderProformaInvoicesHtml } from "./report.service";
+import { getMovementReportData, getInvoiceSummaryData, renderMovementReportHtml, renderProformaInvoicesHtml, getInventoryBalanceReportData, renderStockBalanceHtml, type InventoryBalanceReportType } from "./report.service";
 import { Request, Response } from "express";
 import { logger } from "@/util/logger";
 
@@ -56,6 +56,28 @@ class ReportControllerClass {
         } catch (err) {
             logger.error('🚨 [report.controller.getProformaInvoices]', err);
             res.status(500).send('Failed to render report preview.');
+        }
+    }
+
+    async getStockBalancePreview(req: Request, res: Response) {
+        try {
+            const schema = z.object({
+                type: z.enum(['WITHOUT_RACK', 'WITH_RACK']).default('WITHOUT_RACK'),
+                orgId: z.string().default('00000000-0000-0000-0000-000000000001'),
+            });
+            const { success, data } = schema.safeParse(req.query);
+            if (!success) {
+                return res.status(400).send('Invalid query parameters. Use ?type=WITHOUT_RACK|WITH_RACK&orgId=<uuid>');
+            }
+            const { type, orgId } = data;
+            const rows = await getInventoryBalanceReportData(type as InventoryBalanceReportType, orgId);
+            logger.info('🔎 [report.controller.getStockBalancePreview] Rows: %s', rows.length);
+            const html = await renderStockBalanceHtml(rows, type as InventoryBalanceReportType);
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.send(html);
+        } catch (err) {
+            logger.error('🚨 [report.controller.getStockBalancePreview]', err);
+            res.status(500).send('Failed to render stock balance preview.');
         }
     }
 

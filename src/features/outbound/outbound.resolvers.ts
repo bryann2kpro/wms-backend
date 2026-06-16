@@ -13,6 +13,7 @@ import { GraphQLError } from "graphql";
 import { logger } from "@/util/logger";
 import { DeliveryOrderType, DeliveryOrderFilter, DeliveryOrderItemFilter } from "./delivery-orders.model";
 import { DeliveryOrderItemWithDetails } from "./delivery-orders.repository";
+import type { ReturnLineInput } from "@/features/returns/returns.service";
 import { PurchaseOrderType, PurchaseOrderFilter } from "./purchase-orders.model";
 
 // ============================================
@@ -51,6 +52,7 @@ const createPurchaseOrderLineItemSchema = z.object({
   skuCode: z.string().min(1, "SKU code is required"),
   skuId: z.string().uuid().optional(),
   qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => Number(v)),
+  stockQuantId: z.string().uuid().optional(),
 });
 
 const createPurchaseOrderInputSchema = z.object({
@@ -138,6 +140,25 @@ function getDefaultWeekRangeInBusinessTZ(): [Date, Date] {
   return [start, end];
 }
 
+/** Build week entries in business TZ, newest day first; one slot per calendar day. */
+function buildPurchaseOrderWeekEntries(
+  fromDate: Date,
+  toDate: Date,
+  byDate: Map<string, PurchaseOrderType[]>
+): Array<{ date: string; orders: PurchaseOrderType[] }> {
+  const entries: Array<{ date: string; orders: PurchaseOrderType[] }> = [];
+  let dayStart = getDayBoundsInBusinessTZ(fromDate).start;
+  const lastDayStart = getDayBoundsInBusinessTZ(toDate).start;
+
+  while (dayStart.getTime() <= lastDayStart.getTime()) {
+    const key = formatDateKeyBusinessTZ(dayStart);
+    entries.unshift({ date: key, orders: byDate.get(key) ?? [] });
+    dayStart = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  }
+
+  return entries;
+}
+
 function transformDeliveryOrder(order: DeliveryOrderType) {
   return {
     id: order.id,
@@ -203,6 +224,8 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
     qtyRequired: item.qtyRequired,
     qtyPicked: item.qtyPicked ?? "0",
     qtyPacked: item.qtyPacked ?? "0",
+    lotNo: item.lotNo ?? null,
+    expiryDate: item.expiryDate ? item.expiryDate.toISOString() : null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
     createdBy: item.createdBy,
@@ -307,10 +330,8 @@ export const resolvers = {
         let fromDate: Date;
         let toDate: Date;
         if (filter.scheduledDeliveryDateFrom && filter.scheduledDeliveryDateTo) {
-          fromDate = new Date(filter.scheduledDeliveryDateFrom);
-          toDate = new Date(filter.scheduledDeliveryDateTo);
-          fromDate.setUTCHours(0, 0, 0, 0);
-          toDate.setUTCHours(23, 59, 59, 999);
+          fromDate = getDayBoundsInBusinessTZ(new Date(filter.scheduledDeliveryDateFrom)).start;
+          toDate = getDayBoundsInBusinessTZ(new Date(filter.scheduledDeliveryDateTo)).end;
         } else {
           [fromDate, toDate] = getDefaultWeekRangeInBusinessTZ();
         }
@@ -334,13 +355,7 @@ export const resolvers = {
           }
         }
 
-        const entries: Array<{ date: string; orders: PurchaseOrderType[] }> = [];
-        const cursor = new Date(toDate);
-        while (cursor >= fromDate) {
-          const key = formatDateKeyBusinessTZ(cursor);
-          entries.push({ date: key, orders: byDate.get(key) ?? [] });
-          cursor.setUTCDate(cursor.getUTCDate() - 1);
-        }
+        const entries = buildPurchaseOrderWeekEntries(fromDate, toDate, byDate);
 
         return entries.map((e) => ({
           date: e.date,
@@ -403,6 +418,7 @@ export const resolvers = {
           doStatuses?: string[];
           search?: string;
           regionId?: string;
+          regionIds?: string[];
           scheduledDeliveryDateFrom?: string;
           scheduledDeliveryDateTo?: string;
         };
@@ -429,7 +445,11 @@ export const resolvers = {
             filter.doStatus = args.filter.doStatus;
           }
           if (args.filter.search) filter.search = args.filter.search;
-          if (args.filter.regionId) filter.regionId = args.filter.regionId;
+          if (args.filter.regionIds?.length) {
+            filter.regionIds = args.filter.regionIds;
+          } else if (args.filter.regionId) {
+            filter.regionId = args.filter.regionId;
+          }
           if (args.filter.scheduledDeliveryDateFrom) filter.scheduledDeliveryDateFrom = args.filter.scheduledDeliveryDateFrom;
           if (args.filter.scheduledDeliveryDateTo) filter.scheduledDeliveryDateTo = args.filter.scheduledDeliveryDateTo;
         }
@@ -503,6 +523,7 @@ export const resolvers = {
             skuCode: item.skuCode,
             skuId: item.skuId,
             qtyRequired: item.qtyRequired,
+            stockQuantId: item.stockQuantId,
           })),
           isEmergency: data.isEmergency,
         });
@@ -781,7 +802,15 @@ export const resolvers = {
 
     submitDeliveryProof: withAudit<
       unknown,
-      { doId: string; fileUrl: string; fileName: string; fileSizeBytes: number; mimeType: string },
+      {
+        doId: string;
+        fileUrl: string;
+        fileName: string;
+        fileSizeBytes: number;
+        mimeType: string;
+        returns?: ReturnLineInput[] | null;
+        returnNotes?: string | null;
+      },
       unknown
     >(
       {
@@ -790,7 +819,11 @@ export const resolvers = {
         getEntityId: (result) =>
           result && typeof result === "object" && "id" in result ? (result as { id: string }).id : null,
       },
-      async (_: unknown, { doId, fileUrl, fileName, fileSizeBytes, mimeType }, context: GraphQLContext) => {
+      async (
+        _: unknown,
+        { doId, fileUrl, fileName, fileSizeBytes, mimeType, returns, returnNotes },
+        context: GraphQLContext
+      ) => {
         const userId = context.user?.id ?? null;
         if (!userId) {
           throw new GraphQLError("Authentication required to submit delivery proof", {
@@ -805,6 +838,8 @@ export const resolvers = {
           fileSizeBytes,
           mimeType,
           userId,
+          returns: returns ?? null,
+          returnNotes: returnNotes ?? null,
         });
         logger.info("✅ [outbound.resolvers.submitDeliveryProof] Proof submitted, DO marked DELIVERED:", doId);
         return transformDeliveryOrder(deliveryOrder);

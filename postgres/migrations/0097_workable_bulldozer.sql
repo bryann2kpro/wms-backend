@@ -1,0 +1,1 @@
+ALTER TABLE "main"."m_transports" ADD COLUMN "number_of_pallets" integer;

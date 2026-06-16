@@ -7,7 +7,7 @@
 import { db } from '@/db';
 import { GrnsTable, GrnInsertType, GrnType } from './grns.model';
 import { SupplierDeliveriesTable } from './supplier-deliveries/supplier-deliveries.model';
-import { eq, and, or, like, ilike, desc, asc, inArray, notInArray } from 'drizzle-orm';
+import { eq, and, or, like, ilike, desc, asc, inArray, notInArray, count } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
 import { pagination, PgQueryType } from '@/util/pagination';
@@ -20,6 +20,8 @@ import { RunningNoRepositoryClass } from '../running-no/running-no.repository';
 export type GrnFilter = {
     id?: string;
     grnNo?: string;
+    /** Exact PO reference match — used to look up fulfillment history for a PO. */
+    poNo?: string;
     /** Search across GRN number, PO reference, and Supplier DO (case-insensitive). */
     search?: string;
     status?: string;
@@ -44,6 +46,9 @@ export class GrnsRepositoryClass {
             }
             if (filter.id) {
                 whereCondition.push(eq(GrnsTable.id, filter.id));
+            }
+            if (filter.poNo) {
+                whereCondition.push(eq(GrnsTable.poNo, filter.poNo));
             }
             if (filter.grnNo && !filter.search) {
                 whereCondition.push(like(GrnsTable.grnNo, `%${filter.grnNo}%`));
@@ -79,10 +84,12 @@ export class GrnsRepositoryClass {
                 : sortBy === 'RECEIVED_AT' ? GrnsTable.receivedAt
                 : GrnsTable.updatedAt;
 
+            const whereClause =
+                whereCondition.length > 0 ? and(...whereCondition) : undefined;
             const baseQuery = db
                 .select()
                 .from(GrnsTable)
-                .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+                .where(whereClause)
                 .orderBy(sortOrder(orderByColumn));
             if (!paginationParams || (!paginationParams.pageSize && !paginationParams.pageNumber)) {
                 const data = await baseQuery;
@@ -102,7 +109,11 @@ export class GrnsRepositoryClass {
             }
             const pageSize = paginationParams.pageSize || 10;
             const pageNumber = paginationParams.pageNumber || 1;
-            const totalCount = (await baseQuery).length;
+            const countRows = await db
+                .select({ total: count() })
+                .from(GrnsTable)
+                .where(whereClause);
+            const totalCount = Number(countRows[0]?.total ?? 0);
             const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
             const data = await paginatedQuery.query;
 

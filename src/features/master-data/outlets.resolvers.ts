@@ -20,6 +20,9 @@ function transformOutlet(outlet: {
   outletName: string;
   outletCode: string;
   address?: string | null;
+  chain?: string | null;
+  channel?: string | null;
+  debtor?: string | null;
   regionId: string | null;
   regionName: string | null;
   regionCode: string | null;
@@ -33,6 +36,9 @@ function transformOutlet(outlet: {
     outletName: outlet.outletName,
     outletCode: outlet.outletCode,
     address: outlet.address ?? null,
+    chain: outlet.chain ?? null,
+    channel: outlet.channel ?? null,
+    debtor: outlet.debtor ?? null,
     regionId: outlet.regionId,
     regionName: outlet.regionName,
     regionCode: outlet.regionCode,

@@ -32,7 +32,19 @@ import { SuppliersRepositoryClass } from '@/features/master-data/suppliers.repos
 import { StockUnitRepositoryClass } from '@/features/master-data/stock-unit.repository.js';
 import { RacksRepositoryClass } from '@/features/master-data/racks.repository.js';
 import { WarehousesRepositoryClass } from '@/features/master-data/warehouses.repository.js';
+import { MapRepositoryClass } from '@/features/master-data/map.repository.js';
+import { AreaRepositoryClass } from '@/features/master-data/area.repository.js';
+import { SetupAreaRepositoryClass } from '@/features/master-data/setup-area.repository.js';
+import { PickFaceStrategyRepositoryClass } from '@/features/master-data/pick-face-strategy.repository.js';
+import { PickupCriteriaRepositoryClass } from '@/features/master-data/pickup-criteria.repository.js';
+import { PalletLabelRepositoryClass } from '@/features/master-data/pallet-label.repository.js';
+import { TransportRepositoryClass } from '@/features/master-data/transport.repository.js';
+import { ZoneRepositoryClass } from '@/features/master-data/zone.repository.js';
+import { BinRepositoryClass } from '@/features/master-data/bin.repository.js';
+import { PutawayRuleRepositoryClass } from '@/features/master-data/putaway-rule.repository.js';
+import { PickingCriteriaRepositoryClass } from '@/features/master-data/picking-criteria.repository';
 import { AuditLogRepositoryClass } from './features/audit-log/audit.repository';
+import { SkuAssignmentRepositoryClass } from './features/sku-assignment/sku-assignment.repository';
 import { ReportControllerClass } from './features/report/report.controller';
 // Inbound Repositories
 import { GrnsRepositoryClass } from './features/inbound/grns.repository';
@@ -40,6 +52,12 @@ import { GrnItemsRepositoryClass } from './features/inbound/grns-items.repositor
 import { SupplierDeliveryItemsRepositoryClass } from './features/inbound/supplier-deliveries/supplier-delivery-item.repository';
 import { SupplierDeliveriesRepositoryClass } from './features/inbound/supplier-deliveries/supplier-deliveries.repository';
 import { InboundServices } from './features/inbound/inbound.services';
+import { GrnPutawayService } from './features/inbound/grn-putaway.service';
+import { InboundPutawaySuggestionService } from './features/inbound/inbound-putaway-suggestion.service';
+import { StockQuantRepositoryClass } from './features/stock-quant/stock-quant.repository';
+import { StockTransferRepositoryClass } from './features/stock-quant/stock-transfer/stock-transfer.repository';
+import { StockTransferServiceClass } from './features/stock-quant/stock-transfer/stock-transfer.service';
+import { StockQuantTransactionRepositoryClass } from './features/stock-quant/stock-quant-transaction/stock-quant-transaction.repository';
 // Outbound Repositories & Services
 import { PurchaseOrdersRepositoryClass } from './features/outbound/purchase-orders.repository';
 import { DeliveryOrdersRepositoryClass } from './features/outbound/delivery-orders.repository';
@@ -52,11 +70,15 @@ import { InventoryBalanceRepositoryClass } from './features/inventory/inventory-
 import { StockCountServices } from './features/inventory/stock-count.services';
 import { StockCountSessionRepositoryClass } from './features/inventory/stock-count-session.repository';
 import { StockCountSessionService } from './features/inventory/stock-count-session.service';
+import { DailyOpeningStockRepositoryClass } from './features/inventory/daily-opening-stock/daily-opening-stock.repository';
 import { StockAdjustmentRepositoryClass } from './features/inventory/stock-adjustment/stock-adjustment.repository';
 // Dashboard
 import { DashboardRepositoryClass } from './features/dashboard/dashboard.repository';
 import { InvoicesRepositoryClass } from './features/invoicing/invoices.repository';
 import { RunningNoRepositoryClass } from './features/running-no/running-no.repository';
+// Returns
+import { ReturnsRepositoryClass } from './features/returns/returns.repository';
+import { ReturnsServiceClass } from './features/returns/returns.service';
 // API Keys
 import { ApiKeysRepositoryClass } from '@/features/api-keys/api-keys.repository.js';
 import { ApiKeysControllerClass } from '@/features/api-keys/api-keys.controller.js';
@@ -96,10 +118,22 @@ export const skuRepository = new SkuRepositoryClass();
 export const regionRepository = new RegionRepositoryClass();
 export const deliveryScheduleRepository = new DeliveryScheduleRepositoryClass();
 export const outletsRepository = new OutletsRepositoryClass();
+export const skuAssignmentRepository = new SkuAssignmentRepositoryClass();
 export const suppliersRepository = new SuppliersRepositoryClass();
 export const stockUnitRepository = new StockUnitRepositoryClass();
 export const racksRepository = new RacksRepositoryClass();
 export const warehousesRepository = new WarehousesRepositoryClass();
+export const mapsRepository = new MapRepositoryClass();
+export const areasRepository = new AreaRepositoryClass();
+export const setupAreasRepository = new SetupAreaRepositoryClass();
+export const pickFaceStrategiesRepository = new PickFaceStrategyRepositoryClass();
+export const pickupCriteriasRepository = new PickupCriteriaRepositoryClass();
+export const palletLabelsRepository = new PalletLabelRepositoryClass();
+export const transportsRepository = new TransportRepositoryClass();
+export const zonesRepository = new ZoneRepositoryClass();
+export const binsRepository = new BinRepositoryClass();
+export const putawayRulesRepository = new PutawayRuleRepositoryClass();
+export const pickingCriteriaRepository = new PickingCriteriaRepositoryClass();
 
 // Inbound Repositories
 export const grnsRepository = new GrnsRepositoryClass(runningNoRepository);
@@ -114,8 +148,12 @@ export const exceptionsRepository = new ExceptionsRepositoryClass();
 // Inventory Repositories
 export const inventoryBalancesRepository = new InventoryBalanceRepositoryClass();
 export const inventoryMovementRepository = new InventoryMovementRepositoryClass(inventoryBalancesRepository);
+export const dailyOpeningStockRepository = new DailyOpeningStockRepositoryClass();
 export const stockCountServices = new StockCountServices();
-export const stockCountSessionRepository = new StockCountSessionRepositoryClass();
+export const stockCountSessionRepository = new StockCountSessionRepositoryClass(
+  inventoryMovementRepository,
+  dailyOpeningStockRepository,
+);
 export const stockCountSessionService = new StockCountSessionService(stockCountSessionRepository);
 export const stockAdjustmentRepository = new StockAdjustmentRepositoryClass(runningNoRepository);
 
@@ -126,6 +164,22 @@ export const invoicesRepository = new InvoicesRepositoryClass(runningNoRepositor
 
 // Outbound Services
 export const documentsRepository = new DocumentsRepository();
+
+// Stock Quant (needed by returns service; also used by inbound putaway below)
+export const stockQuantRepository = new StockQuantRepositoryClass();
+
+// Returns
+export const returnsRepository = new ReturnsRepositoryClass(runningNoRepository);
+export const returnsService = new ReturnsServiceClass(
+  returnsRepository,
+  deliveryOrdersRepository,
+  documentsRepository,
+  inventoryMovementRepository,
+  stockQuantRepository,
+  racksRepository,
+  zonesRepository,
+);
+
 export const outboundServices = new OutboundServices(
   deliveryOrdersRepository,
   skuRepository,
@@ -135,6 +189,8 @@ export const outboundServices = new OutboundServices(
   purchaseOrdersRepository,
   inventoryMovementRepository,
   documentsRepository,
+  pickFaceStrategiesRepository,
+  returnsService,
 );
 
 // ============================================
@@ -173,10 +229,29 @@ export const inboundServices = new InboundServices(
 export const apiKeysRepository = new ApiKeysRepositoryClass();
 export const apiKeysController = new ApiKeysControllerClass(apiKeysRepository);
 
+export const stockQuantTransactionRepository = new StockQuantTransactionRepositoryClass();
+export const stockTransferRepository = new StockTransferRepositoryClass(runningNoRepository);
+export const stockTransferService = new StockTransferServiceClass(
+  stockTransferRepository,
+  stockQuantRepository,
+  stockQuantTransactionRepository,
+  inventoryMovementRepository,
+  racksRepository,
+);
+export const inboundPutawaySuggestionService = new InboundPutawaySuggestionService(
+  pickFaceStrategiesRepository,
+  skuRepository,
+  racksRepository,
+  stockQuantRepository,
+);
+
+export const grnPutawayService = new GrnPutawayService(grnItemsRepository, inboundPutawaySuggestionService);
+
 export const netSuiteService = new NetSuiteService();
 export const esItemReceiptService = new EsItemReceiptServiceClass(
   esRepository,
   grnItemsRepository,
+  grnsRepository,
   skuRepository,
   suppliersRepository,
   supplierDeliveriesRepository,

@@ -7,6 +7,8 @@
 
 import { inventoryBalancesRepository } from "@/composition-root";
 import { InventoryBalancesFilter } from "./inventory.repository";
+import { GraphQLContext } from "@/graphql/context";
+import { GraphQLError } from "graphql";
 
 export type InventoryBalanceFilterArgs = {
   skuId?: string;
@@ -27,6 +29,7 @@ function transformInventoryBalance(row: {
   skuCode?: string;
   skuDescription?: string;
   pickingStrategy?: string;
+  isExpiryControlled?: boolean;
   skuExpiryDate?: Date | null;
   unitCode?: string | null;
   unitName?: string | null;
@@ -41,6 +44,7 @@ function transformInventoryBalance(row: {
     skuCode: row.skuCode ?? "",
     skuDescription: row.skuDescription ?? "",
     pickingStrategy: row.pickingStrategy ?? "FIFO",
+    isExpiryControlled: row.isExpiryControlled ?? false,
     skuExpiryDate: row.skuExpiryDate instanceof Date ? row.skuExpiryDate.toISOString() : (row.skuExpiryDate ?? null),
     unitCode: row.unitCode ?? null,
     unitName: row.unitName ?? null,
@@ -57,8 +61,14 @@ export const resolvers = {
         pageNumber?: number;
         sortBy?: string;
         sortOrder?: string;
-      }
+      },
+      context: GraphQLContext,
     ) => {
+      if (!context.organizationId) {
+        throw new GraphQLError("Unauthorized: organization context required", {
+          extensions: { code: "UNAUTHORIZED" },
+        });
+      }
       const filter: InventoryBalancesFilter = {};
       if (args.filter) {
         if (args.filter.skuIds) {
@@ -80,6 +90,7 @@ export const resolvers = {
       }
 
       const result = await inventoryBalancesRepository.getInventoryBalances(
+        context.organizationId,
         filter,
         {
           pageSize: args.pageSize,
@@ -97,11 +108,18 @@ export const resolvers = {
 
     inventoryBalancesBySkuIds: async (
       _: unknown,
-      args: { skuIds: string[] }
+      args: { skuIds: string[] },
+      context: GraphQLContext,
     ) => {
+      if (!context.organizationId) {
+        throw new GraphQLError("Unauthorized: organization context required", {
+          extensions: { code: "UNAUTHORIZED" },
+        });
+      }
       const balances =
         await inventoryBalancesRepository.getInventoryBalanceBySkuIds(
-          args.skuIds
+          args.skuIds,
+          context.organizationId,
         );
       if (!balances || balances.length === 0) return [];
       return balances.map(transformInventoryBalance);

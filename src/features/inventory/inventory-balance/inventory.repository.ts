@@ -26,6 +26,7 @@ export class InventoryBalanceRepositoryClass {
    * Joins with m_skus and m_stock_units to expose SKU details on each balance row.
    */
   async getInventoryBalances(
+    organizationId: string,
     filter: InventoryBalancesFilter,
     paginationParams: PaginationParams
   ): Promise<PaginatedResponse<any>> {
@@ -33,7 +34,7 @@ export class InventoryBalanceRepositoryClass {
       logger.info("ℹ️ [InventoryBalancesRepository.getInventoryBalances] Getting inventory balances...");
       logger.debug("Filter:", filter);
 
-      const whereCondition = [];
+      const whereCondition = [eq(InventoryBalancesTable.organizationId, organizationId)];
 
       if (Array.isArray(filter.skuId)) {
         whereCondition.push(inArray(InventoryBalancesTable.skuId, filter.skuId));
@@ -67,6 +68,7 @@ export class InventoryBalanceRepositoryClass {
           skuCode: SkuTable.skuCode,
           skuDescription: SkuTable.skuDescription,
           pickingStrategy: SkuTable.pickingStrategy,
+          isExpiryControlled: SkuTable.isExpiryControlled,
           skuExpiryDate: SkuTable.skuExpiryDate,
           unitCode: StockUnitTable.unitCode,
           unitName: StockUnitTable.unitName,
@@ -74,7 +76,7 @@ export class InventoryBalanceRepositoryClass {
         .from(InventoryBalancesTable)
         .innerJoin(SkuTable, eq(InventoryBalancesTable.skuId, SkuTable.skuId))
         .leftJoin(StockUnitTable, eq(SkuTable.skuUom, StockUnitTable.stockUnitId))
-        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+        .where(and(...whereCondition))
         .orderBy(sql`${SkuTable.skuCode} ASC`);
 
       const pageSize = paginationParams.pageSize || 50;
@@ -95,7 +97,10 @@ export class InventoryBalanceRepositoryClass {
   /**
    * Get Inventory Balance by SKU IDs for the latest recorded date
    */
-  async getInventoryBalanceBySkuIds(skuIds: string[]): Promise<InventoryBalancesType[] | null> {
+  async getInventoryBalanceBySkuIds(
+    skuIds: string[],
+    organizationId?: string,
+  ): Promise<InventoryBalancesType[] | null> {
     try {
       logger.info("ℹ️ [InventoryBalancesRepository.getInventoryBalanceBySkuIds] Getting inventory balances by SKU IDs for latest recorded date...");
       logger.debug("SKU IDs:", skuIds);
@@ -104,7 +109,12 @@ export class InventoryBalanceRepositoryClass {
           return [];
       }
 
-      const balances = await db.select().from(InventoryBalancesTable).where(inArray(InventoryBalancesTable.skuId, skuIds));
+      const where = [inArray(InventoryBalancesTable.skuId, skuIds)];
+      if (organizationId) {
+        where.push(eq(InventoryBalancesTable.organizationId, organizationId));
+      }
+
+      const balances = await db.select().from(InventoryBalancesTable).where(and(...where));
 
       logger.info("✅ [InventoryBalancesRepository.getInventoryBalanceBySkuIds] Inventory balances fetched successfully");
       return balances;

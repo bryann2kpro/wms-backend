@@ -22,12 +22,24 @@ export const typeDefs = `#graphql
     skuId: ID!
     skuCode: String!
     skuDescription: String!
-    skuPrice: Float
-    skuQuantity: Float!
-    lossQuantity: Float!
+    barcode: String
+    brand: String
+    category: String
+    manufacturer: String
+    caseRate: Float
+    caseExtLengthMm: Float
+    caseExtWidthMm: Float
+    caseExtHeightMm: Float
+    caseGrossWeightKg: Float
+    casesPerLayer: Float
+    noOfLayers: Float
     skuExpiryDate: String
     """Stock picking strategy for outbound allocation: FIFO (default) | LIFO | FEFO"""
     pickingStrategy: String!
+    """When true, lot numbers are required/tracked for this SKU."""
+    isLotControlled: Boolean!
+    """When true, expiry dates are required/tracked; enables FEFO picking strategy."""
+    isExpiryControlled: Boolean!
     """
     Optional per-expiry / per-rack batch details for this SKU.
     Each entry represents a distinct expiry date and the rack IDs where that batch is stored.
@@ -56,8 +68,17 @@ export const typeDefs = `#graphql
   input CreateSkuInput {
     skuCode: String!
     skuDescription: String!
-    skuPrice: Float
-    skuQuantity: Float!
+    barcode: String
+    brand: String
+    category: String
+    manufacturer: String
+    caseRate: Float
+    caseExtLengthMm: Float
+    caseExtWidthMm: Float
+    caseExtHeightMm: Float
+    caseGrossWeightKg: Float
+    casesPerLayer: Float
+    noOfLayers: Float
     skuExpiryDate: String
     skuBatches: [SkuBatchInput!]
     skuSuppliers: [SkuSupplierInput!]
@@ -77,9 +98,17 @@ export const typeDefs = `#graphql
   input UpdateSkuInput {
     skuCode: String
     skuDescription: String
-    skuPrice: Float
-    skuQuantity: Float
-    lossQuantity: Float
+    barcode: String
+    brand: String
+    category: String
+    manufacturer: String
+    caseRate: Float
+    caseExtLengthMm: Float
+    caseExtWidthMm: Float
+    caseExtHeightMm: Float
+    caseGrossWeightKg: Float
+    casesPerLayer: Float
+    noOfLayers: Float
     skuExpiryDate: String
     skuBatches: [SkuBatchInput!]
     skuSuppliers: [SkuSupplierInput!]
@@ -87,6 +116,8 @@ export const typeDefs = `#graphql
     isActive: Boolean
     """Picking strategy: FIFO | LIFO | FEFO"""
     pickingStrategy: String
+    isLotControlled: Boolean
+    isExpiryControlled: Boolean
     updatedBy: String
   }
 
@@ -107,6 +138,8 @@ export const typeDefs = `#graphql
     skuCode: String
     skuCodes: [String!]
     skuDescription: String
+    """Free-text search across skuCode and skuDescription (case-insensitive, partial match)"""
+    search: String
     isActive: Boolean
     """Sort field: SKU_CODE, SKU_DESCRIPTION, UPDATED_AT, CREATED_AT. Default: SKU_CODE"""
     sortBy: String

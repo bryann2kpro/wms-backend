@@ -33,7 +33,9 @@ export const AuditActionEnum = MainSchema.enum('audit_action', [
  * @field userAgent - User agent of the user who made the change
  */
 export const AuditLogTable = MainSchema.table('audit_logs', {
-    auditLogId: bigserial("audit_log_id", { mode: "number" }).notNull().primaryKey(),
+    auditLogId:     bigserial("audit_log_id", { mode: "number" }).notNull().primaryKey(),
+    organizationId: uuid('organization_id'),
+    requestId:      uuid('request_id'),
     userId: uuid('user_id'),
     role: text('role'),
     action: text('action').notNull(),

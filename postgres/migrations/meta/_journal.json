@@ -554,6 +554,209 @@
       "when": 1776323848383,
       "tag": "0078_flawless_reavers",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1778567560983,
+      "tag": "0079_lucky_masked_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1778567711673,
+      "tag": "0080_add_loss_adjustment_enum",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1778572543534,
+      "tag": "0081_eager_venus",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1778636868359,
+      "tag": "0082_fearless_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1778637170913,
+      "tag": "0083_rich_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1778653813313,
+      "tag": "0084_tricky_fat_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1779082793614,
+      "tag": "0085_bright_maximus",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1779241970285,
+      "tag": "0086_soft_clea",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1779244278000,
+      "tag": "0087_fearless_quentin_quire",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1779244278813,
+      "tag": "0088_numerous_madame_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1779266804320,
+      "tag": "0089_white_karma",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1779267527106,
+      "tag": "0090_faulty_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1779346178080,
+      "tag": "0091_sudden_surge",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1779696311929,
+      "tag": "0092_shocking_gravity",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1779761874323,
+      "tag": "0093_transport_storage_bin_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1779763420474,
+      "tag": "0094_redundant_kate_bishop",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1779774349184,
+      "tag": "0095_true_dragon_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1779778739208,
+      "tag": "0096_sharp_korath",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1779946942168,
+      "tag": "0097_workable_bulldozer",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1780449236158,
+      "tag": "0098_keen_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1780992233391,
+      "tag": "0100_concerned_marvel_boy",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1781060094483,
+      "tag": "0101_eminent_kat_farrell",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1781147551866,
+      "tag": "0102_ordinary_silver_sable",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1781441808036,
+      "tag": "0103_thin_hardball",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1781441809036,
+      "tag": "0104_add_transfer_movement_enum",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1781570586978,
+      "tag": "0105_lucky_cerebro",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1781574299680,
+      "tag": "0106_uneven_emma_frost",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1781575359245,
+      "tag": "0107_minor_the_santerians",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1781582395977,
+      "tag": "0108_romantic_zaladane",
+      "breakpoints": true
     }
   ]
 }

@@ -11,9 +11,21 @@ export const typeDefs = `#graphql
   """
   type Rack {
     rackId: ID!
+    warehouseId: ID
+    zoneId: ID
+    areaId: ID
     rackRow: String!
     rackColumn: String!
     rackLevel: String!
+    binCode: String
+    barCode: String
+    binType: String!
+    length: String
+    width: String
+    height: String
+    weight: String
+    maxPallet: String
+    isActive: Boolean!
     createdAt: String!
     updatedAt: String!
     createdBy: String!
@@ -29,22 +41,60 @@ export const typeDefs = `#graphql
   }
 
   """
+  Aggregated capacity/usage for a rack, derived from m_racks dimensions and
+  current stock_quant + m_skus data. Volumes are m³, weights are kg.
+  """
+  type RackUtilization {
+    rackId: ID!
+    volCapacity: Float
+    volCurrent: Float!
+    weightCapacity: Float
+    weightCurrent: Float!
+  }
+
+  """
+  Input for sorting racks
+  """
+  input RackSortInput {
+    sortBy: String
+    sortOrder: String
+  }
+
+  """
   Input for filtering racks
   """
   input RackFilterInput {
     rackId: ID
+    warehouseId: ID
     rackRow: String
     rackColumn: String
     rackLevel: String
+    binCode: String
+    binType: String
+    isActive: Boolean
+    """Partial match on rack row/level/column, bin code, or row-level-column label."""
+    search: String
   }
 
   """
   Input for creating a new Rack
   """
   input CreateRackInput {
+    warehouseId: ID
+    zoneId: ID
+    areaId: ID
     rackRow: String!
     rackColumn: String!
     rackLevel: String!
+    binCode: String
+    barCode: String
+    binType: String
+    length: String
+    width: String
+    height: String
+    weight: String
+    maxPallet: String
+    isActive: Boolean
     createdBy: String!
     updatedBy: String!
   }
@@ -53,9 +103,21 @@ export const typeDefs = `#graphql
   Input for updating an existing Rack
   """
   input UpdateRackInput {
+    warehouseId: ID
+    zoneId: ID
+    areaId: ID
     rackRow: String
     rackColumn: String
     rackLevel: String
+    binCode: String
+    barCode: String
+    binType: String
+    length: String
+    width: String
+    height: String
+    weight: String
+    maxPallet: String
+    isActive: Boolean
     updatedBy: String!
   }
 
@@ -64,13 +126,20 @@ export const typeDefs = `#graphql
     Get racks with optional filtering and pagination.
     Requires authentication.
     """
-    racks(filter: RackFilterInput, pageSize: Int, pageNumber: Int): RackPaginatedResponse! @auth
+    racks(filter: RackFilterInput, sort: RackSortInput, pageSize: Int, pageNumber: Int): RackPaginatedResponse! @auth
     
     """
     Get a single rack by ID.
     Requires authentication.
     """
     rack(id: ID!): Rack @auth
+
+    """
+    Get aggregated volume/weight capacity and current usage for all racks
+    in the caller's organization.
+    Requires authentication.
+    """
+    rackUtilization: [RackUtilization!]! @auth
   }
 
   extend type Mutation {

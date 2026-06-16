@@ -187,7 +187,7 @@ export const resolvers = {
           patch.approvedAt = null;
         }
 
-        const updated = await stockCountSessionService.updateItem(orgId, args.id, patch as any);
+        const updated = await stockCountSessionService.updateItem(orgId, args.id, patch as any, userId);
         if (!updated) throw new GraphQLError("Item not found");
         return transformItem(updated);
       } catch (error) {

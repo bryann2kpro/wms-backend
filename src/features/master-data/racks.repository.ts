@@ -7,12 +7,13 @@
 import { db } from '@/db';
 import { OutletsTable, OutletType, OutletInsertType } from './outlets.model';
 import { RegionTable } from './region.model';
-import { eq, and, like, inArray, isNull } from 'drizzle-orm';
+import { eq, and, like, inArray, or, ilike, asc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
 import { RackInsertType, RacksTable, RackType } from './racks.model';
+import { ZonesTable } from './zone.model';
 
 // ============================================
 // FILTER TYPES
@@ -20,10 +21,16 @@ import { RackInsertType, RacksTable, RackType } from './racks.model';
 
 export type RackFilter = {
   rackId?: string | string[];
+  warehouseId?: string;
   rackName?: string;
   rackRow?: string | string[];
   rackColumn?: string | string[];
   rackLevel?: string | string[];
+  binCode?: string;
+  binType?: string;
+  isActive?: boolean;
+  /** Partial match on row, level, column, bin code, or `row-level-column` label. */
+  search?: string;
 };
 
 export class RacksRepositoryClass {
@@ -53,6 +60,16 @@ export class RacksRepositoryClass {
         whereCondition.push(eq(RacksTable.rackId, filter.rackId));
       }
 
+      if (filter.warehouseId) {
+        // Racks may link to a warehouse directly or via their zone.
+        whereCondition.push(
+          or(
+            eq(RacksTable.warehouseId, filter.warehouseId),
+            eq(ZonesTable.warehouseId, filter.warehouseId),
+          )!,
+        );
+      }
+
       if (Array.isArray(filter.rackRow)) {
         whereCondition.push(inArray(RacksTable.rackRow, filter.rackRow));
       } else if (filter.rackRow) {
@@ -67,19 +84,63 @@ export class RacksRepositoryClass {
         whereCondition.push(like(RacksTable.rackLevel, `%${filter.rackLevel}%`));
       }
 
+      if (filter.binCode) {
+        whereCondition.push(like(RacksTable.binCode, `%${filter.binCode}%`));
+      }
+
+      if (filter.binType) {
+        whereCondition.push(eq(RacksTable.binType, filter.binType));
+      }
+
+      if (filter.isActive !== undefined) {
+        whereCondition.push(eq(RacksTable.isActive, filter.isActive));
+      }
+
+      const searchTerm = filter.search?.trim();
+      if (searchTerm) {
+        const pattern = `%${searchTerm}%`;
+        whereCondition.push(
+          or(
+            ilike(RacksTable.rackRow, pattern),
+            ilike(RacksTable.rackColumn, pattern),
+            ilike(RacksTable.rackLevel, pattern),
+            ilike(RacksTable.binCode, pattern),
+            sql`(${RacksTable.rackRow} || '-' || ${RacksTable.rackLevel} || '-' || ${RacksTable.rackColumn}) ilike ${pattern}`,
+          )!,
+        );
+      }
+
       const baseQuery = db
         .select({
           rackId: RacksTable.rackId,
+          warehouseId: sql<string | null>`COALESCE(${RacksTable.warehouseId}, ${ZonesTable.warehouseId})`.as('warehouse_id'),
+          zoneId: RacksTable.zoneId,
+          areaId: RacksTable.areaId,
           rackRow: RacksTable.rackRow,
           rackColumn: RacksTable.rackColumn,
           rackLevel: RacksTable.rackLevel,
+          binCode: RacksTable.binCode,
+          barCode: RacksTable.barCode,
+          binType: RacksTable.binType,
+          length: RacksTable.length,
+          width: RacksTable.width,
+          height: RacksTable.height,
+          weight: RacksTable.weight,
+          maxPallet: RacksTable.maxPallet,
+          isActive: RacksTable.isActive,
           createdAt: RacksTable.createdAt,
           updatedAt: RacksTable.updatedAt,
           createdBy: RacksTable.createdBy,
           updatedBy: RacksTable.updatedBy,
         })
         .from(RacksTable)
-        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+        .leftJoin(ZonesTable, eq(RacksTable.zoneId, ZonesTable.zoneId))
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
+        .orderBy(
+          asc(RacksTable.rackRow),
+          asc(RacksTable.rackLevel),
+          asc(RacksTable.rackColumn),
+        );
 
       const pageSize = paginationParams.pageSize || 10;
       const pageNumber = paginationParams.pageNumber || 1;
@@ -118,6 +179,76 @@ export class RacksRepositoryClass {
       return rack || null;
     } catch (error) {
       logger.error('❌ [RacksRepository.getRackById] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get rack dimensions (length/width/height/weight) for all racks in an organization
+   * @param organizationId - Organization ID for multi-tenant filtering
+   */
+  async getAllRackDimensions(organizationId?: string): Promise<Array<{
+    rackId: string;
+    length: string | null;
+    width: string | null;
+    height: string | null;
+    weight: string | null;
+  }>> {
+    try {
+      logger.info('ℹ️ [RacksRepository.getAllRackDimensions] Getting rack dimensions...');
+      const whereCondition = [];
+      if (organizationId) {
+        whereCondition.push(eq(RacksTable.organizationId, organizationId));
+      }
+      const rows = await db
+        .select({
+          rackId: RacksTable.rackId,
+          length: RacksTable.length,
+          width: RacksTable.width,
+          height: RacksTable.height,
+          weight: RacksTable.weight,
+        })
+        .from(RacksTable)
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+
+      logger.info('✅ [RacksRepository.getAllRackDimensions] Rack dimensions fetched successfully');
+      return rows;
+    } catch (error) {
+      logger.error('❌ [RacksRepository.getAllRackDimensions] Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Resolve the warehouse for a set of racks via m_racks → m_zones.
+   * A rack with no zone (zoneId NULL) resolves to a null warehouse — every
+   * requested rackId is present in the returned map.
+   * @param rackIds - Rack IDs to resolve
+   * @param organizationId - Organization ID for multi-tenant filtering
+   * @param tx - Optional transaction
+   * @returns Map of rackId → warehouseId (null when unzoned)
+   */
+  async getRackWarehouseIds(rackIds: string[], organizationId: string, tx?: DbTransaction): Promise<Map<string, string | null>> {
+    const result = new Map<string, string | null>();
+    if (rackIds.length === 0) return result;
+    try {
+      const dbClient = tx || db;
+      // Warehouse is resolved from the direct rack column or via zone.
+      const rows = await dbClient
+        .select({
+          rackId: RacksTable.rackId,
+          warehouseId: sql<string | null>`COALESCE(${RacksTable.warehouseId}, ${ZonesTable.warehouseId})`.as('warehouse_id'),
+        })
+        .from(RacksTable)
+        .leftJoin(ZonesTable, eq(RacksTable.zoneId, ZonesTable.zoneId))
+        .where(and(eq(RacksTable.organizationId, organizationId), inArray(RacksTable.rackId, rackIds)));
+
+      for (const row of rows) {
+        result.set(row.rackId, row.warehouseId ?? null);
+      }
+      return result;
+    } catch (error) {
+      logger.error('❌ [RacksRepository.getRackWarehouseIds] Error:', error);
       throw error;
     }
   }
