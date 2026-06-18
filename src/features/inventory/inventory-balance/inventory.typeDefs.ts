@@ -27,10 +27,40 @@ export const typeDefs = `#graphql
   }
 
   """
+  Inventory lot balance - on-hand quantity per SKU and lot, aggregated from stock_quant.
+  Rows without lot_no are merged into one line per SKU (lotKey = __no_lot__).
+  """
+  type InventoryLotBalance {
+    id: ID!
+    skuId: ID!
+    lotKey: String!
+    lotNo: String
+    onHandQty: String!
+    lossQty: String!
+    reservedQty: String!
+    updatedAt: String!
+    skuCode: String!
+    skuDescription: String!
+    pickingStrategy: String!
+    isExpiryControlled: Boolean!
+    skuExpiryDate: String
+    unitCode: String
+    unitName: String
+  }
+
+  """
   Paginated Inventory Balances response
   """
   type InventoryBalancePaginatedResponse {
     query: [InventoryBalance!]!
+    pagination: Pagination!
+  }
+
+  """
+  Paginated inventory lot balances response
+  """
+  type InventoryLotBalancePaginatedResponse {
+    query: [InventoryLotBalance!]!
     pagination: Pagination!
   }
 
@@ -58,6 +88,18 @@ export const typeDefs = `#graphql
       sortBy: String
       sortOrder: String
     ): InventoryBalancePaginatedResponse
+
+    """
+    Get inventory lot balances aggregated from stock_quant by SKU and lot.
+    Empty lot_no rows merge into one line per SKU.
+    """
+    inventoryLotBalances(
+      filter: InventoryBalanceFilterInput
+      pageSize: Int
+      pageNumber: Int
+      sortBy: String
+      sortOrder: String
+    ): InventoryLotBalancePaginatedResponse
 
     """
     Get inventory balances for the given SKU IDs.
