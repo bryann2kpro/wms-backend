@@ -47,6 +47,7 @@ import { resolvers as zoneResolvers } from '@/features/master-data/zone.resolver
 import { resolvers as binResolvers } from '@/features/master-data/bin.resolver';
 import { resolvers as putawayRuleResolvers } from '@/features/master-data/putaway-rule.resolver';
 import { resolvers as pickingCriteriaResolvers } from '@/features/master-data/picking-criteria.resolvers';
+import { resolvers as endUserResolvers } from '@/features/master-data/enduser.resolvers';
 import { resolvers as reportResolvers } from '@/features/report/report.resolvers';
 import { resolvers as documentsResolvers } from '@/features/documents/documents.resolvers';
 import { resolvers as dashboardResolvers } from '@/features/dashboard/dashboard.resolver';
@@ -158,6 +159,7 @@ export const resolvers = mergeResolvers([
   binResolvers,
   putawayRuleResolvers,
   pickingCriteriaResolvers,
+  endUserResolvers,
   reportResolvers,
   documentsResolvers,
   dashboardResolvers,

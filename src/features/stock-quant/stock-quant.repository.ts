@@ -13,12 +13,14 @@ import { StockQuantTable } from "./stock-quant.model";
 import type { DbTransaction } from "@/types/db-transaction";
 import { SkuTable } from "../master-data/sku.model";
 import { RacksTable } from "../master-data/racks.model";
+import { StockUnitTable } from "../master-data/stock-unit.model";
 
 export type StockQuantType = typeof StockQuantTable.$inferSelect;
 export type StockQuantInsertType = typeof StockQuantTable.$inferInsert;
 export type StockQuantListType = StockQuantType & {
   skuCode: string | null;
   rackLabel: string | null;
+  stockUnitCode: string | null;
 };
 
 export type StockQuantFilter = {
@@ -98,10 +100,12 @@ export class StockQuantRepositoryClass {
           createdBy: StockQuantTable.createdBy,
           updatedBy: StockQuantTable.updatedBy,
           skuCode: SkuTable.skuCode,
+          stockUnitCode: StockUnitTable.unitCode,
           rackLabel: stockQuantRackLabelExpr,
         })
         .from(StockQuantTable)
         .leftJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
+        .leftJoin(StockUnitTable, eq(StockUnitTable.stockUnitId, SkuTable.skuUom))
         .leftJoin(RacksTable, eq(RacksTable.rackId, StockQuantTable.rackId))
         .where(whereClause)
         .orderBy(desc(StockQuantTable.updatedAt));
@@ -182,10 +186,12 @@ export class StockQuantRepositoryClass {
           createdBy: StockQuantTable.createdBy,
           updatedBy: StockQuantTable.updatedBy,
           skuCode: SkuTable.skuCode,
+          stockUnitCode: StockUnitTable.unitCode,
           rackLabel: stockQuantRackLabelExpr,
         })
         .from(StockQuantTable)
         .leftJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
+        .leftJoin(StockUnitTable, eq(StockUnitTable.stockUnitId, SkuTable.skuUom))
         .leftJoin(RacksTable, eq(RacksTable.rackId, StockQuantTable.rackId))
         .where(
           and(

@@ -50,6 +50,7 @@ function transformGrn(grn: GrnType) {
         notes: grn.notes ?? null,
         proofUrl: grn.proofUrl ?? null,
         warehouseId: grn.warehouseId ?? null,
+        endUserId: grn.endUserId ?? null,
         nsError: grn.nsError ? JSON.stringify(grn.nsError) : null,
         nsSentAt: grn.nsSentAt ?? null,
         createdAt: grn.createdAt,
@@ -98,6 +99,7 @@ function transformGrnItem(
         skuDescription: sku?.skuDescription ?? null,
         qty: item.qty,
         lossQty: item.lossQty ?? '0',
+        lossRackId: (item as any).lossRackId ?? null,
         remarks: item.remarks,
         rackId: primaryRackId,
         rackIds,
@@ -691,8 +693,9 @@ export const resolvers = {
             proofUrl?: string | null;
             warehouseId?: string | null;
             status?: string | null;
-            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; lossRackId?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             advanceNoticeId?: string | null;
+            endUserId?: string | null;
         } }, context: GraphQLContext) => {
             try {
                 await assertLotTrackedAsnItemsHaveLotAndExpiry({
@@ -716,6 +719,7 @@ export const resolvers = {
                     status: input.status,
                     items: input.items ?? undefined,
                     advanceNoticeId: input.advanceNoticeId ?? undefined,
+                    endUserId: input.endUserId ?? undefined,
                 });
                 return result;
             } catch (error) {
@@ -745,7 +749,7 @@ export const resolvers = {
                     status?: string | null;
                     createdBy: string;
                     updatedBy?: string | null;  
-                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; lossRackId?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -860,7 +864,7 @@ export const resolvers = {
                     }, context.tx);
 
                     // 4. Create GRN items
-                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
+                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
                     if (input.items?.length) {
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -893,6 +897,7 @@ export const resolvers = {
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
+                                lossRackId: item.lossRackId ?? null,
                                 remarks: item.remarks ?? undefined,
                                 rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                                 expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
@@ -948,7 +953,7 @@ export const resolvers = {
                     status?: string | null;
                     updatedBy?: string | null;
                     updatedAt?: Date;
-                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; lossRackId?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -1035,7 +1040,7 @@ export const resolvers = {
                     // Replace GRN items and sync Supplier Delivery Items (skuId, qtyDelivered = item qty)
                     if (input.items != null && input.items.length > 0) {
                         const createdBy = existingGrn.createdBy;
-                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
+                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
 
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -1068,6 +1073,7 @@ export const resolvers = {
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
+                                lossRackId: item.lossRackId ?? null,
                                 remarks: item.remarks ?? undefined,
                                 rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                                 expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,

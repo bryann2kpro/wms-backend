@@ -8,11 +8,11 @@ import { db } from '@/db';
 import { PickFaceStrategyTable, PickFaceStrategyType, PickFaceStrategyInsertType } from './pick-face-strategy.model';
 import { SkuTable } from './sku.model';
 import { RacksTable } from './racks.model';
-import { eq, and, or, ilike, asc, sql } from 'drizzle-orm';
+import { eq, and, or, ilike, asc, desc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
-import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
+import { compareStorageBinCodes, storageBinLabelFromParts } from '@/util/storage-bin-sort';
 
 // ============================================
 // FILTER TYPES
@@ -27,6 +27,11 @@ export type PickFaceStrategyFilter = {
   search?: string;
 };
 
+export type PickFaceStrategySort = {
+  sortBy?: 'STORAGE_BIN' | 'ITEM_CODE' | 'BIN_TYPE' | 'UPDATED_AT' | 'CREATED_AT';
+  sortOrder?: 'ASC' | 'DESC';
+};
+
 export class PickFaceStrategyRepositoryClass {
   constructor() {}
 
@@ -37,7 +42,7 @@ export class PickFaceStrategyRepositoryClass {
    * @param organizationId - Organization ID for multi-tenant filtering
    * @returns Paginated pick face strategies
    */
-  async getPickFaceStrategies(filter: PickFaceStrategyFilter, paginationParams: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any>> {
+  async getPickFaceStrategies(filter: PickFaceStrategyFilter, sort: PickFaceStrategySort, paginationParams: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any>> {
     try {
       logger.info('ℹ️ [PickFaceStrategyRepository.getPickFaceStrategies] Getting pick face strategies...');
       logger.debug('Filter:', filter);
@@ -98,18 +103,35 @@ export class PickFaceStrategyRepositoryClass {
         .from(PickFaceStrategyTable)
         .leftJoin(RacksTable, eq(PickFaceStrategyTable.storageBinId, RacksTable.rackId))
         .leftJoin(SkuTable, eq(PickFaceStrategyTable.skuId, SkuTable.skuId))
-        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined)
-        .orderBy(asc(PickFaceStrategyTable.itemCode));
+        .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
+
+      const sortBy = sort.sortBy ?? 'STORAGE_BIN';
+      const direction = sort.sortOrder ?? 'ASC';
+
+      const sortedQuery =
+        sortBy === 'STORAGE_BIN'
+          ? baseQuery.orderBy(
+              direction === 'ASC' ? asc(RacksTable.rackRow) : desc(RacksTable.rackRow),
+              direction === 'ASC' ? asc(RacksTable.rackLevel) : desc(RacksTable.rackLevel),
+              direction === 'ASC' ? asc(RacksTable.rackColumn) : desc(RacksTable.rackColumn),
+            )
+          : sortBy === 'ITEM_CODE'
+            ? baseQuery.orderBy(direction === 'ASC' ? asc(PickFaceStrategyTable.itemCode) : desc(PickFaceStrategyTable.itemCode))
+            : sortBy === 'BIN_TYPE'
+              ? baseQuery.orderBy(direction === 'ASC' ? asc(PickFaceStrategyTable.binType) : desc(PickFaceStrategyTable.binType))
+              : sortBy === 'CREATED_AT'
+                ? baseQuery.orderBy(direction === 'ASC' ? asc(PickFaceStrategyTable.createdAt) : desc(PickFaceStrategyTable.createdAt))
+                : baseQuery.orderBy(direction === 'ASC' ? asc(PickFaceStrategyTable.updatedAt) : desc(PickFaceStrategyTable.updatedAt));
 
       const pageSize = paginationParams.pageSize || 10;
       const pageNumber = paginationParams.pageNumber || 1;
-      const allData = await baseQuery;
+      const allData = await sortedQuery;
       const totalCount = allData.length;
-      const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
+      const paginatedQuery = pagination(sortedQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
       const data = await paginatedQuery.query;
 
       logger.info('✅ [PickFaceStrategyRepository.getPickFaceStrategies] Pick face strategies fetched successfully');
-      return { query: data, pagination: paginatedQuery.pagination };
+      return paginated;
     } catch (error) {
       logger.error('❌ [PickFaceStrategyRepository.getPickFaceStrategies] Error:', error);
       throw error;

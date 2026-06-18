@@ -46,6 +46,8 @@ export const GrnsTable = MainSchema.table('grns', {
    */
   advanceNoticeId: uuid('advance_notice_id').references(() => EsAdvanceNoticesTable.id),
 
+  endUserId: uuid('end_user_id'),
+
   nsError: jsonb('ns_error'),
   nsSentAt: timestamp('ns_sent_at', { withTimezone: true }),
 
@@ -75,6 +77,7 @@ export const GrnItemsTable = MainSchema.table('grn_items', {
   skuId: uuid('sku_id').notNull(),
   qty: numeric('qty', { precision: 10, scale: 2 }).notNull(),
   lossQty: numeric('loss_qty', { precision: 10, scale: 2 }).notNull().default('0'),
+  lossRackId: uuid('loss_rack_id'),
   remarks: text('remarks'),
   rackId: uuid('rack_id'),
   /**

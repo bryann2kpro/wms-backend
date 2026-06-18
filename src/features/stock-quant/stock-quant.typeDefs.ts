@@ -13,6 +13,8 @@ export const typeDefs = `#graphql
     id: ID!
     skuId: ID!
     skuCode: String
+    """SKU stock unit code (e.g. CTN, PCS) from master UOM."""
+    stockUnitCode: String
     description: String
     quantity: String!
     reservedQty: String!
