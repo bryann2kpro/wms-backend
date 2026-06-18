@@ -25,11 +25,6 @@ const pickFaceStrategyFilterSchema = z.object({
   search: z.string().optional(),
 });
 
-const pickFaceStrategySortSchema = z.object({
-  sortBy: z.enum(['STORAGE_BIN', 'ITEM_CODE', 'BIN_TYPE', 'UPDATED_AT', 'CREATED_AT']).optional(),
-  sortOrder: z.enum(['ASC', 'DESC']).optional(),
-});
-
 const createPickFaceStrategySchema = z.object({
   skuId: z.string().uuid(),
   storageBinId: z.string().uuid(),
