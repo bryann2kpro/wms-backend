@@ -12,6 +12,11 @@ import { GraphQLContext } from '@/graphql/context';
 import { prettifyError, z } from 'zod';
 import { GraphQLError } from 'graphql';
 
+const pickFaceStrategySortSchema = z.object({
+  sortBy: z.enum(['STORAGE_BIN', 'ITEM_CODE', 'BIN_TYPE', 'UPDATED_AT', 'CREATED_AT']).optional(),
+  sortOrder: z.enum(['ASC', 'DESC']).optional(),
+});
+
 const pickFaceStrategyFilterSchema = z.object({
   id: z.string().uuid().optional(),
   skuId: z.string().uuid().optional(),
@@ -108,6 +113,7 @@ export const resolvers = {
       pageNumber?: number;
     }, context: GraphQLContext) => {
       const filter: PickFaceStrategyFilter = {};
+      const sort: PickFaceStrategySort = {};
 
       if (args.filter) {
         const { success, data, error } = pickFaceStrategyFilterSchema.safeParse(args.filter);
@@ -121,17 +127,15 @@ export const resolvers = {
         if (data.search?.trim()) filter.search = data.search.trim();
       }
 
-      const sort: PickFaceStrategySort = { sortBy: 'UPDATED_AT', sortOrder: 'DESC' };
       if (args.sort) {
         const { success, data, error } = pickFaceStrategySortSchema.safeParse(args.sort);
         if (!success) {
           throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
         }
-        if (data.sortBy) sort.sortBy = data.sortBy;
-        if (data.sortOrder) sort.sortOrder = data.sortOrder;
+        Object.assign(sort, data);
       }
 
-      const result = await pickFaceStrategiesRepository.getPickFaceStrategies(filter, {
+      const result = await pickFaceStrategiesRepository.getPickFaceStrategies(filter, sort, {
         pageSize: args.pageSize,
         pageNumber: args.pageNumber,
       }, context.organizationId || undefined, sort);

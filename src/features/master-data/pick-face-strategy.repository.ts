@@ -8,7 +8,7 @@ import { db } from '@/db';
 import { PickFaceStrategyTable, PickFaceStrategyType, PickFaceStrategyInsertType } from './pick-face-strategy.model';
 import { SkuTable } from './sku.model';
 import { RacksTable } from './racks.model';
-import { eq, and, or, ilike, sql } from 'drizzle-orm';
+import { eq, and, or, ilike, asc, desc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
@@ -32,77 +32,6 @@ export type PickFaceStrategySort = {
   sortOrder?: 'ASC' | 'DESC';
 };
 
-type PickFaceStrategyRow = {
-  id: string;
-  skuId: string;
-  storageBinId: string;
-  binType: string;
-  itemCode: string;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  createdBy: string;
-  updatedBy: string;
-  storageBin: string | null;
-  skuDescription: string | null;
-  rackRow: string | null;
-  rackColumn: string | null;
-  rackLevel: string | null;
-};
-
-function comparePickFaceStrategies(
-  a: PickFaceStrategyRow,
-  b: PickFaceStrategyRow,
-  sort: PickFaceStrategySort,
-): number {
-  const direction = sort.sortOrder === 'ASC' ? 1 : -1;
-  const sortBy = sort.sortBy ?? 'UPDATED_AT';
-
-  let cmp = 0;
-  switch (sortBy) {
-    case 'STORAGE_BIN':
-      cmp = compareStorageBinCodes(
-        storageBinLabelFromParts(a.storageBin, a.rackRow, a.rackLevel, a.rackColumn),
-        storageBinLabelFromParts(b.storageBin, b.rackRow, b.rackLevel, b.rackColumn),
-      );
-      break;
-    case 'ITEM_CODE':
-      cmp = a.itemCode.localeCompare(b.itemCode);
-      break;
-    case 'BIN_TYPE':
-      cmp = a.binType.localeCompare(b.binType);
-      break;
-    case 'CREATED_AT':
-      cmp = a.createdAt.getTime() - b.createdAt.getTime();
-      break;
-    case 'UPDATED_AT':
-    default:
-      cmp = a.updatedAt.getTime() - b.updatedAt.getTime();
-      break;
-  }
-
-  return cmp * direction;
-}
-
-function paginateRows<T>(rows: T[], pageSize: number, pageNumber: number) {
-  const totalCount = rows.length;
-  const offset = (pageNumber - 1) * pageSize;
-  const totalPages = Math.ceil(totalCount / pageSize) || 1;
-  const currentPage = pageNumber;
-
-  return {
-    query: rows.slice(offset, offset + pageSize),
-    pagination: {
-      count: Math.min(pageSize, Math.max(totalCount - offset, 0)),
-      totalCount,
-      currentPage,
-      totalPages,
-      hasNextPage: currentPage < totalPages,
-      hasPrevPage: currentPage > 1,
-    },
-  };
-}
-
 export class PickFaceStrategyRepositoryClass {
   constructor() {}
 
@@ -113,12 +42,7 @@ export class PickFaceStrategyRepositoryClass {
    * @param organizationId - Organization ID for multi-tenant filtering
    * @returns Paginated pick face strategies
    */
-  async getPickFaceStrategies(
-    filter: PickFaceStrategyFilter,
-    paginationParams: PaginationParams,
-    organizationId?: string,
-    sort: PickFaceStrategySort = {},
-  ): Promise<PaginatedResponse<any>> {
+  async getPickFaceStrategies(filter: PickFaceStrategyFilter, sort: PickFaceStrategySort, paginationParams: PaginationParams, organizationId?: string): Promise<PaginatedResponse<any>> {
     try {
       logger.info('ℹ️ [PickFaceStrategyRepository.getPickFaceStrategies] Getting pick face strategies...');
       logger.debug('Filter:', filter);
@@ -181,11 +105,30 @@ export class PickFaceStrategyRepositoryClass {
         .leftJoin(SkuTable, eq(PickFaceStrategyTable.skuId, SkuTable.skuId))
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
 
+      const sortBy = sort.sortBy ?? 'STORAGE_BIN';
+      const direction = sort.sortOrder ?? 'ASC';
+
+      const sortedQuery =
+        sortBy === 'STORAGE_BIN'
+          ? baseQuery.orderBy(
+              direction === 'ASC' ? asc(RacksTable.rackRow) : desc(RacksTable.rackRow),
+              direction === 'ASC' ? asc(RacksTable.rackLevel) : desc(RacksTable.rackLevel),
+              direction === 'ASC' ? asc(RacksTable.rackColumn) : desc(RacksTable.rackColumn),
+            )
+          : sortBy === 'ITEM_CODE'
+            ? baseQuery.orderBy(direction === 'ASC' ? asc(PickFaceStrategyTable.itemCode) : desc(PickFaceStrategyTable.itemCode))
+            : sortBy === 'BIN_TYPE'
+              ? baseQuery.orderBy(direction === 'ASC' ? asc(PickFaceStrategyTable.binType) : desc(PickFaceStrategyTable.binType))
+              : sortBy === 'CREATED_AT'
+                ? baseQuery.orderBy(direction === 'ASC' ? asc(PickFaceStrategyTable.createdAt) : desc(PickFaceStrategyTable.createdAt))
+                : baseQuery.orderBy(direction === 'ASC' ? asc(PickFaceStrategyTable.updatedAt) : desc(PickFaceStrategyTable.updatedAt));
+
       const pageSize = paginationParams.pageSize || 10;
       const pageNumber = paginationParams.pageNumber || 1;
-      const allData = await baseQuery;
-      const sortedData = [...allData].sort((a, b) => comparePickFaceStrategies(a, b, sort));
-      const paginated = paginateRows(sortedData, pageSize, pageNumber);
+      const allData = await sortedQuery;
+      const totalCount = allData.length;
+      const paginatedQuery = pagination(sortedQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
+      const data = await paginatedQuery.query;
 
       logger.info('✅ [PickFaceStrategyRepository.getPickFaceStrategies] Pick face strategies fetched successfully');
       return paginated;
