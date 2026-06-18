@@ -11,8 +11,8 @@ import { RacksTable } from './racks.model';
 import { eq, and, or, ilike, asc, desc, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
-import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
+import { compareStorageBinCodes, storageBinLabelFromParts } from '@/util/storage-bin-sort';
 
 // ============================================
 // FILTER TYPES
@@ -131,7 +131,7 @@ export class PickFaceStrategyRepositoryClass {
       const data = await paginatedQuery.query;
 
       logger.info('✅ [PickFaceStrategyRepository.getPickFaceStrategies] Pick face strategies fetched successfully');
-      return { query: data, pagination: paginatedQuery.pagination };
+      return paginated;
     } catch (error) {
       logger.error('❌ [PickFaceStrategyRepository.getPickFaceStrategies] Error:', error);
       throw error;

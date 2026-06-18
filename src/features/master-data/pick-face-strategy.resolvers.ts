@@ -25,6 +25,11 @@ const pickFaceStrategyFilterSchema = z.object({
   search: z.string().optional(),
 });
 
+const pickFaceStrategySortSchema = z.object({
+  sortBy: z.enum(['STORAGE_BIN', 'ITEM_CODE', 'BIN_TYPE', 'UPDATED_AT', 'CREATED_AT']).optional(),
+  sortOrder: z.enum(['ASC', 'DESC']).optional(),
+});
+
 const createPickFaceStrategySchema = z.object({
   skuId: z.string().uuid(),
   storageBinId: z.string().uuid(),
@@ -101,8 +106,8 @@ export const resolvers = {
         binType?: string;
       };
       sort?: {
-        sortBy?: string;
-        sortOrder?: string;
+        sortBy?: PickFaceStrategySort['sortBy'];
+        sortOrder?: PickFaceStrategySort['sortOrder'];
       };
       pageSize?: number;
       pageNumber?: number;
@@ -133,7 +138,7 @@ export const resolvers = {
       const result = await pickFaceStrategiesRepository.getPickFaceStrategies(filter, sort, {
         pageSize: args.pageSize,
         pageNumber: args.pageNumber,
-      }, context.organizationId || undefined);
+      }, context.organizationId || undefined, sort);
 
       return {
         query: result.query.map(transformPickFaceStrategy),

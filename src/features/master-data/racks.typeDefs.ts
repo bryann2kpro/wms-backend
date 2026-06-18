@@ -50,6 +50,8 @@ export const typeDefs = `#graphql
     volCurrent: Float!
     weightCapacity: Float
     weightCurrent: Float!
+    """Total on-hand cartons on this rack (sum of stock_quant quantities)."""
+    cartonCount: Int!
   }
 
   """
