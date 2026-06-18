@@ -6,7 +6,7 @@
  */
 
 import { pickFaceStrategiesRepository } from '@/composition-root';
-import { PickFaceStrategyFilter } from './pick-face-strategy.repository';
+import { PickFaceStrategyFilter, PickFaceStrategySort } from './pick-face-strategy.repository';
 import { withAudit } from '../audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { prettifyError, z } from 'zod';
@@ -18,6 +18,11 @@ const pickFaceStrategyFilterSchema = z.object({
   storageBinId: z.string().uuid().optional(),
   binType: z.string().optional(),
   search: z.string().optional(),
+});
+
+const pickFaceStrategySortSchema = z.object({
+  sortBy: z.enum(['STORAGE_BIN', 'ITEM_CODE', 'BIN_TYPE', 'UPDATED_AT', 'CREATED_AT']).optional(),
+  sortOrder: z.enum(['ASC', 'DESC']).optional(),
 });
 
 const createPickFaceStrategySchema = z.object({
@@ -96,8 +101,8 @@ export const resolvers = {
         binType?: string;
       };
       sort?: {
-        sortBy?: string;
-        sortOrder?: string;
+        sortBy?: PickFaceStrategySort['sortBy'];
+        sortOrder?: PickFaceStrategySort['sortOrder'];
       };
       pageSize?: number;
       pageNumber?: number;
@@ -116,10 +121,20 @@ export const resolvers = {
         if (data.search?.trim()) filter.search = data.search.trim();
       }
 
+      const sort: PickFaceStrategySort = { sortBy: 'UPDATED_AT', sortOrder: 'DESC' };
+      if (args.sort) {
+        const { success, data, error } = pickFaceStrategySortSchema.safeParse(args.sort);
+        if (!success) {
+          throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+        }
+        if (data.sortBy) sort.sortBy = data.sortBy;
+        if (data.sortOrder) sort.sortOrder = data.sortOrder;
+      }
+
       const result = await pickFaceStrategiesRepository.getPickFaceStrategies(filter, {
         pageSize: args.pageSize,
         pageNumber: args.pageNumber,
-      }, context.organizationId || undefined);
+      }, context.organizationId || undefined, sort);
 
       return {
         query: result.query.map(transformPickFaceStrategy),

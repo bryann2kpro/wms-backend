@@ -32,6 +32,7 @@ const createTransportSchema = z.object({
   maxWidthMm: numericFieldSchema,
   maxHeightMm: numericFieldSchema,
   maxWeightKg: numericFieldSchema,
+  numberOfPallets: z.number().int().nonnegative().optional(),
   createdBy: z.string().min(1),
   updatedBy: z.string().min(1),
 });
@@ -49,6 +50,7 @@ const updateTransportSchema = z.object({
   maxWidthMm: numericFieldSchema,
   maxHeightMm: numericFieldSchema,
   maxWeightKg: numericFieldSchema,
+  numberOfPallets: z.number().int().nonnegative().optional(),
   updatedBy: z.string().min(1),
 });
 
@@ -70,6 +72,7 @@ function transformTransport(record: {
   maxWidthMm: string | null;
   maxHeightMm: string | null;
   maxWeightKg: string | null;
+  numberOfPallets: number | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -89,6 +92,7 @@ function transformTransport(record: {
     maxWidthMm: record.maxWidthMm ?? null,
     maxHeightMm: record.maxHeightMm ?? null,
     maxWeightKg: record.maxWeightKg ?? null,
+    numberOfPallets: record.numberOfPallets ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     createdBy: record.createdBy,
@@ -168,6 +172,7 @@ export const resolvers = {
         maxWidthMm?: string;
         maxHeightMm?: string;
         maxWeightKg?: string;
+        numberOfPallets?: number;
         createdBy: string;
         updatedBy: string;
       }}, context: GraphQLContext) => {
@@ -194,6 +199,7 @@ export const resolvers = {
           maxWidthMm: data.maxWidthMm ?? null,
           maxHeightMm: data.maxHeightMm ?? null,
           maxWeightKg: data.maxWeightKg ?? null,
+          numberOfPallets: data.numberOfPallets ?? null,
           createdBy: data.createdBy,
           updatedBy: data.updatedBy,
         }, context.organizationId, context.tx);
@@ -226,6 +232,7 @@ export const resolvers = {
         maxWidthMm?: string;
         maxHeightMm?: string;
         maxWeightKg?: string;
+        numberOfPallets?: number;
         updatedBy: string;
       }}, context: GraphQLContext) => {
         const { success: uSuccess, data: uData, error: uError } = updateTransportSchema.safeParse(input);
@@ -245,6 +252,7 @@ export const resolvers = {
           maxWidthMm: uData.maxWidthMm,
           maxHeightMm: uData.maxHeightMm,
           maxWeightKg: uData.maxWeightKg,
+          numberOfPallets: uData.numberOfPallets,
           updatedBy: uData.updatedBy,
         }, id, context.organizationId || undefined, context.tx);
         if (!record) return null;

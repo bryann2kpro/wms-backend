@@ -236,7 +236,7 @@ export const resolvers = {
             noOfLayers: o.noOfLayers,
           },
         }));
-        const { usedVolumeMm3, usedWeightKg } = computeRackUsage(occupants);
+        const { usedVolumeMm3, usedWeightKg, totalCartons } = computeRackUsage(occupants);
 
         return {
           rackId: rack.rackId,
@@ -244,6 +244,7 @@ export const resolvers = {
           volCurrent: usedVolumeMm3 / 1e9,
           weightCapacity: weightCapacityKg != null && weightCapacityKg > 0 ? weightCapacityKg : null,
           weightCurrent: usedWeightKg,
+          cartonCount: totalCartons,
         };
       });
     },

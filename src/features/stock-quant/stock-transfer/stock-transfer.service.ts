@@ -322,6 +322,9 @@ export class StockTransferServiceClass {
     }
 
     const items = await this.stockTransferRepository.getStockTransferItems(id, tx);
+    if (items.length === 0) {
+      throw new Error("Cannot receive a transfer with no line items.");
+    }
 
     for (const item of items) {
       const line = this.itemToLine(item);
