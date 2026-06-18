@@ -27,6 +27,7 @@ export type CreateInboundItemInput = {
     skuId?: string | null;
     qty: string;
     lossQty?: string | null;
+    lossRackId?: string | null;
     remarks?: string | null;
     rackId?: string | null;
     rackIds?: string[] | null;
@@ -167,7 +168,7 @@ export class InboundServices {
                 }, tx);
 
                 // 4. Create GRN items (same as createGrn)
-                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
+                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
                 if (data.items?.length) {
                     for (const item of data.items) {
                         const skuIdToUse = await this.resolveOrCreateSkuForItem(item, createdBy, updatedBy, tx);
@@ -178,6 +179,7 @@ export class InboundServices {
                             skuId: skuIdToUse,
                             qty: item.qty,
                             lossQty: item.lossQty ?? '0',
+                            lossRackId: item.lossRackId ?? null,
                             remarks: item.remarks ?? undefined,
                             rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                             expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
@@ -188,10 +190,7 @@ export class InboundServices {
                     }
                     if (grnItemRows.length > 0) {
                         const createdItems = await this.grnItemsRepository.createGrnItems(grnItemRows, tx);
-                        if (createdItems === false) {
-                            logger.error('[InboundServices] Failed to create GRN items batch');
-                            throw new Error('Failed to create GRN items');
-                        } else if (createdItems.length && data.items) {
+                        if (createdItems.length && data.items) {
                             const rackRows = createdItems.flatMap((createdItem, index) => {
                                 const source = data.items![index];
                                 if (!source) return [];
