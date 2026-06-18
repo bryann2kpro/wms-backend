@@ -50,7 +50,7 @@ export class GrnItemsRepositoryClass {
     }
 
     /** Insert one or more GRN items in one query */
-    async createGrnItems(items: GrnItemsInsertType[], tx?: DbTransaction): Promise<GrnItemsType[] | false> {
+    async createGrnItems(items: GrnItemsInsertType[], tx?: DbTransaction): Promise<GrnItemsType[]> {
         if (items.length === 0) return [];
         try {
             const client = tx ?? db;
@@ -59,7 +59,7 @@ export class GrnItemsRepositoryClass {
             return inserted;
         } catch (error) {
             logger.error('❌ [GrnItemsRepository.createGrnItems] Error:', error);
-            return false;
+            throw error;
         }
     }
 

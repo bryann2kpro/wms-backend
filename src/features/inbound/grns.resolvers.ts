@@ -907,9 +907,7 @@ export const resolvers = {
                             });
                         }
                         const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
-                        if (createdItems === false) {
-                            logger.error('[grns.resolvers]: Failed to create GRN items batch');
-                        } else if (createdItems.length && input.items && context.tx) {
+                        if (createdItems.length && input.items && context.tx) {
                             await insertGrnItemRackRows(createdItems, input.items, context.tx);
                         }
                     }
@@ -1095,7 +1093,7 @@ export const resolvers = {
                         await grnItemsRepository.deleteGrnItem({ grnId: id }, context.tx);
                         if (grnItemRows.length > 0) {
                             const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
-                            if (createdItems !== false && input.items && context.tx) {
+                            if (createdItems.length && input.items && context.tx) {
                                 await insertGrnItemRackRows(createdItems, input.items, context.tx);
                             }
                         }
