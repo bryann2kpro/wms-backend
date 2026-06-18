@@ -6,11 +6,16 @@
  */
 
 import { pickFaceStrategiesRepository } from '@/composition-root';
-import { PickFaceStrategyFilter } from './pick-face-strategy.repository';
+import { PickFaceStrategyFilter, PickFaceStrategySort } from './pick-face-strategy.repository';
 import { withAudit } from '../audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { prettifyError, z } from 'zod';
 import { GraphQLError } from 'graphql';
+
+const pickFaceStrategySortSchema = z.object({
+  sortBy: z.enum(['STORAGE_BIN', 'ITEM_CODE', 'BIN_TYPE', 'UPDATED_AT', 'CREATED_AT']).optional(),
+  sortOrder: z.enum(['ASC', 'DESC']).optional(),
+});
 
 const pickFaceStrategyFilterSchema = z.object({
   id: z.string().uuid().optional(),
@@ -103,6 +108,7 @@ export const resolvers = {
       pageNumber?: number;
     }, context: GraphQLContext) => {
       const filter: PickFaceStrategyFilter = {};
+      const sort: PickFaceStrategySort = {};
 
       if (args.filter) {
         const { success, data, error } = pickFaceStrategyFilterSchema.safeParse(args.filter);
@@ -116,7 +122,15 @@ export const resolvers = {
         if (data.search?.trim()) filter.search = data.search.trim();
       }
 
-      const result = await pickFaceStrategiesRepository.getPickFaceStrategies(filter, {
+      if (args.sort) {
+        const { success, data, error } = pickFaceStrategySortSchema.safeParse(args.sort);
+        if (!success) {
+          throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
+        }
+        Object.assign(sort, data);
+      }
+
+      const result = await pickFaceStrategiesRepository.getPickFaceStrategies(filter, sort, {
         pageSize: args.pageSize,
         pageNumber: args.pageNumber,
       }, context.organizationId || undefined);
