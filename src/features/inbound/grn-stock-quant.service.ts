@@ -175,4 +175,78 @@ export async function recordGrnApprovalStockQuants(params: {
       );
     }
   }
+
+  // Loss qty: record at the loss rack (LOOSE_STORAGE bin) separately from regular allocations.
+  for (const item of items) {
+    const lossQty = roundQtyPutaway(Number(item.lossQty ?? 0));
+    if (lossQty <= 0) continue;
+
+    const lossRackId = (item.lossRackId ?? "").trim();
+    if (!lossRackId) {
+      logger.warn(
+        "[recordGrnApprovalStockQuants] Skipping loss qty — no loss rack assigned",
+        { grnItemId: item.id, skuId: item.skuId, lossQty },
+      );
+      continue;
+    }
+
+    const lossQtyStr = qtyPutawayToDbString(lossQty);
+    const lotNo = normalizedPutawayLotNo(item.lotNo);
+    const expiryDate = item.expiryDate ?? null;
+    const description = skuDescriptionById.get(item.skuId) ?? null;
+
+    const existingLoss = await stockQuantRepository.getStockQuantByRackSkuLotAndExpiry(
+      organizationId,
+      lossRackId,
+      item.skuId,
+      lotNo,
+      expiryDate,
+      tx,
+    );
+
+    if (existingLoss) {
+      const newQty = roundQtyPutaway(Number(existingLoss.quantity) + lossQty);
+      await stockQuantRepository.updateStockQuant(
+        organizationId,
+        existingLoss.id,
+        {
+          quantity: qtyPutawayToDbString(newQty),
+          description: description ?? existingLoss.description,
+          updatedBy: userId,
+        },
+        tx,
+      );
+    } else {
+      await stockQuantRepository.createStockQuant(
+        {
+          skuId: item.skuId,
+          rackId: lossRackId,
+          lotNo,
+          expiryDate,
+          description,
+          quantity: lossQtyStr,
+          organizationId,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+        tx,
+      );
+    }
+
+    await stockQuantTransactionRepository.createStockQuantTransaction(
+      {
+        skuId: item.skuId,
+        lotNo,
+        description,
+        quantity: lossQtyStr,
+        sourceRackId: lossRackId,
+        destinationRackId: null,
+        type: "INBOUND",
+        organizationId,
+        createdBy: userId,
+        updatedBy: userId,
+      },
+      tx,
+    );
+  }
 }
