@@ -58,6 +58,8 @@ export const typeDefs = `#graphql
         skuDescription: String
         qty: String!
         lossQty: String!
+        """Rack designated for loose/loss items (LOOSE_STORAGE bin type)."""
+        lossRackId: ID
         remarks: String
         """Primary rack (first rackId if multiple are provided)."""
         rack: Rack
@@ -83,6 +85,8 @@ export const typeDefs = `#graphql
         skuId: ID
         qty: String!
         lossQty: String
+        """Rack designated for loose/loss items (LOOSE_STORAGE bin type)."""
+        lossRackId: ID
         remarks: String
         """Deprecated: use rackIds instead."""
         rackId: ID
