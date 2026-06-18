@@ -57,6 +57,7 @@ export type CreateInboundInput = {
     items?: CreateInboundItemInput[] | null;
     /** ID of the advance notice this GRN was created from. Optional — omit for manual GRNs. */
     advanceNoticeId?: string | null;
+    endUserId?: string | null;
 };
 
 export class InboundServices {
@@ -162,6 +163,7 @@ export class InboundServices {
                     status: data.status ?? 'Draft',
                     receivedAt: receivedAt ?? undefined,
                     advanceNoticeId: data.advanceNoticeId ?? undefined,
+                    endUserId: data.endUserId ?? undefined,
                 }, tx);
 
                 // 4. Create GRN items (same as createGrn)

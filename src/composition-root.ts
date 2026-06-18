@@ -43,6 +43,7 @@ import { ZoneRepositoryClass } from '@/features/master-data/zone.repository.js';
 import { BinRepositoryClass } from '@/features/master-data/bin.repository.js';
 import { PutawayRuleRepositoryClass } from '@/features/master-data/putaway-rule.repository.js';
 import { PickingCriteriaRepositoryClass } from '@/features/master-data/picking-criteria.repository';
+import { EndUserRepositoryClass } from '@/features/master-data/enduser.repository';
 import { AuditLogRepositoryClass } from './features/audit-log/audit.repository';
 import { SkuAssignmentRepositoryClass } from './features/sku-assignment/sku-assignment.repository';
 import { ReportControllerClass } from './features/report/report.controller';
@@ -134,6 +135,7 @@ export const zonesRepository = new ZoneRepositoryClass();
 export const binsRepository = new BinRepositoryClass();
 export const putawayRulesRepository = new PutawayRuleRepositoryClass();
 export const pickingCriteriaRepository = new PickingCriteriaRepositoryClass();
+export const endUserRepository = new EndUserRepositoryClass();
 
 // Inbound Repositories
 export const grnsRepository = new GrnsRepositoryClass(runningNoRepository);

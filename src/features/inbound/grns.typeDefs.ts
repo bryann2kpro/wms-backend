@@ -31,6 +31,7 @@ export const typeDefs = `#graphql
         true/false only computed once Approved, to gate the "Send to ES" action —
         a partially-received PO is guaranteed to be rejected by NetSuite.
         """
+        endUserId: ID
         poFulfilled: Boolean
         createdAt: String!
         updatedAt: String!
@@ -116,6 +117,7 @@ export const typeDefs = `#graphql
         notes: String
         proofUrl: String
         warehouseId: ID
+        endUserId: ID
         status: String
         createdBy: String
         updatedBy: String
@@ -136,6 +138,7 @@ export const typeDefs = `#graphql
         notes: String
         proofUrl: String
         warehouseId: ID
+        endUserId: ID
         status: String
         approvedBy: ID
         approvedAt: String
@@ -343,6 +346,7 @@ export const typeDefs = `#graphql
         notes: String
         proofUrl: String
         warehouseId: ID
+        endUserId: ID
         status: String
         items: [CreateGrnItemInput!]
         inboundQty: Float

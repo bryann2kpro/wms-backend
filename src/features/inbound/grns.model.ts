@@ -46,6 +46,8 @@ export const GrnsTable = MainSchema.table('grns', {
    */
   advanceNoticeId: uuid('advance_notice_id').references(() => EsAdvanceNoticesTable.id),
 
+  endUserId: uuid('end_user_id'),
+
   nsError: jsonb('ns_error'),
   nsSentAt: timestamp('ns_sent_at', { withTimezone: true }),
 

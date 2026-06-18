@@ -50,6 +50,7 @@ function transformGrn(grn: GrnType) {
         notes: grn.notes ?? null,
         proofUrl: grn.proofUrl ?? null,
         warehouseId: grn.warehouseId ?? null,
+        endUserId: grn.endUserId ?? null,
         nsError: grn.nsError ? JSON.stringify(grn.nsError) : null,
         nsSentAt: grn.nsSentAt ?? null,
         createdAt: grn.createdAt,
@@ -694,6 +695,7 @@ export const resolvers = {
             status?: string | null;
             items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; lossRackId?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             advanceNoticeId?: string | null;
+            endUserId?: string | null;
         } }, context: GraphQLContext) => {
             try {
                 await assertLotTrackedAsnItemsHaveLotAndExpiry({
@@ -717,6 +719,7 @@ export const resolvers = {
                     status: input.status,
                     items: input.items ?? undefined,
                     advanceNoticeId: input.advanceNoticeId ?? undefined,
+                    endUserId: input.endUserId ?? undefined,
                 });
                 return result;
             } catch (error) {
