@@ -1,0 +1,1 @@
+ALTER TYPE "main"."stock_transfer_status" ADD VALUE 'AWAITING_DISPATCH' BEFORE 'IN_TRANSIT';

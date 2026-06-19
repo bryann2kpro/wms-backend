@@ -208,9 +208,9 @@ export class StockTransferServiceClass {
   // ============================================
 
   /**
-   * Approve a draft transfer and execute stock movements.
-   * B2B → debits source + credits dest in one tx, status COMPLETED.
-   * W2W → debits source only, status IN_TRANSIT (dest credited on receive).
+   * Approve a draft transfer.
+   * B2B → debits source, status IN_TRANSIT (dest credited on receive).
+   * W2W → AWAITING_DISPATCH with no stock movement (source debited on dispatch).
    */
   async approveTransfer(
     id: string,
@@ -234,18 +234,38 @@ export class StockTransferServiceClass {
     }
 
     const items = await this.stockTransferRepository.getStockTransferItems(id, tx);
-    const resolved = await this.resolveStoredLinesForApproval(items, organizationId, tx);
 
+    if (header.type === STOCK_TRANSFER_TYPE.WAREHOUSE_TO_WAREHOUSE) {
+      await this.resolveStoredLinesForApproval(items, organizationId, tx);
+
+      const finalHeader = await this.patchHeaderStatus(
+        id,
+        organizationId,
+        {
+          status: STOCK_TRANSFER_STATUS.AWAITING_DISPATCH,
+          dispatchedAt: null,
+          receivedAt: null,
+          receivedBy: null,
+          updatedBy: userId,
+        },
+        tx,
+      );
+
+      logger.info("✅ [StockTransferService.approveTransfer] Approved W2W (awaiting dispatch)", {
+        transferNo: header.transferNo,
+        status: STOCK_TRANSFER_STATUS.AWAITING_DISPATCH,
+      });
+
+      return { ...finalHeader, items };
+    }
+
+    const resolved = await this.resolveStoredLinesForApproval(items, organizationId, tx);
     const now = new Date();
-    const isBinToBin = header.type === STOCK_TRANSFER_TYPE.BIN_TO_BIN;
-    const status = isBinToBin
-      ? STOCK_TRANSFER_STATUS.COMPLETED
-      : STOCK_TRANSFER_STATUS.IN_TRANSIT;
 
     await this.executeTransferMovements(
       resolved,
       header.transferNo,
-      isBinToBin,
+      false,
       organizationId,
       userId,
       tx,
@@ -255,18 +275,81 @@ export class StockTransferServiceClass {
       id,
       organizationId,
       {
-        status,
+        status: STOCK_TRANSFER_STATUS.IN_TRANSIT,
         dispatchedAt: now,
-        receivedAt: isBinToBin ? now : null,
-        receivedBy: isBinToBin ? userId : null,
+        receivedAt: null,
+        receivedBy: null,
         updatedBy: userId,
       },
       tx,
     );
 
-    logger.info("✅ [StockTransferService.approveTransfer] Approved", {
+    logger.info("✅ [StockTransferService.approveTransfer] Approved B2B", {
       transferNo: header.transferNo,
-      status,
+      status: STOCK_TRANSFER_STATUS.IN_TRANSIT,
+    });
+
+    return { ...finalHeader, items };
+  }
+
+  // ============================================
+  // DISPATCH (W2W)
+  // ============================================
+
+  /**
+   * Dispatch a W2W transfer awaiting dispatch: debit source, set IN_TRANSIT.
+   */
+  async dispatchTransfer(
+    id: string,
+    organizationId: string,
+    userId: string,
+    tx: DbTransaction,
+  ): Promise<StockTransferWithItems> {
+    const header = await this.stockTransferRepository.getStockTransferById(
+      id,
+      organizationId,
+      tx,
+      true,
+    );
+    if (!header) {
+      throw new Error(`Stock transfer not found (id=${id}).`);
+    }
+    if (header.type !== STOCK_TRANSFER_TYPE.WAREHOUSE_TO_WAREHOUSE) {
+      throw new Error("Only warehouse-to-warehouse transfers can be dispatched.");
+    }
+    if (header.status !== STOCK_TRANSFER_STATUS.AWAITING_DISPATCH) {
+      throw new Error(
+        `Only transfers awaiting dispatch can be dispatched (current status: ${header.status}).`,
+      );
+    }
+
+    const items = await this.stockTransferRepository.getStockTransferItems(id, tx);
+    const resolved = await this.resolveStoredLinesForApproval(items, organizationId, tx);
+    const now = new Date();
+
+    await this.executeTransferMovements(
+      resolved,
+      header.transferNo,
+      false,
+      organizationId,
+      userId,
+      tx,
+    );
+
+    const finalHeader = await this.patchHeaderStatus(
+      id,
+      organizationId,
+      {
+        status: STOCK_TRANSFER_STATUS.IN_TRANSIT,
+        dispatchedAt: now,
+        updatedBy: userId,
+      },
+      tx,
+    );
+
+    logger.info("✅ [StockTransferService.dispatchTransfer] Dispatched", {
+      transferNo: header.transferNo,
+      status: STOCK_TRANSFER_STATUS.IN_TRANSIT,
     });
 
     return { ...finalHeader, items };
@@ -323,13 +406,13 @@ export class StockTransferServiceClass {
   }
 
   // ============================================
-  // RECEIVE (W2W)
+  // RECEIVE (B2B / W2W)
   // ============================================
 
   /**
-   * Receive an in-transit (W2W) transfer: credit the destination rack for every
-   * line and complete the document. Guards against double-receive by requiring
-   * status IN_TRANSIT (loaded FOR UPDATE).
+   * Receive an in-transit (B2B or W2W) transfer: credit the destination rack for
+   * every line and complete the document. Guards against double-receive by
+   * requiring status IN_TRANSIT (loaded FOR UPDATE).
    */
   async receiveTransfer(
     id: string,
@@ -395,14 +478,13 @@ export class StockTransferServiceClass {
   }
 
   // ============================================
-  // CANCEL (W2W)
+  // CANCEL (B2B / W2W)
   // ============================================
 
   /**
-   * Cancel an in-transit (W2W) transfer: re-credit the SOURCE rack for every
-   * line (the in-transit stock returns to where it came from) and mark the
-   * document CANCELLED. B2B transfers are not cancellable — a reverse transfer
-   * is the undo. Guards via status IN_TRANSIT (loaded FOR UPDATE).
+   * Cancel an in-transit or awaiting-dispatch transfer.
+   * AWAITING_DISPATCH → CANCELLED with no stock movement (source never debited).
+   * IN_TRANSIT → re-credit SOURCE rack and CANCELLED.
    */
   async cancelTransfer(
     id: string,
@@ -420,13 +502,37 @@ export class StockTransferServiceClass {
     if (!header) {
       throw new Error(`Stock transfer not found (id=${id}).`);
     }
-    if (header.status !== STOCK_TRANSFER_STATUS.IN_TRANSIT) {
+    if (
+      header.status !== STOCK_TRANSFER_STATUS.IN_TRANSIT &&
+      header.status !== STOCK_TRANSFER_STATUS.AWAITING_DISPATCH
+    ) {
       throw new Error(
-        `Only in-transit transfers can be cancelled (current status: ${header.status}).`,
+        `Only in-transit or awaiting-dispatch transfers can be cancelled (current status: ${header.status}).`,
       );
     }
 
     const items = await this.stockTransferRepository.getStockTransferItems(id, tx);
+
+    if (header.status === STOCK_TRANSFER_STATUS.AWAITING_DISPATCH) {
+      const finalHeader = await this.patchHeaderStatus(
+        id,
+        organizationId,
+        {
+          status: STOCK_TRANSFER_STATUS.CANCELLED,
+          cancelledAt: new Date(),
+          cancelledBy: userId,
+          cancelReason: reason,
+          updatedBy: userId,
+        },
+        tx,
+      );
+
+      logger.info("✅ [StockTransferService.cancelTransfer] Cancelled (awaiting dispatch)", {
+        transferNo: header.transferNo,
+      });
+
+      return { ...finalHeader, items };
+    }
 
     for (const item of items) {
       const line = this.itemToLine(item);
@@ -618,11 +724,11 @@ export class StockTransferServiceClass {
     return resolved;
   }
 
-  /** Debit source (+ TRANSFER_OUT); B2B also credits dest (+ TRANSFER_IN). */
+  /** Debit source (+ TRANSFER_OUT). When creditDestination is true, also credit dest (+ TRANSFER_IN). */
   private async executeTransferMovements(
     lines: ResolvedLine[],
     transferNo: string,
-    isBinToBin: boolean,
+    creditDestination: boolean,
     organizationId: string,
     userId: string,
     tx: DbTransaction,
@@ -639,7 +745,7 @@ export class StockTransferServiceClass {
 
       await this.recordOut(line, transferNo, organizationId, userId, tx);
 
-      if (isBinToBin) {
+      if (creditDestination) {
         await this.stockQuantRepository.creditStockQuant(
           {
             organizationId,
