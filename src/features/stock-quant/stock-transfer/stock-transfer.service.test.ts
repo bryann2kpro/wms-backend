@@ -63,6 +63,7 @@ function makeQuantStore() {
       expiryDate: null,
       description: null,
       quantity,
+      lossQty: "0",
       reservedQty,
       rackId,
       organizationId: ORG,
@@ -77,7 +78,10 @@ function makeQuantStore() {
   };
 
   const totalOnHand = () =>
-    Array.from(rows.values()).reduce((sum, r) => sum + Number(r.quantity), 0);
+    Array.from(rows.values()).reduce(
+      (sum, r) => sum + Number(r.quantity) + Number(r.lossQty ?? 0),
+      0,
+    );
 
   return { rows, seed, totalOnHand };
 }
@@ -138,16 +142,23 @@ function makeStockQuantRepo(store: ReturnType<typeof makeQuantStore>) {
     getStockQuantById: vi.fn(async (_org: string, id: string) => store.rows.get(id) ?? null),
 
     debitStockQuantIfAvailable: vi.fn(
-      async (_org: string, id: string, qty: string, _user: string) => {
+      async (_org: string, id: string, qty: string, _user: string, _tx?: unknown, lossQty = "0") => {
         const row = store.rows.get(id);
         if (!row) throw new Error("row not found");
         const available = Number(row.quantity) - Number(row.reservedQty);
-        if (available < Number(qty)) {
+        const availableLoss = Number(row.lossQty ?? 0);
+        if (available < Number(qty) || availableLoss < Number(lossQty)) {
           throw new Error("Insufficient available stock or row not found");
         }
         const newQty = Number(row.quantity) - Number(qty);
+        const newLoss = availableLoss - Number(lossQty);
         row.quantity = newQty.toFixed(2);
-        if (Number(row.quantity) === 0 && Number(row.reservedQty) === 0) {
+        row.lossQty = newLoss.toFixed(2);
+        if (
+          Number(row.quantity) === 0 &&
+          Number(row.reservedQty) === 0 &&
+          Number(row.lossQty) === 0
+        ) {
           store.rows.delete(id);
         }
         return row;
@@ -155,12 +166,15 @@ function makeStockQuantRepo(store: ReturnType<typeof makeQuantStore>) {
     ),
 
     creditStockQuant: vi.fn(
-      async (params: { rackId: string; qty: string; lotNo?: string | null }) => {
+      async (params: { rackId: string; qty: string; lossQty?: string | null; lotNo?: string | null }) => {
         const existing = Array.from(store.rows.values()).find(
           (r) => r.rackId === params.rackId && (r.lotNo ?? null) === (params.lotNo ?? null),
         );
         if (existing) {
           existing.quantity = (Number(existing.quantity) + Number(params.qty)).toFixed(2);
+          existing.lossQty = (
+            Number(existing.lossQty ?? 0) + Number(params.lossQty ?? 0)
+          ).toFixed(2);
           return existing;
         }
         const id = `quant-${params.rackId}-${store.rows.size}`;
@@ -171,6 +185,7 @@ function makeStockQuantRepo(store: ReturnType<typeof makeQuantStore>) {
           expiryDate: null,
           description: null,
           quantity: Number(params.qty).toFixed(2),
+          lossQty: Number(params.lossQty ?? 0).toFixed(2),
           reservedQty: "0",
           rackId: params.rackId,
           organizationId: ORG,
@@ -366,7 +381,7 @@ describe("StockTransferService — validation & guards", () => {
         USER,
         ORG,
       ),
-    ).rejects.toThrow("positive number");
+    ).rejects.toThrow("At least one of quantity or loss quantity");
   });
 
   test("draft does not move stock", async () => {
@@ -385,20 +400,18 @@ describe("StockTransferService — validation & guards", () => {
     expect(ctx.store.totalOnHand()).toBe(before);
   });
 
-  test("reserved-qty guard: approve rejects when available < qty", async () => {
+  test("reserved-qty guard: draft rejects when available carton < qty", async () => {
     const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100", "95");
 
-    const draft = await ctx.service.createTransferDraft(
-      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
-      ctx.tx,
-      USER,
-      ORG,
-    );
-
     await expect(
-      ctx.service.approveTransfer(draft.id, ORG, USER, ctx.tx),
-    ).rejects.toThrow("Insufficient available stock");
+      ctx.service.createTransferDraft(
+        { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
+        ctx.tx,
+        USER,
+        ORG,
+      ),
+    ).rejects.toThrow("Insufficient available carton stock");
   });
 });
 
@@ -541,5 +554,84 @@ describe("StockTransferService.createTransferDraft — duplicate lines", () => {
         ORG,
       ),
     ).rejects.toThrow("Duplicate transfer line");
+  });
+});
+
+describe("StockTransferService — loose (LOSS) movement", () => {
+  test("loose-only B2B: source loss -5, dest +5; carton unchanged", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "10", "0", { lossQty: "5" });
+
+    await createAndApprove(ctx, {
+      lines: [
+        {
+          sourceStockQuantId: QUANT_A1,
+          destinationRackId: RACK_A2,
+          quantity: "0",
+          lossQuantity: "5",
+        },
+      ],
+    });
+
+    expect(ctx.store.rows.get(QUANT_A1)?.quantity).toBe("10.00");
+    expect(ctx.store.rows.get(QUANT_A1)?.lossQty).toBe("0.00");
+    const dest = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_A2);
+    expect(dest?.quantity).toBe("0.00");
+    expect(dest?.lossQty).toBe("5.00");
+  });
+
+  test("carton + loose in one transfer", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "10", "0", { lossQty: "8" });
+
+    await createAndApprove(ctx, {
+      lines: [
+        {
+          sourceStockQuantId: QUANT_A1,
+          destinationRackId: RACK_A2,
+          quantity: "2",
+          lossQuantity: "5",
+        },
+      ],
+    });
+
+    expect(ctx.store.rows.get(QUANT_A1)?.quantity).toBe("8.00");
+    expect(ctx.store.rows.get(QUANT_A1)?.lossQty).toBe("3.00");
+    const dest = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_A2);
+    expect(dest?.quantity).toBe("2.00");
+    expect(dest?.lossQty).toBe("5.00");
+  });
+
+  test("insufficient loose rejects entire transfer", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "10", "0", { lossQty: "3" });
+
+    await expect(
+      createAndApprove(ctx, {
+        lines: [
+          {
+            sourceStockQuantId: QUANT_A1,
+            destinationRackId: RACK_A2,
+            quantity: "0",
+            lossQuantity: "5",
+          },
+        ],
+      }),
+    ).rejects.toThrow("Insufficient loose stock");
+  });
+
+  test("carton-only (loss=0) behaves as before", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100", "0", { lossQty: "4" });
+
+    await createAndApprove(ctx, {
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }],
+    });
+
+    expect(ctx.store.rows.get(QUANT_A1)?.quantity).toBe("90.00");
+    expect(ctx.store.rows.get(QUANT_A1)?.lossQty).toBe("4.00");
+    const dest = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_A2);
+    expect(dest?.quantity).toBe("10.00");
+    expect(dest?.lossQty).toBe("0.00");
   });
 });

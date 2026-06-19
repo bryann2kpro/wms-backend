@@ -163,6 +163,7 @@ export const resolvers = {
           lotNo: item.lotNo ?? null,
           expiryDate: item.expiryDate ? item.expiryDate.toISOString() : null,
           quantity: item.quantity,
+          lossQuantity: item.lossQuantity ?? "0",
           sourceRackId: item.sourceRackId,
           destinationRackId: item.destinationRackId,
           sourceStockQuantId: item.sourceStockQuantId,
@@ -222,6 +223,7 @@ export const resolvers = {
               sourceStockQuantId: string;
               destinationRackId: string;
               quantity: string;
+              lossQuantity?: string | null;
             }>;
           };
         },
@@ -248,6 +250,7 @@ export const resolvers = {
               sourceStockQuantId: line.sourceStockQuantId,
               destinationRackId: line.destinationRackId,
               quantity: line.quantity,
+              lossQuantity: line.lossQuantity ?? "0",
             })),
           },
           tx,

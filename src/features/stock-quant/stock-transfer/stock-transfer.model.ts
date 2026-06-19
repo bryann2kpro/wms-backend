@@ -93,6 +93,8 @@ export const StockTransferItemsTable = MainSchema.table("stock_transfer_items", 
   lotNo: text("lot_no"),
   expiryDate: timestamp("expiry_date", { withTimezone: true }),
   quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
+  /** Loose units moved on this line. TJ: run `pnpm run migrate` */
+  lossQuantity: numeric("loss_quantity", { precision: 12, scale: 2 }).notNull().default("0"),
   sourceRackId: uuid("source_rack_id")
     .notNull()
     .references(() => RacksTable.rackId),

@@ -52,8 +52,10 @@ export type CreateTransferLineInput = {
   sourceStockQuantId: string;
   /** Destination rack to credit (must differ from the source rack). */
   destinationRackId: string;
-  /** Quantity to move (string; numeric columns are strings). */
+  /** Carton quantity to move (string; numeric columns are strings). May be "0" when moving loose only. */
   quantity: string;
+  /** Loose (LOSS) units to move. Defaults to "0". */
+  lossQuantity?: string | null;
 };
 
 export type CreateTransferInput = {
@@ -75,6 +77,7 @@ type ResolvedLine = {
   expiryDate: Date | null;
   description: string | null;
   quantity: string;
+  lossQuantity: string;
 };
 
 function normalizeLot(lot: string | null | undefined): string | null {
@@ -82,12 +85,39 @@ function normalizeLot(lot: string | null | undefined): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-function parsePositiveQty(raw: string): number {
-  const n = Number(String(raw ?? "").trim());
-  if (!Number.isFinite(n) || n <= 0) {
-    throw new Error("Quantity must be a positive number.");
+function parseNonNegativeQty(raw: string | null | undefined, field: string): number {
+  const n = Number(String(raw ?? "0").trim());
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`${field} must be a non-negative number.`);
   }
   return n;
+}
+
+function parseTransferLineQuantities(
+  quantityRaw: string | null | undefined,
+  lossQuantityRaw: string | null | undefined,
+): { quantity: string; lossQuantity: string } {
+  const cartonQty = parseNonNegativeQty(quantityRaw, "Quantity");
+  const lossQty = parseNonNegativeQty(lossQuantityRaw, "Loss quantity");
+  if (cartonQty <= 0 && lossQty <= 0) {
+    throw new Error("At least one of quantity or loss quantity must be greater than zero.");
+  }
+  return {
+    quantity: cartonQty.toFixed(2),
+    lossQuantity: lossQty.toFixed(2),
+  };
+}
+
+function availableCartonQty(source: { quantity: string; reservedQty: string }): number {
+  const onHand = Number(source.quantity);
+  const reserved = Number(source.reservedQty);
+  const available = onHand - reserved;
+  return Number.isFinite(available) ? available : 0;
+}
+
+function availableLossQty(source: { lossQty?: string | null }): number {
+  const n = Number(source.lossQty ?? "0");
+  return Number.isFinite(n) ? n : 0;
 }
 
 /** Stable key for duplicate (source, dest, sku, lot, expiry) detection. */
@@ -155,6 +185,7 @@ export class StockTransferServiceClass {
         lotNo: line.lotNo,
         expiryDate: line.expiryDate,
         quantity: line.quantity,
+        lossQuantity: line.lossQuantity,
         sourceRackId: line.sourceRackId,
         destinationRackId: line.destinationRackId,
         sourceStockQuantId: line.sourceStockQuantId,
@@ -336,6 +367,7 @@ export class StockTransferServiceClass {
           lotNo: line.lotNo,
           expiryDate: line.expiryDate,
           qty: line.quantity,
+          lossQty: line.lossQuantity,
           userId,
         },
         tx,
@@ -408,6 +440,7 @@ export class StockTransferServiceClass {
           lotNo: line.lotNo,
           expiryDate: line.expiryDate,
           qty: line.quantity,
+          lossQty: line.lossQuantity,
           userId,
         },
         tx,
@@ -458,7 +491,10 @@ export class StockTransferServiceClass {
 
     const resolved: ResolvedLine[] = [];
     for (const line of input.lines) {
-      parsePositiveQty(line.quantity);
+      const { quantity, lossQuantity } = parseTransferLineQuantities(
+        line.quantity,
+        line.lossQuantity,
+      );
 
       const source = await this.stockQuantRepository.getStockQuantById(
         organizationId,
@@ -475,6 +511,19 @@ export class StockTransferServiceClass {
         throw new Error("Destination rack must be different from the source rack.");
       }
 
+      const cartonMove = Number(quantity);
+      const lossMove = Number(lossQuantity);
+      if (cartonMove > 0 && availableCartonQty(source) < cartonMove) {
+        throw new Error(
+          `Insufficient available carton stock on source quant (id=${line.sourceStockQuantId}).`,
+        );
+      }
+      if (lossMove > 0 && availableLossQty(source) < lossMove) {
+        throw new Error(
+          `Insufficient loose stock on source quant (id=${line.sourceStockQuantId}).`,
+        );
+      }
+
       resolved.push({
         sourceStockQuantId: source.id,
         skuId: source.skuId,
@@ -483,7 +532,8 @@ export class StockTransferServiceClass {
         lotNo: normalizeLot(source.lotNo),
         expiryDate: source.expiryDate ?? null,
         description: source.description ?? null,
-        quantity: line.quantity,
+        quantity,
+        lossQuantity,
       });
     }
 
@@ -513,7 +563,10 @@ export class StockTransferServiceClass {
 
     const resolved: ResolvedLine[] = [];
     for (const item of items) {
-      parsePositiveQty(item.quantity);
+      const { quantity, lossQuantity } = parseTransferLineQuantities(
+        item.quantity,
+        item.lossQuantity,
+      );
 
       const source = await this.stockQuantRepository.getStockQuantById(
         organizationId,
@@ -536,6 +589,19 @@ export class StockTransferServiceClass {
         throw new Error("Destination rack must be different from the source rack.");
       }
 
+      const cartonMove = Number(quantity);
+      const lossMove = Number(lossQuantity);
+      if (cartonMove > 0 && availableCartonQty(source) < cartonMove) {
+        throw new Error(
+          `Insufficient available carton stock on source quant (id=${item.sourceStockQuantId}).`,
+        );
+      }
+      if (lossMove > 0 && availableLossQty(source) < lossMove) {
+        throw new Error(
+          `Insufficient loose stock on source quant (id=${item.sourceStockQuantId}).`,
+        );
+      }
+
       resolved.push({
         sourceStockQuantId: source.id,
         skuId: item.skuId,
@@ -544,7 +610,8 @@ export class StockTransferServiceClass {
         lotNo: normalizeLot(item.lotNo),
         expiryDate: item.expiryDate ?? null,
         description: source.description ?? null,
-        quantity: item.quantity,
+        quantity,
+        lossQuantity,
       });
     }
 
@@ -567,6 +634,7 @@ export class StockTransferServiceClass {
         line.quantity,
         userId,
         tx,
+        line.lossQuantity,
       );
 
       await this.recordOut(line, transferNo, organizationId, userId, tx);
@@ -580,6 +648,7 @@ export class StockTransferServiceClass {
             lotNo: line.lotNo,
             expiryDate: line.expiryDate,
             qty: line.quantity,
+            lossQty: line.lossQuantity,
             userId,
             description: line.description,
           },
@@ -773,6 +842,7 @@ export class StockTransferServiceClass {
       lotNo: normalizeLot(item.lotNo),
       expiryDate: item.expiryDate ?? null,
       quantity: item.quantity,
+      lossQuantity: item.lossQuantity ?? "0",
     };
   }
 
@@ -805,4 +875,5 @@ type LineLike = {
   lotNo: string | null;
   expiryDate: Date | null;
   quantity: string;
+  lossQuantity: string;
 };
