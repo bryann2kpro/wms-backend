@@ -85,8 +85,10 @@ export const typeDefs = `#graphql
         lotNo: String
         """Expiry date for this lot line (ISO 8601), optional."""
         expiryDate: String
-        quantity: String!
-        """Source bin location for this line."""
+    quantity: String!
+    """Loose (LOSS) units moved on this line."""
+    lossQuantity: String!
+    """Source bin location for this line."""
         sourceRackId: ID!
         sourceRack: Rack
         """Destination bin location for this line."""
@@ -105,8 +107,10 @@ export const typeDefs = `#graphql
         sourceStockQuantId: ID!
         """Destination rack to credit (must differ from the source rack)."""
         destinationRackId: ID!
-        """Quantity to move (numeric string)."""
+        """Quantity to move (numeric string). May be \"0\" when moving loose only."""
         quantity: String!
+        """Loose (LOSS) units to move (numeric string). Defaults to \"0\"."""
+        lossQuantity: String
     }
 
     input CreateStockTransferInput {
