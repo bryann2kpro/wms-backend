@@ -21,12 +21,15 @@ export const StockTransferTypeEnum = MainSchema.enum("stock_transfer_type", [
 /**
  * Stock transfer status.
  * - DRAFT: saved, awaiting approval; no stock movement yet.
- * - IN_TRANSIT: W2W dispatched, awaiting receive (source already debited).
- * - COMPLETED: terminal. B2B reaches this on approve; W2W reaches it on receive.
- * - CANCELLED: terminal. W2W in-transit cancel re-credits source; draft reject also uses this.
+ * - AWAITING_DISPATCH: W2W approved, awaiting source dispatch (no stock moved yet).
+ *   TJ: run pnpm run migrate (adds enum value)
+ * - IN_TRANSIT: dispatched, awaiting receive (source debited). B2B on approve; W2W on dispatch.
+ * - COMPLETED: terminal. B2B on receive; W2W on receive.
+ * - CANCELLED: terminal. IN_TRANSIT cancel re-credits source; AWAITING_DISPATCH cancel is no-op.
  */
 export const StockTransferStatusEnum = MainSchema.enum("stock_transfer_status", [
   "DRAFT",
+  "AWAITING_DISPATCH",
   "IN_TRANSIT",
   "COMPLETED",
   "CANCELLED",
@@ -119,6 +122,7 @@ export type StockTransferTypeValue =
 
 export const STOCK_TRANSFER_STATUS = {
   DRAFT: "DRAFT",
+  AWAITING_DISPATCH: "AWAITING_DISPATCH",
   IN_TRANSIT: "IN_TRANSIT",
   COMPLETED: "COMPLETED",
   CANCELLED: "CANCELLED",

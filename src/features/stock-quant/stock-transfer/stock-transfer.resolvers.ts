@@ -397,5 +397,38 @@ export const resolvers = {
         return transformStockTransfer(transfer);
       },
     ),
+
+    dispatchStockTransfer: withAudit(
+      {
+        entity: 'StockTransfer',
+        action: 'UPDATE',
+        getEntityId: (_result, args) => (args as { id: string }).id,
+      },
+      async (
+        _: unknown,
+        { id }: { id: string },
+        context: GraphQLContext,
+      ) => {
+        const tx = context.tx!;
+        const userId = context.user?.id;
+        const organizationId = context.organizationId;
+
+        if (!userId) {
+          throw new GraphQLError('Authentication required');
+        }
+        if (!organizationId) {
+          throw new GraphQLError('Organization context required');
+        }
+
+        const transfer = await stockTransferService.dispatchTransfer(
+          id,
+          organizationId,
+          userId,
+          tx,
+        );
+
+        return transformStockTransfer(transfer);
+      },
+    ),
   },
 };
