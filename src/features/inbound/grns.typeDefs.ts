@@ -33,6 +33,11 @@ export const typeDefs = `#graphql
         """
         endUserId: ID
         poFulfilled: Boolean
+        """
+        True when Send to ES must be hidden — no real ES ASN for this End User PO
+        (synthetic/manual ASN or PO not ingested from NetSuite).
+        """
+        manualInbound: Boolean!
         createdAt: String!
         updatedAt: String!
         createdByUser: GrnAuditUser
@@ -99,6 +104,7 @@ export const typeDefs = `#graphql
         expiryDate: String
         """Lot number assigned by supplier/manufacturer to identify this production batch."""
         lotNo: String
+        orderedQty: String
         skuCode: String
         skuDescription: String
         skuUom: ID
@@ -351,6 +357,7 @@ export const typeDefs = `#graphql
         items: [CreateGrnItemInput!]
         inboundQty: Float
         skuId: ID
+        poFulfilled: Boolean
         """ID of the advance notice this GRN was created from. Optional — omit for manual GRNs."""
         advanceNoticeId: ID
     }
