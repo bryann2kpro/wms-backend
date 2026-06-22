@@ -1,0 +1,2 @@
+ALTER TABLE "main"."stock_quant" ADD COLUMN "loss_qty" numeric(12, 2) DEFAULT '0' NOT NULL;--> statement-breakpoint
+ALTER TABLE "main"."stock_transfer_items" ADD COLUMN "loss_quantity" numeric(12, 2) DEFAULT '0' NOT NULL;

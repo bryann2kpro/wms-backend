@@ -23,12 +23,14 @@ export const typeDefs = `#graphql
     """
     Stock transfer status.
     - DRAFT: saved, awaiting approval; no stock movement yet.
-    - IN_TRANSIT: W2W dispatched, awaiting receive (source already debited).
-    - COMPLETED: terminal. B2B reaches this on approve; W2W reaches it on receive.
-    - CANCELLED: terminal. W2W in-transit cancel re-credits source; draft reject also uses this.
+    - AWAITING_DISPATCH: W2W approved, awaiting source dispatch (no stock moved yet).
+    - IN_TRANSIT: dispatched, awaiting receive (source debited). B2B on approve; W2W on dispatch.
+    - COMPLETED: terminal. B2B and W2W reach this on receive.
+    - CANCELLED: terminal. IN_TRANSIT cancel re-credits source; AWAITING_DISPATCH cancel is no-op.
     """
     enum StockTransferStatus {
         DRAFT
+        AWAITING_DISPATCH
         IN_TRANSIT
         COMPLETED
         CANCELLED
@@ -85,8 +87,10 @@ export const typeDefs = `#graphql
         lotNo: String
         """Expiry date for this lot line (ISO 8601), optional."""
         expiryDate: String
-        quantity: String!
-        """Source bin location for this line."""
+    quantity: String!
+    """Loose (LOSS) units moved on this line."""
+    lossQuantity: String!
+    """Source bin location for this line."""
         sourceRackId: ID!
         sourceRack: Rack
         """Destination bin location for this line."""
@@ -105,8 +109,10 @@ export const typeDefs = `#graphql
         sourceStockQuantId: ID!
         """Destination rack to credit (must differ from the source rack)."""
         destinationRackId: ID!
-        """Quantity to move (numeric string)."""
+        """Quantity to move (numeric string). May be \"0\" when moving loose only."""
         quantity: String!
+        """Loose (LOSS) units to move (numeric string). Defaults to \"0\"."""
+        lossQuantity: String
     }
 
     input CreateStockTransferInput {
@@ -119,7 +125,7 @@ export const typeDefs = `#graphql
         transferNo: String
         """BIN_TO_BIN or WAREHOUSE_TO_WAREHOUSE"""
         type: StockTransferType
-        """IN_TRANSIT, COMPLETED, CANCELLED or DRAFT"""
+        """IN_TRANSIT, AWAITING_DISPATCH, COMPLETED, CANCELLED or DRAFT"""
         status: StockTransferStatus
         """Search across transfer number (case-insensitive)."""
         search: String
@@ -154,24 +160,30 @@ export const typeDefs = `#graphql
         """
         createStockTransfer(input: CreateStockTransferInput!): StockTransfer! @auth
         """
-        Approve a draft transfer and execute stock movements. B2B completes
-        instantly; W2W is dispatched IN_TRANSIT (source debited, destination
-        credited on receive). Requires authentication.
+        Approve a draft transfer. B2B debits source and sets IN_TRANSIT.
+        W2W sets AWAITING_DISPATCH with no stock movement (dispatch debits source).
+        Requires authentication.
         """
         approveStockTransfer(id: ID!): StockTransfer! @auth
+        """
+        Dispatch a W2W transfer awaiting dispatch: debit source racks and set
+        IN_TRANSIT. Requires authentication.
+        """
+        dispatchStockTransfer(id: ID!): StockTransfer! @auth
         """
         Reject a draft transfer without moving stock. Marks the document CANCELLED.
         Requires authentication.
         """
         rejectStockTransfer(id: ID!): StockTransfer! @auth
         """
-        Receive an in-transit (W2W) transfer: credit the destination racks and
+        Receive an in-transit transfer: credit the destination racks and
         complete the document. Requires authentication.
         """
         receiveStockTransfer(id: ID!): StockTransfer! @auth
         """
-        Cancel an in-transit (W2W) transfer: re-credit the source racks and mark
-        the document CANCELLED. Requires authentication.
+        Cancel an in-transit or awaiting-dispatch transfer. IN_TRANSIT re-credits
+        source racks; AWAITING_DISPATCH cancels without stock movement.
+        Requires authentication.
         """
         cancelStockTransfer(id: ID!, reason: String!): StockTransfer! @auth
     }

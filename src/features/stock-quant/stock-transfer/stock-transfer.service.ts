@@ -52,8 +52,10 @@ export type CreateTransferLineInput = {
   sourceStockQuantId: string;
   /** Destination rack to credit (must differ from the source rack). */
   destinationRackId: string;
-  /** Quantity to move (string; numeric columns are strings). */
+  /** Carton quantity to move (string; numeric columns are strings). May be "0" when moving loose only. */
   quantity: string;
+  /** Loose (LOSS) units to move. Defaults to "0". */
+  lossQuantity?: string | null;
 };
 
 export type CreateTransferInput = {
@@ -75,6 +77,7 @@ type ResolvedLine = {
   expiryDate: Date | null;
   description: string | null;
   quantity: string;
+  lossQuantity: string;
 };
 
 function normalizeLot(lot: string | null | undefined): string | null {
@@ -82,12 +85,39 @@ function normalizeLot(lot: string | null | undefined): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-function parsePositiveQty(raw: string): number {
-  const n = Number(String(raw ?? "").trim());
-  if (!Number.isFinite(n) || n <= 0) {
-    throw new Error("Quantity must be a positive number.");
+function parseNonNegativeQty(raw: string | null | undefined, field: string): number {
+  const n = Number(String(raw ?? "0").trim());
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`${field} must be a non-negative number.`);
   }
   return n;
+}
+
+function parseTransferLineQuantities(
+  quantityRaw: string | null | undefined,
+  lossQuantityRaw: string | null | undefined,
+): { quantity: string; lossQuantity: string } {
+  const cartonQty = parseNonNegativeQty(quantityRaw, "Quantity");
+  const lossQty = parseNonNegativeQty(lossQuantityRaw, "Loss quantity");
+  if (cartonQty <= 0 && lossQty <= 0) {
+    throw new Error("At least one of quantity or loss quantity must be greater than zero.");
+  }
+  return {
+    quantity: cartonQty.toFixed(2),
+    lossQuantity: lossQty.toFixed(2),
+  };
+}
+
+function availableCartonQty(source: { quantity: string; reservedQty: string }): number {
+  const onHand = Number(source.quantity);
+  const reserved = Number(source.reservedQty);
+  const available = onHand - reserved;
+  return Number.isFinite(available) ? available : 0;
+}
+
+function availableLossQty(source: { lossQty?: string | null }): number {
+  const n = Number(source.lossQty ?? "0");
+  return Number.isFinite(n) ? n : 0;
 }
 
 /** Stable key for duplicate (source, dest, sku, lot, expiry) detection. */
@@ -155,6 +185,7 @@ export class StockTransferServiceClass {
         lotNo: line.lotNo,
         expiryDate: line.expiryDate,
         quantity: line.quantity,
+        lossQuantity: line.lossQuantity,
         sourceRackId: line.sourceRackId,
         destinationRackId: line.destinationRackId,
         sourceStockQuantId: line.sourceStockQuantId,
@@ -177,9 +208,9 @@ export class StockTransferServiceClass {
   // ============================================
 
   /**
-   * Approve a draft transfer and execute stock movements.
-   * B2B → debits source + credits dest in one tx, status COMPLETED.
-   * W2W → debits source only, status IN_TRANSIT (dest credited on receive).
+   * Approve a draft transfer.
+   * B2B → debits source, status IN_TRANSIT (dest credited on receive).
+   * W2W → AWAITING_DISPATCH with no stock movement (source debited on dispatch).
    */
   async approveTransfer(
     id: string,
@@ -203,18 +234,38 @@ export class StockTransferServiceClass {
     }
 
     const items = await this.stockTransferRepository.getStockTransferItems(id, tx);
-    const resolved = await this.resolveStoredLinesForApproval(items, organizationId, tx);
 
+    if (header.type === STOCK_TRANSFER_TYPE.WAREHOUSE_TO_WAREHOUSE) {
+      await this.resolveStoredLinesForApproval(items, organizationId, tx);
+
+      const finalHeader = await this.patchHeaderStatus(
+        id,
+        organizationId,
+        {
+          status: STOCK_TRANSFER_STATUS.AWAITING_DISPATCH,
+          dispatchedAt: null,
+          receivedAt: null,
+          receivedBy: null,
+          updatedBy: userId,
+        },
+        tx,
+      );
+
+      logger.info("✅ [StockTransferService.approveTransfer] Approved W2W (awaiting dispatch)", {
+        transferNo: header.transferNo,
+        status: STOCK_TRANSFER_STATUS.AWAITING_DISPATCH,
+      });
+
+      return { ...finalHeader, items };
+    }
+
+    const resolved = await this.resolveStoredLinesForApproval(items, organizationId, tx);
     const now = new Date();
-    const isBinToBin = header.type === STOCK_TRANSFER_TYPE.BIN_TO_BIN;
-    const status = isBinToBin
-      ? STOCK_TRANSFER_STATUS.COMPLETED
-      : STOCK_TRANSFER_STATUS.IN_TRANSIT;
 
     await this.executeTransferMovements(
       resolved,
       header.transferNo,
-      isBinToBin,
+      false,
       organizationId,
       userId,
       tx,
@@ -224,18 +275,81 @@ export class StockTransferServiceClass {
       id,
       organizationId,
       {
-        status,
+        status: STOCK_TRANSFER_STATUS.IN_TRANSIT,
         dispatchedAt: now,
-        receivedAt: isBinToBin ? now : null,
-        receivedBy: isBinToBin ? userId : null,
+        receivedAt: null,
+        receivedBy: null,
         updatedBy: userId,
       },
       tx,
     );
 
-    logger.info("✅ [StockTransferService.approveTransfer] Approved", {
+    logger.info("✅ [StockTransferService.approveTransfer] Approved B2B", {
       transferNo: header.transferNo,
-      status,
+      status: STOCK_TRANSFER_STATUS.IN_TRANSIT,
+    });
+
+    return { ...finalHeader, items };
+  }
+
+  // ============================================
+  // DISPATCH (W2W)
+  // ============================================
+
+  /**
+   * Dispatch a W2W transfer awaiting dispatch: debit source, set IN_TRANSIT.
+   */
+  async dispatchTransfer(
+    id: string,
+    organizationId: string,
+    userId: string,
+    tx: DbTransaction,
+  ): Promise<StockTransferWithItems> {
+    const header = await this.stockTransferRepository.getStockTransferById(
+      id,
+      organizationId,
+      tx,
+      true,
+    );
+    if (!header) {
+      throw new Error(`Stock transfer not found (id=${id}).`);
+    }
+    if (header.type !== STOCK_TRANSFER_TYPE.WAREHOUSE_TO_WAREHOUSE) {
+      throw new Error("Only warehouse-to-warehouse transfers can be dispatched.");
+    }
+    if (header.status !== STOCK_TRANSFER_STATUS.AWAITING_DISPATCH) {
+      throw new Error(
+        `Only transfers awaiting dispatch can be dispatched (current status: ${header.status}).`,
+      );
+    }
+
+    const items = await this.stockTransferRepository.getStockTransferItems(id, tx);
+    const resolved = await this.resolveStoredLinesForApproval(items, organizationId, tx);
+    const now = new Date();
+
+    await this.executeTransferMovements(
+      resolved,
+      header.transferNo,
+      false,
+      organizationId,
+      userId,
+      tx,
+    );
+
+    const finalHeader = await this.patchHeaderStatus(
+      id,
+      organizationId,
+      {
+        status: STOCK_TRANSFER_STATUS.IN_TRANSIT,
+        dispatchedAt: now,
+        updatedBy: userId,
+      },
+      tx,
+    );
+
+    logger.info("✅ [StockTransferService.dispatchTransfer] Dispatched", {
+      transferNo: header.transferNo,
+      status: STOCK_TRANSFER_STATUS.IN_TRANSIT,
     });
 
     return { ...finalHeader, items };
@@ -292,13 +406,13 @@ export class StockTransferServiceClass {
   }
 
   // ============================================
-  // RECEIVE (W2W)
+  // RECEIVE (B2B / W2W)
   // ============================================
 
   /**
-   * Receive an in-transit (W2W) transfer: credit the destination rack for every
-   * line and complete the document. Guards against double-receive by requiring
-   * status IN_TRANSIT (loaded FOR UPDATE).
+   * Receive an in-transit (B2B or W2W) transfer: credit the destination rack for
+   * every line and complete the document. Guards against double-receive by
+   * requiring status IN_TRANSIT (loaded FOR UPDATE).
    */
   async receiveTransfer(
     id: string,
@@ -336,6 +450,7 @@ export class StockTransferServiceClass {
           lotNo: line.lotNo,
           expiryDate: line.expiryDate,
           qty: line.quantity,
+          lossQty: line.lossQuantity,
           userId,
         },
         tx,
@@ -363,14 +478,13 @@ export class StockTransferServiceClass {
   }
 
   // ============================================
-  // CANCEL (W2W)
+  // CANCEL (B2B / W2W)
   // ============================================
 
   /**
-   * Cancel an in-transit (W2W) transfer: re-credit the SOURCE rack for every
-   * line (the in-transit stock returns to where it came from) and mark the
-   * document CANCELLED. B2B transfers are not cancellable — a reverse transfer
-   * is the undo. Guards via status IN_TRANSIT (loaded FOR UPDATE).
+   * Cancel an in-transit or awaiting-dispatch transfer.
+   * AWAITING_DISPATCH → CANCELLED with no stock movement (source never debited).
+   * IN_TRANSIT → re-credit SOURCE rack and CANCELLED.
    */
   async cancelTransfer(
     id: string,
@@ -388,13 +502,37 @@ export class StockTransferServiceClass {
     if (!header) {
       throw new Error(`Stock transfer not found (id=${id}).`);
     }
-    if (header.status !== STOCK_TRANSFER_STATUS.IN_TRANSIT) {
+    if (
+      header.status !== STOCK_TRANSFER_STATUS.IN_TRANSIT &&
+      header.status !== STOCK_TRANSFER_STATUS.AWAITING_DISPATCH
+    ) {
       throw new Error(
-        `Only in-transit transfers can be cancelled (current status: ${header.status}).`,
+        `Only in-transit or awaiting-dispatch transfers can be cancelled (current status: ${header.status}).`,
       );
     }
 
     const items = await this.stockTransferRepository.getStockTransferItems(id, tx);
+
+    if (header.status === STOCK_TRANSFER_STATUS.AWAITING_DISPATCH) {
+      const finalHeader = await this.patchHeaderStatus(
+        id,
+        organizationId,
+        {
+          status: STOCK_TRANSFER_STATUS.CANCELLED,
+          cancelledAt: new Date(),
+          cancelledBy: userId,
+          cancelReason: reason,
+          updatedBy: userId,
+        },
+        tx,
+      );
+
+      logger.info("✅ [StockTransferService.cancelTransfer] Cancelled (awaiting dispatch)", {
+        transferNo: header.transferNo,
+      });
+
+      return { ...finalHeader, items };
+    }
 
     for (const item of items) {
       const line = this.itemToLine(item);
@@ -408,6 +546,7 @@ export class StockTransferServiceClass {
           lotNo: line.lotNo,
           expiryDate: line.expiryDate,
           qty: line.quantity,
+          lossQty: line.lossQuantity,
           userId,
         },
         tx,
@@ -458,7 +597,10 @@ export class StockTransferServiceClass {
 
     const resolved: ResolvedLine[] = [];
     for (const line of input.lines) {
-      parsePositiveQty(line.quantity);
+      const { quantity, lossQuantity } = parseTransferLineQuantities(
+        line.quantity,
+        line.lossQuantity,
+      );
 
       const source = await this.stockQuantRepository.getStockQuantById(
         organizationId,
@@ -475,6 +617,19 @@ export class StockTransferServiceClass {
         throw new Error("Destination rack must be different from the source rack.");
       }
 
+      const cartonMove = Number(quantity);
+      const lossMove = Number(lossQuantity);
+      if (cartonMove > 0 && availableCartonQty(source) < cartonMove) {
+        throw new Error(
+          `Insufficient available carton stock on source quant (id=${line.sourceStockQuantId}).`,
+        );
+      }
+      if (lossMove > 0 && availableLossQty(source) < lossMove) {
+        throw new Error(
+          `Insufficient loose stock on source quant (id=${line.sourceStockQuantId}).`,
+        );
+      }
+
       resolved.push({
         sourceStockQuantId: source.id,
         skuId: source.skuId,
@@ -483,7 +638,8 @@ export class StockTransferServiceClass {
         lotNo: normalizeLot(source.lotNo),
         expiryDate: source.expiryDate ?? null,
         description: source.description ?? null,
-        quantity: line.quantity,
+        quantity,
+        lossQuantity,
       });
     }
 
@@ -513,7 +669,10 @@ export class StockTransferServiceClass {
 
     const resolved: ResolvedLine[] = [];
     for (const item of items) {
-      parsePositiveQty(item.quantity);
+      const { quantity, lossQuantity } = parseTransferLineQuantities(
+        item.quantity,
+        item.lossQuantity,
+      );
 
       const source = await this.stockQuantRepository.getStockQuantById(
         organizationId,
@@ -536,6 +695,19 @@ export class StockTransferServiceClass {
         throw new Error("Destination rack must be different from the source rack.");
       }
 
+      const cartonMove = Number(quantity);
+      const lossMove = Number(lossQuantity);
+      if (cartonMove > 0 && availableCartonQty(source) < cartonMove) {
+        throw new Error(
+          `Insufficient available carton stock on source quant (id=${item.sourceStockQuantId}).`,
+        );
+      }
+      if (lossMove > 0 && availableLossQty(source) < lossMove) {
+        throw new Error(
+          `Insufficient loose stock on source quant (id=${item.sourceStockQuantId}).`,
+        );
+      }
+
       resolved.push({
         sourceStockQuantId: source.id,
         skuId: item.skuId,
@@ -544,18 +716,19 @@ export class StockTransferServiceClass {
         lotNo: normalizeLot(item.lotNo),
         expiryDate: item.expiryDate ?? null,
         description: source.description ?? null,
-        quantity: item.quantity,
+        quantity,
+        lossQuantity,
       });
     }
 
     return resolved;
   }
 
-  /** Debit source (+ TRANSFER_OUT); B2B also credits dest (+ TRANSFER_IN). */
+  /** Debit source (+ TRANSFER_OUT). When creditDestination is true, also credit dest (+ TRANSFER_IN). */
   private async executeTransferMovements(
     lines: ResolvedLine[],
     transferNo: string,
-    isBinToBin: boolean,
+    creditDestination: boolean,
     organizationId: string,
     userId: string,
     tx: DbTransaction,
@@ -567,11 +740,12 @@ export class StockTransferServiceClass {
         line.quantity,
         userId,
         tx,
+        line.lossQuantity,
       );
 
       await this.recordOut(line, transferNo, organizationId, userId, tx);
 
-      if (isBinToBin) {
+      if (creditDestination) {
         await this.stockQuantRepository.creditStockQuant(
           {
             organizationId,
@@ -580,6 +754,7 @@ export class StockTransferServiceClass {
             lotNo: line.lotNo,
             expiryDate: line.expiryDate,
             qty: line.quantity,
+            lossQty: line.lossQuantity,
             userId,
             description: line.description,
           },
@@ -773,6 +948,7 @@ export class StockTransferServiceClass {
       lotNo: normalizeLot(item.lotNo),
       expiryDate: item.expiryDate ?? null,
       quantity: item.quantity,
+      lossQuantity: item.lossQuantity ?? "0",
     };
   }
 
@@ -805,4 +981,5 @@ type LineLike = {
   lotNo: string | null;
   expiryDate: Date | null;
   quantity: string;
+  lossQuantity: string;
 };

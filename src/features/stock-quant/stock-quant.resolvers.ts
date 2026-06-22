@@ -20,6 +20,7 @@ function transformStockQuant(row: any) {
     ...row,
     quantity: row.quantity?.toString?.() ?? "0",
     reservedQty: row.reservedQty?.toString?.() ?? "0",
+    lossQty: row.lossQty?.toString?.() ?? "0",
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
     expiryDate: toIso(row.expiryDate),
@@ -149,6 +150,7 @@ export const resolvers = {
         input: {
           description?: string | null;
           quantity?: string;
+          lossQty?: string;
           rackId?: string;
         };
       },
@@ -165,6 +167,7 @@ export const resolvers = {
           {
             description: args.input.description,
             quantity: args.input.quantity,
+            lossQty: args.input.lossQty,
             rackId: args.input.rackId,
             updatedBy: userId,
           },

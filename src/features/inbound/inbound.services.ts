@@ -34,6 +34,7 @@ export type CreateInboundItemInput = {
     rackAllocations?: Array<{ rackId: string; quantity: string | number }> | null;
     expiryDate?: string | null;
     lotNo?: string | null;
+    orderedQty?: string | null;
     skuCode?: string | null;
     skuDescription?: string | null;
     skuUom?: string | null;
@@ -58,6 +59,7 @@ export type CreateInboundInput = {
     items?: CreateInboundItemInput[] | null;
     /** ID of the advance notice this GRN was created from. Optional — omit for manual GRNs. */
     advanceNoticeId?: string | null;
+    poFulfilled?: boolean | null;
     endUserId?: string | null;
 };
 
@@ -106,6 +108,7 @@ export class InboundServices {
                 const receivedAt = data.receivedAt != null ? new Date(data.receivedAt) : null;
                 const deliveryDate = receivedAt ?? new Date();
                 let supplierDeliveryId: string | undefined = data.supplierDeliveryId ?? undefined;
+                let advanceNoticeId: string | undefined = data.advanceNoticeId ?? undefined;
 
                 const organizationId = data.organizationId;
 
@@ -149,6 +152,10 @@ export class InboundServices {
                 // generate grn no
                 const grnNo = await this.grnsRepository.generateGrnNo(tx);
 
+                if (data.poFulfilled === false && !advanceNoticeId) {
+                    advanceNoticeId = await this.resolveManualAdvanceNoticeId(data, tx);
+                }
+
                 // 3. Create GRN (same payload as createGrn)
                 const grn = await this.grnsRepository.createGrn({
                     grnNo: grnNo,
@@ -163,7 +170,7 @@ export class InboundServices {
                     updatedBy,
                     status: data.status ?? 'Draft',
                     receivedAt: receivedAt ?? undefined,
-                    advanceNoticeId: data.advanceNoticeId ?? undefined,
+                    advanceNoticeId,
                     endUserId: data.endUserId ?? undefined,
                 }, tx);
 
@@ -204,8 +211,8 @@ export class InboundServices {
                 }
 
                 // Mark the advance notice as linked so it no longer appears in the dropdown
-                if (data.advanceNoticeId) {
-                    await this.esAdvanceNoticeRepository.markLinked(data.advanceNoticeId, grn.id);
+                if (advanceNoticeId) {
+                    await this.esAdvanceNoticeRepository.markLinked(advanceNoticeId, grn.id, tx);
                 }
 
                 logger.info('✅ [InboundServices.createInbound] Inbound Flow completed successfully');
@@ -222,6 +229,52 @@ export class InboundServices {
             logger.info('✅ [InboundServices.createInbound] Inbound created successfully');
         }
         return result;
+    }
+
+    private async resolveAsnLineUnits(skuUom: string | null | undefined): Promise<string> {
+        const raw = skuUom?.trim() ?? '';
+        if (!raw) return 'CTN';
+        if (InboundServices.UUID_RE.test(raw)) {
+            const unit = await this.stockUnitRepository.getStockUnitById(raw);
+            return unit?.unitCode?.trim() || 'CTN';
+        }
+        const byCode = await this.stockUnitRepository.getStockUnitByCode(raw);
+        if (byCode?.unitCode) return byCode.unitCode.trim();
+        const byCodeUpper = await this.stockUnitRepository.getStockUnitByCode(raw.toUpperCase());
+        return byCodeUpper?.unitCode?.trim() || raw;
+    }
+
+    private async resolveManualAdvanceNoticeId(data: CreateInboundInput, tx: DbTransaction): Promise<string> {
+        const poNo = data.poNo?.trim();
+        if (!poNo) {
+            throw new Error('PO reference is required for partial delivery.');
+        }
+
+        const existing = await this.esAdvanceNoticeRepository.findByTranid(poNo);
+        if (existing) return existing.id;
+
+        const items = data.items ?? [];
+        const lines = await Promise.all(
+            items.map(async (item, index) => {
+                const skuCode = item.skuCode?.trim() ?? '';
+                const orderedNumber = Number(item.orderedQty);
+                return {
+                    lineuniquekey: index + 1,
+                    itemid: skuCode,
+                    quantity: Number.isFinite(orderedNumber) ? orderedNumber : 0,
+                    units: await this.resolveAsnLineUnits(item.skuUom),
+                };
+            }),
+        );
+
+        const created = await this.esAdvanceNoticeRepository.createSyntheticAdvanceNotice({
+            tranid: poNo,
+            payload: {
+                tranid: poNo,
+                lines,
+            },
+        }, tx);
+        return created.id;
     }
 
     /**

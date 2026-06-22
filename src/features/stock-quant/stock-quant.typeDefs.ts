@@ -18,6 +18,8 @@ export const typeDefs = `#graphql
     description: String
     quantity: String!
     reservedQty: String!
+    """Loose units stored on this quant row."""
+    lossQty: String!
     rackId: ID!
     rackLabel: String
     lotNo: String
@@ -68,6 +70,8 @@ export const typeDefs = `#graphql
   input UpdateStockQuantInput {
     description: String
     quantity: String
+    """Loose units on this quant row."""
+    lossQty: String
     rackId: ID
   }
 

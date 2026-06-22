@@ -163,6 +163,7 @@ export const resolvers = {
           lotNo: item.lotNo ?? null,
           expiryDate: item.expiryDate ? item.expiryDate.toISOString() : null,
           quantity: item.quantity,
+          lossQuantity: item.lossQuantity ?? "0",
           sourceRackId: item.sourceRackId,
           destinationRackId: item.destinationRackId,
           sourceStockQuantId: item.sourceStockQuantId,
@@ -222,6 +223,7 @@ export const resolvers = {
               sourceStockQuantId: string;
               destinationRackId: string;
               quantity: string;
+              lossQuantity?: string | null;
             }>;
           };
         },
@@ -248,6 +250,7 @@ export const resolvers = {
               sourceStockQuantId: line.sourceStockQuantId,
               destinationRackId: line.destinationRackId,
               quantity: line.quantity,
+              lossQuantity: line.lossQuantity ?? "0",
             })),
           },
           tx,
@@ -388,6 +391,39 @@ export const resolvers = {
           organizationId,
           userId,
           reason,
+          tx,
+        );
+
+        return transformStockTransfer(transfer);
+      },
+    ),
+
+    dispatchStockTransfer: withAudit(
+      {
+        entity: 'StockTransfer',
+        action: 'UPDATE',
+        getEntityId: (_result, args) => (args as { id: string }).id,
+      },
+      async (
+        _: unknown,
+        { id }: { id: string },
+        context: GraphQLContext,
+      ) => {
+        const tx = context.tx!;
+        const userId = context.user?.id;
+        const organizationId = context.organizationId;
+
+        if (!userId) {
+          throw new GraphQLError('Authentication required');
+        }
+        if (!organizationId) {
+          throw new GraphQLError('Organization context required');
+        }
+
+        const transfer = await stockTransferService.dispatchTransfer(
+          id,
+          organizationId,
+          userId,
           tx,
         );
 

@@ -778,6 +778,20 @@
       "when": 1781754380641,
       "tag": "0111_daffy_grandmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1781855431167,
+      "tag": "0112_normal_shatterstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1781884703287,
+      "tag": "0113_amusing_skaar",
+      "breakpoints": true
     }
   ]
 }
