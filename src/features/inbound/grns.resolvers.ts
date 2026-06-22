@@ -116,6 +116,8 @@ function transformGrnItem(
 type CreateInboundResolverItemInput = {
     skuId?: string | null;
     skuCode?: string | null;
+    qty?: string | null;
+    orderedQty?: string | null;
     lotNo?: string | null;
     expiryDate?: string | null;
 };
@@ -216,10 +218,48 @@ async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
     }
 }
 
+function assertPartialDeliveryInputs(input: {
+    poFulfilled?: boolean | null;
+    poNo?: string | null;
+    items?: CreateInboundResolverItemInput[] | null;
+}) {
+    if (input.poFulfilled !== false) return;
+
+    if (!input.poNo?.trim()) {
+        throw new GraphQLError('PO reference is required for partial delivery.', {
+            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+        });
+    }
+
+    if (!input.items?.length) {
+        throw new GraphQLError('Line items are required for partial delivery.', {
+            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+        });
+    }
+
+    input.items.forEach((item, index) => {
+        const label = item.skuCode?.trim() || `line ${index + 1}`;
+        const orderedRaw = item.orderedQty?.trim();
+        if (!orderedRaw) {
+            throw new GraphQLError(`Ordered quantity is required for ${label}.`, {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+        const orderedQty = Number(orderedRaw);
+        const receivedQty = Number(item.qty ?? 0);
+        if (!Number.isFinite(orderedQty) || orderedQty < receivedQty) {
+            throw new GraphQLError(`Ordered quantity for ${label} must be greater than or equal to received quantity.`, {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+    });
+}
+
 type EsAdvanceNoticePayload = {
     tranid: string;
-    entity: string;
-    duedate: string;
+    entity?: string;
+    duedate?: string;
+    source?: string;
     lines?: Array<{
         lineuniquekey: number;
         itemid: string;
@@ -328,6 +368,30 @@ async function computePoFulfillment(poNo: string | null | undefined): Promise<{
     }
 
     return { asn, fullyFulfilled: shortfalls.length === 0, shortfalls };
+}
+
+/**
+ * True when Send to ES must be hidden for this GRN.
+ * Hide unless the End User PO has a real ASN ingested from ES (NetSuite) — not a
+ * synthetic/manual ASN (payload.source = 'manual' or missing apiKeyId).
+ */
+function isRealEsAdvanceNotice(record: { apiKeyId: string | null; payload: unknown }): boolean {
+    const payload = record.payload as EsAdvanceNoticePayload;
+    if (payload.source === 'manual') return false;
+    return record.apiKeyId != null;
+}
+
+async function isManualInboundGrn(parent: {
+    id: string;
+    advanceNoticeId?: string | null;
+    poNo?: string | null;
+}): Promise<boolean> {
+    if (!parent.poNo?.trim()) return true;
+
+    const asn = await esRepository.findByTranid(parent.poNo.trim());
+    if (!asn) return true;
+
+    return !isRealEsAdvanceNotice(asn);
 }
 
 function paginateMappedAdvanceNotices<T>(
@@ -662,6 +726,7 @@ export const resolvers = {
             if (!fulfillment.asn) return null;
             return fulfillment.fullyFulfilled;
         },
+        manualInbound: async (parent: ReturnType<typeof transformGrn>) => isManualInboundGrn(parent),
     },
     GrnItem: {
         rack: async (parent: { rackId?: string | null }) => {
@@ -693,11 +758,17 @@ export const resolvers = {
             proofUrl?: string | null;
             warehouseId?: string | null;
             status?: string | null;
-            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; lossRackId?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; lossRackId?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; orderedQty?: string | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             advanceNoticeId?: string | null;
+            poFulfilled?: boolean | null;
             endUserId?: string | null;
         } }, context: GraphQLContext) => {
             try {
+                assertPartialDeliveryInputs({
+                    poFulfilled: input.poFulfilled,
+                    poNo: input.poNo,
+                    items: input.items,
+                });
                 await assertLotTrackedAsnItemsHaveLotAndExpiry({
                     advanceNoticeId: input.advanceNoticeId,
                     items: input.items,
@@ -719,6 +790,7 @@ export const resolvers = {
                     status: input.status,
                     items: input.items ?? undefined,
                     advanceNoticeId: input.advanceNoticeId ?? undefined,
+                    poFulfilled: input.poFulfilled ?? undefined,
                     endUserId: input.endUserId ?? undefined,
                 });
                 return result;
