@@ -20,6 +20,7 @@ export type StockQuantInsertType = typeof StockQuantTable.$inferInsert;
 export type StockQuantListType = StockQuantType & {
   skuCode: string | null;
   rackLabel: string | null;
+  rackBinType: string | null;
   stockUnitCode: string | null;
 };
 
@@ -104,6 +105,7 @@ export class StockQuantRepositoryClass {
           skuCode: SkuTable.skuCode,
           stockUnitCode: StockUnitTable.unitCode,
           rackLabel: stockQuantRackLabelExpr,
+          rackBinType: RacksTable.binType,
         })
         .from(StockQuantTable)
         .leftJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
@@ -191,6 +193,7 @@ export class StockQuantRepositoryClass {
           skuCode: SkuTable.skuCode,
           stockUnitCode: StockUnitTable.unitCode,
           rackLabel: stockQuantRackLabelExpr,
+          rackBinType: RacksTable.binType,
         })
         .from(StockQuantTable)
         .leftJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
