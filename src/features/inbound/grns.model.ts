@@ -118,3 +118,19 @@ export const GrnItemRacksTable = MainSchema.table('grn_item_racks', {
 
 export type GrnItemRackType = typeof GrnItemRacksTable.$inferSelect;
 export type GrnItemRackInsertType = typeof GrnItemRacksTable.$inferInsert;
+
+/**
+ * GRN Item Loss Racks Join Table
+ *
+ * @description Maps GRN items to one or more loose-storage racks for the loss quantity.
+ * Mirrors GrnItemRacksTable but for `lossQty` instead of `qty`.
+ */
+export const GrnItemLossRacksTable = MainSchema.table('grn_item_loss_racks', {
+  id: uuid('id').defaultRandom().notNull().primaryKey(),
+  grnItemId: uuid('grn_item_id').notNull(),
+  rackId: uuid('rack_id').notNull(),
+  quantity: numeric('quantity', { precision: 10, scale: 2 }).notNull().default('0'),
+});
+
+export type GrnItemLossRackType = typeof GrnItemLossRacksTable.$inferSelect;
+export type GrnItemLossRackInsertType = typeof GrnItemLossRacksTable.$inferInsert;

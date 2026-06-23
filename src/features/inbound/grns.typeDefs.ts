@@ -73,6 +73,8 @@ export const typeDefs = `#graphql
         rackIds: [ID!]
         """Per-rack carton allocations for this GRN item."""
         rackAllocations: [GrnRackAllocation!]
+        """Per-rack loose/loss allocations for this GRN item's lossQty."""
+        lossRackAllocations: [GrnLossRackAllocation!]
         """Optional expiry date for this GRN item."""
         expiryDate: String
         """Lot number assigned by supplier/manufacturer to identify this production batch."""
@@ -100,6 +102,8 @@ export const typeDefs = `#graphql
         rackIds: [ID!]
         """Per-rack carton allocations (preferred over rackIds when splitting putaway)."""
         rackAllocations: [GrnRackAllocationInput!]
+        """Per-rack loose/loss allocations (preferred over lossRackId when splitting loose storage)."""
+        lossRackAllocations: [GrnLossRackAllocationInput!]
         """Optional expiry date for this GRN item."""
         expiryDate: String
         """Lot number assigned by supplier/manufacturer to identify this production batch."""
@@ -265,6 +269,20 @@ export const typeDefs = `#graphql
     }
 
     input GrnRackAllocationInput {
+        rackId: ID!
+        quantity: Float!
+    }
+
+    """
+    Loose/loss rack allocation for a GRN line (loose-storage rack + qty).
+    """
+    type GrnLossRackAllocation {
+        rackId: ID!
+        quantity: Float!
+        rackLabel: String
+    }
+
+    input GrnLossRackAllocationInput {
         rackId: ID!
         quantity: Float!
     }

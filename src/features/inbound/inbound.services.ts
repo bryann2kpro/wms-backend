@@ -8,11 +8,13 @@ import { SkuRepositoryClass } from "../master-data/sku.repository";
 import type { DbTransaction } from "@/types/db-transaction";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
-import { GrnItemRacksTable } from "./grns.model";
+import { GrnItemRacksTable, GrnItemLossRacksTable } from "./grns.model";
 import {
   buildGrnItemRackRows,
+  buildGrnItemLossRackRows,
   primaryRackIdFromAllocations,
   resolveGrnItemRackAllocations,
+  resolveGrnItemLossRackAllocations,
 } from "./grn-rack-allocation.util";
 import { OrganizationRepositoryClass } from "../master-data/organization.repository";
 import { EsAdvanceNoticeRepositoryClass } from "../es/es.repository";
@@ -32,6 +34,7 @@ export type CreateInboundItemInput = {
     rackId?: string | null;
     rackIds?: string[] | null;
     rackAllocations?: Array<{ rackId: string; quantity: string | number }> | null;
+    lossRackAllocations?: Array<{ rackId: string; quantity: string | number }> | null;
     expiryDate?: string | null;
     lotNo?: string | null;
     orderedQty?: string | null;
@@ -181,12 +184,13 @@ export class InboundServices {
                         const skuIdToUse = await this.resolveOrCreateSkuForItem(item, createdBy, updatedBy, tx);
                         if (!skuIdToUse) continue;
                         const allocations = resolveGrnItemRackAllocations(item);
+                        const lossAllocations = resolveGrnItemLossRackAllocations(item);
                         grnItemRows.push({
                             grnId: grn.id,
                             skuId: skuIdToUse,
                             qty: item.qty,
                             lossQty: item.lossQty ?? '0',
-                            lossRackId: item.lossRackId ?? null,
+                            lossRackId: primaryRackIdFromAllocations(lossAllocations) ?? item.lossRackId ?? null,
                             remarks: item.remarks ?? undefined,
                             rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                             expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
@@ -205,6 +209,14 @@ export class InboundServices {
                             });
                             if (rackRows.length > 0) {
                                 await tx.insert(GrnItemRacksTable).values(rackRows);
+                            }
+                            const lossRackRows = createdItems.flatMap((createdItem, index) => {
+                                const source = data.items![index];
+                                if (!source) return [];
+                                return buildGrnItemLossRackRows(createdItem.id, source);
+                            });
+                            if (lossRackRows.length > 0) {
+                                await tx.insert(GrnItemLossRacksTable).values(lossRackRows);
                             }
                         }
                     }
