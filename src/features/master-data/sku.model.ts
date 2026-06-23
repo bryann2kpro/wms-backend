@@ -46,6 +46,8 @@ export const SkuTable = MainSchema.table('m_skus', {
   isLotControlled: boolean('is_lot_controlled').notNull().default(false),
   /** When true, expiry dates are required/tracked; enables FEFO picking strategy. */
   isExpiryControlled: boolean('is_expiry_controlled').notNull().default(false),
+  /** Number of loose items per unit of measure (e.g. pieces per carton). */
+  looseQuantity: numeric('loose_quantity', { precision: 12, scale: 2 }),
   skuUom: uuid('sku_unit_of_measurement').notNull().references(() => StockUnitTable.stockUnitId),
   isActive: boolean('is_active').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

@@ -1,0 +1,1 @@
+ALTER TABLE "main"."m_skus" ADD COLUMN "loose_quantity" numeric(12, 2);

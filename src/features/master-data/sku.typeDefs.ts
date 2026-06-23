@@ -40,6 +40,8 @@ export const typeDefs = `#graphql
     isLotControlled: Boolean!
     """When true, expiry dates are required/tracked; enables FEFO picking strategy."""
     isExpiryControlled: Boolean!
+    """Number of loose items per unit of measure (e.g. pieces per carton)."""
+    looseQuantity: Float
     """
     Optional per-expiry / per-rack batch details for this SKU.
     Each entry represents a distinct expiry date and the rack IDs where that batch is stored.
@@ -86,6 +88,8 @@ export const typeDefs = `#graphql
     isActive: Boolean!
     """Picking strategy: FIFO (default) | LIFO | FEFO"""
     pickingStrategy: String
+    """Number of loose items per unit of measure (e.g. pieces per carton)."""
+    looseQuantity: Float
     """Optional initial on-hand quantity for inventory balance (used during import/stock initialization)"""
     initialOnHandQty: Float
     createdBy: String
@@ -118,6 +122,8 @@ export const typeDefs = `#graphql
     pickingStrategy: String
     isLotControlled: Boolean
     isExpiryControlled: Boolean
+    """Number of loose items per unit of measure (e.g. pieces per carton)."""
+    looseQuantity: Float
     updatedBy: String
   }
 
