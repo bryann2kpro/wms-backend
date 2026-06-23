@@ -39,6 +39,7 @@ const createSkuSchema = z.object({
   pickingStrategy: z.enum(['FIFO', 'LIFO', 'FEFO']).optional().nullable(),
   isLotControlled: z.boolean().optional(),
   isExpiryControlled: z.boolean().optional(),
+  looseQuantity: z.number().nonnegative().optional().nullable(),
   initialOnHandQty: z.number().nonnegative().optional().nullable(),
   createdBy: z.string().optional().nullable(),
   updatedBy: z.string().optional().nullable(),
@@ -68,6 +69,7 @@ const updateSkuSchema = z.object({
   pickingStrategy: z.enum(['FIFO', 'LIFO', 'FEFO']).optional().nullable(),
   isLotControlled: z.boolean().optional(),
   isExpiryControlled: z.boolean().optional(),
+  looseQuantity: z.number().nonnegative().optional().nullable(),
   updatedBy: z.string().optional().nullable(),
 });
 
@@ -133,6 +135,7 @@ function transformSku(sku: {
   pickingStrategy: string;
   isLotControlled: boolean;
   isExpiryControlled: boolean;
+  looseQuantity: string | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -159,6 +162,7 @@ function transformSku(sku: {
     pickingStrategy: sku.pickingStrategy,
     isLotControlled: sku.isLotControlled,
     isExpiryControlled: sku.isExpiryControlled,
+    looseQuantity: sku.looseQuantity != null ? parseFloat(sku.looseQuantity) : null,
     skuSuppliers: sku.skuSuppliers ?? [],
     isActive: sku.isActive,
     createdAt: sku.createdAt.toISOString(),
@@ -384,6 +388,7 @@ export const resolvers = {
           pickingStrategy: resolvePickingStrategy(data.pickingStrategy, isExpiryControlled),
           isLotControlled,
           isExpiryControlled,
+          looseQuantity: data.looseQuantity != null ? String(data.looseQuantity) : null,
           isActive: data.isActive,
           createdBy,
           updatedBy,
@@ -430,6 +435,7 @@ export const resolvers = {
       pickingStrategy?: string | null;
       isLotControlled?: boolean;
       isExpiryControlled?: boolean;
+      looseQuantity?: number | null;
       updatedBy?: string | null;
     }}, context: GraphQLContext) => {
       try {
@@ -476,6 +482,9 @@ export const resolvers = {
         }
         if (uData.isExpiryControlled !== undefined) {
           updateData.isExpiryControlled = uData.isExpiryControlled;
+        }
+        if (uData.looseQuantity !== undefined) {
+          updateData.looseQuantity = uData.looseQuantity == null ? null : String(uData.looseQuantity);
         }
 
         const existingSku = await skuRepository.getSkuById(id);
