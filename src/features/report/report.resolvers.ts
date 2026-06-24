@@ -16,6 +16,7 @@ import {
   generateStockTransferWorkQueuePdf,
   getInventoryBalanceReportData,
   generateStockBalancePdf,
+  generateGrnRemainingReportPdf,
   type InventoryBalanceReportType,
 } from './report.service';
 import z from 'zod';
@@ -190,6 +191,15 @@ export const resolvers = {
       logger.info('ℹ️ [report.resolvers.generateStockBalanceReport] Generating stock balance PDF...');
       const rows = await getInventoryBalanceReportData(args.type, context.organizationId);
       return generateStockBalancePdf(rows, args.type);
+    },
+
+    generateGrnRemainingReportPdf: async (
+      _: unknown,
+      __: unknown,
+      context: { organizationId: string },
+    ) => {
+      logger.info('ℹ️ [report.resolvers.generateGrnRemainingReportPdf] Generating GRN remaining report PDF...');
+      return generateGrnRemainingReportPdf(context.organizationId);
     },
   },
 };

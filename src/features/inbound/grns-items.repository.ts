@@ -5,10 +5,11 @@
  */
 
 import { db } from '@/db';
-import { GrnItemsTable } from './grns.model';
-import { eq, and } from 'drizzle-orm';
+import { GrnItemsTable, GrnsTable } from './grns.model';
+import { eq, and, or, gt, sql, desc } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import type { DbTransaction } from '@/types/db-transaction';
+import { SkuTable } from '@/features/master-data/sku.model';
 
 export type GrnItemsType = typeof GrnItemsTable.$inferSelect;
 export type GrnItemsInsertType = typeof GrnItemsTable.$inferInsert;
@@ -46,6 +47,44 @@ export class GrnItemsRepositoryClass {
         }catch(error){
             logger.error('❌ [GrnItemsRepository.getGrnItems] Error:', error);
             return false;
+        }
+    }
+
+    /**
+     * GRN lines that still owe qty against their PO/ASN — the snapshot taken at submit
+     * time (remainingCtn/remainingLoosePcs), joined with GRN + SKU display fields for the
+     * "Remaining quantity" report.
+     */
+    async getRemainingItems(organizationId: string) {
+        try {
+            const rows = await db
+                .select({
+                    grnNo: GrnsTable.grnNo,
+                    poNo: GrnsTable.poNo,
+                    receivedAt: GrnsTable.receivedAt,
+                    skuCode: SkuTable.skuCode,
+                    skuDescription: SkuTable.skuDescription,
+                    remainingCtn: GrnItemsTable.remainingCtn,
+                    remainingLoosePcs: GrnItemsTable.remainingLoosePcs,
+                })
+                .from(GrnItemsTable)
+                .innerJoin(GrnsTable, eq(GrnItemsTable.grnId, GrnsTable.id))
+                .innerJoin(SkuTable, eq(GrnItemsTable.skuId, SkuTable.skuId))
+                .where(
+                    and(
+                        eq(GrnsTable.organizationId, organizationId),
+                        or(
+                            gt(sql`${GrnItemsTable.remainingCtn}::numeric`, 0),
+                            gt(sql`${GrnItemsTable.remainingLoosePcs}::numeric`, 0),
+                        ),
+                    ),
+                )
+                .orderBy(desc(GrnsTable.receivedAt));
+            logger.info('✅ [GrnItemsRepository.getRemainingItems] Remaining items fetched successfully');
+            return rows;
+        } catch (error) {
+            logger.error('❌ [GrnItemsRepository.getRemainingItems] Error:', error);
+            return [];
         }
     }
 

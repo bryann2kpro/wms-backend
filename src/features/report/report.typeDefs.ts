@@ -172,5 +172,11 @@ export const typeDefs = `#graphql
     WITHOUT_RACK: principal-facing summary. WITH_RACK: includes rack location labels.
     """
     generateStockBalanceReport(type: InventoryBalanceReportType!): GenerateReportPayload! @auth
+
+    """
+    Generate the GRN Remaining Quantity Report PDF — every GRN line still owed
+    against its PO/ASN (remainingCtn/remainingLoosePcs snapshot taken at submission).
+    """
+    generateGrnRemainingReportPdf: GenerateChecklistPayload! @auth
   }
 `;

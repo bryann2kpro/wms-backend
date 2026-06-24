@@ -12,7 +12,7 @@ import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { GraphQLError } from 'graphql';
-import { GrnType, GrnItemRacksTable, GrnItemLossRacksTable } from './grns.model';
+import { GrnType, GrnItemRacksTable, GrnItemLossRacksTable, GrnItemsTable } from './grns.model';
 import { RacksTable } from '@/features/master-data/racks.model';
 import { eq, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
@@ -134,6 +134,8 @@ function transformGrnItem(
         lossRackAllocations,
         expiryDate: (item as any).expiryDate?.toISOString?.() ?? (item as any).expiryDate ?? null,
         lotNo: (item as any).lotNo ?? null,
+        remainingCtn: (item as any).remainingCtn != null ? Number((item as any).remainingCtn) : null,
+        remainingLoosePcs: (item as any).remainingLoosePcs != null ? Number((item as any).remainingLoosePcs) : null,
         createdAt: item.createdAt?.toISOString?.() ?? item.createdAt,
         updatedAt: item.updatedAt?.toISOString?.() ?? item.updatedAt,
         createdBy: item.createdBy,
@@ -499,6 +501,18 @@ async function filterPartialLinkedAdvanceNotices(
 
 export const resolvers = {
     Query: {
+        grnRemainingReport: async (_: unknown, __: unknown, context: GraphQLContext) => {
+            const rows = await grnItemsRepository.getRemainingItems(context.organizationId ?? '');
+            return rows.map((row) => ({
+                grnNo: row.grnNo,
+                poNo: row.poNo ?? null,
+                receivedAt: row.receivedAt?.toISOString?.() ?? row.receivedAt ?? null,
+                skuCode: row.skuCode,
+                skuDescription: row.skuDescription,
+                remainingCtn: Number(row.remainingCtn ?? 0),
+                remainingLoosePcs: Number(row.remainingLoosePcs ?? 0),
+            }));
+        },
         grns: async (_: unknown, args: {
             filter?: GrnFilter & { page?: number; pageSize?: number; pageNumber?: number };
             pageSize?: number;
@@ -1010,7 +1024,19 @@ export const resolvers = {
                     }, context.tx);
 
                     // 4. Create GRN items
-                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
+                    const finalStatus = input.status ?? 'Draft';
+                    const remainingBySkuCode = finalStatus === 'Submitted' && context.tx
+                        ? await inboundServices.computeRemainingForItems(
+                            {
+                                poNo: input.poNo,
+                                organizationId: context.organizationId ?? '',
+                                items: input.items ?? [],
+                            },
+                            context.tx,
+                        )
+                        : new Map<string, { remainingCtn: number | null; remainingLoosePcs: number | null }>();
+
+                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; remainingCtn?: string | null; remainingLoosePcs?: string | null; createdBy: string; updatedBy?: string }> = [];
                     if (input.items?.length) {
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -1039,6 +1065,7 @@ export const resolvers = {
                             }
                             const allocations = resolveGrnItemRackAllocations(item);
                             const lossAllocations = resolveGrnItemLossRackAllocations(item);
+                            const remaining = item.skuCode ? remainingBySkuCode.get(item.skuCode) : undefined;
                             grnItemRows.push({
                                 grnId: grn.id,
                                 skuId: skuIdToUse,
@@ -1049,6 +1076,8 @@ export const resolvers = {
                                 rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                                 expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                                 lotNo: item.lotNo ?? null,
+                                remainingCtn: remaining?.remainingCtn != null ? String(remaining.remainingCtn) : null,
+                                remainingLoosePcs: remaining?.remainingLoosePcs != null ? String(remaining.remainingLoosePcs) : null,
                                 createdBy,
                                 updatedBy,
                             });
@@ -1187,7 +1216,21 @@ export const resolvers = {
                     // Replace GRN items and sync Supplier Delivery Items (skuId, qtyDelivered = item qty)
                     if (input.items != null && input.items.length > 0) {
                         const createdBy = existingGrn.createdBy;
-                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
+                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; remainingCtn?: string | null; remainingLoosePcs?: string | null; createdBy: string; updatedBy?: string }> = [];
+
+                        const finalStatus = input.status !== undefined ? input.status : existingGrn.status;
+                        const finalPoNo = input.poNo !== undefined ? input.poNo : existingGrn.poNo;
+                        const remainingBySkuCode = finalStatus === 'Submitted' && context.tx
+                            ? await inboundServices.computeRemainingForItems(
+                                {
+                                    poNo: finalPoNo,
+                                    organizationId: context.organizationId ?? existingGrn.organizationId ?? '',
+                                    items: input.items,
+                                },
+                                context.tx,
+                                id,
+                            )
+                            : new Map<string, { remainingCtn: number | null; remainingLoosePcs: number | null }>();
 
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -1216,6 +1259,7 @@ export const resolvers = {
                             }
                             const allocations = resolveGrnItemRackAllocations(item);
                             const lossAllocations = resolveGrnItemLossRackAllocations(item);
+                            const remaining = item.skuCode ? remainingBySkuCode.get(item.skuCode) : undefined;
                             grnItemRows.push({
                                 grnId: id,
                                 skuId: skuIdToUse,
@@ -1226,6 +1270,8 @@ export const resolvers = {
                                 rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                                 expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                                 lotNo: item.lotNo ?? null,
+                                remainingCtn: remaining?.remainingCtn != null ? String(remaining.remainingCtn) : null,
+                                remainingLoosePcs: remaining?.remainingLoosePcs != null ? String(remaining.remainingLoosePcs) : null,
                                 createdBy,
                                 updatedBy,
                             });
@@ -1264,6 +1310,41 @@ export const resolvers = {
                                     createdBy: item.createdBy,
                                     updatedBy: item.updatedBy ?? updatedBy,
                                 }, context.tx);
+                            }
+                        }
+                    } else if (updateData.status === 'Submitted' && context.tx) {
+                        // Status-only transition to Submitted (e.g. from the GRN list's
+                        // "Submit" action), no items in this call — compute the remaining-qty
+                        // snapshot from the GRN's existing items instead of skipping it.
+                        const existingItems = await grnItemsRepository.getGrnItems({ grnId: id }, context.tx);
+                        if (existingItems && existingItems.length > 0) {
+                            const skuIds = [...new Set(existingItems.map((i) => i.skuId))];
+                            const skuResult = await skuRepository.getSku({ skuId: skuIds }, undefined, context.tx);
+                            const codeBySkuId = new Map(
+                                (skuResult.query as Array<{ skuId: string; skuCode: string }>).map(
+                                    (s) => [s.skuId, s.skuCode] as const,
+                                ),
+                            );
+                            const remainingBySkuCode = await inboundServices.computeRemainingForItems(
+                                {
+                                    poNo: existingGrn.poNo,
+                                    organizationId: context.organizationId ?? existingGrn.organizationId ?? '',
+                                    items: existingItems.map((i) => ({
+                                        skuCode: codeBySkuId.get(i.skuId) ?? null,
+                                        qty: i.qty,
+                                        lossQty: i.lossQty,
+                                    })),
+                                },
+                                context.tx,
+                                id,
+                            );
+                            for (const item of existingItems) {
+                                const code = codeBySkuId.get(item.skuId);
+                                const remaining = code ? remainingBySkuCode.get(code) : undefined;
+                                await context.tx.update(GrnItemsTable).set({
+                                    remainingCtn: remaining?.remainingCtn != null ? String(remaining.remainingCtn) : null,
+                                    remainingLoosePcs: remaining?.remainingLoosePcs != null ? String(remaining.remainingLoosePcs) : null,
+                                }).where(eq(GrnItemsTable.id, item.id));
                             }
                         }
                     }

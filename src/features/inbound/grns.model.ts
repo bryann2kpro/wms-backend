@@ -97,6 +97,14 @@ export const GrnItemsTable = MainSchema.table('grn_items', {
    */
   priorityFlag: boolean('priority_flag').notNull().default(false),
 
+  /**
+   * Snapshot of qty still owed against the linked PO/ASN at the moment this
+   * GRN was submitted for approval. NULL when not linked to a PO/ASN, or
+   * when this item predates the feature. Never recomputed after submission.
+   */
+  remainingCtn: numeric('remaining_ctn', { precision: 10, scale: 2 }),
+  remainingLoosePcs: numeric('remaining_loose_pcs', { precision: 10, scale: 2 }),
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   createdBy: uuid('created_by').notNull(),
