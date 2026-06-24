@@ -7,6 +7,10 @@
 
 import { transportsRepository } from '@/composition-root';
 import { TransportFilter } from './transport.repository';
+import {
+  applyCapacityTemplate,
+  withCapacityTemplateDefaults,
+} from './transport-capacity.util';
 import { withAudit } from '../audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { prettifyError, z } from 'zod';
@@ -78,7 +82,7 @@ function transformTransport(record: {
   createdBy: string;
   updatedBy: string;
 }) {
-  return {
+  const base = {
     id: record.id,
     code: record.code,
     description: record.description ?? null,
@@ -98,6 +102,7 @@ function transformTransport(record: {
     createdBy: record.createdBy,
     updatedBy: record.updatedBy,
   };
+  return applyCapacityTemplate(base);
 }
 
 // ============================================
@@ -185,21 +190,22 @@ export const resolvers = {
         if (!success) {
           throw new GraphQLError(prettifyError(error), { extensions: { code: 'BAD_USER_INPUT' } });
         }
+        const withDefaults = withCapacityTemplateDefaults(data);
         const record = await transportsRepository.createTransport({
           organizationId: context.organizationId,
-          code: data.code,
-          description: data.description ?? null,
-          storageBinId: data.storageBinId ?? null,
-          location: data.location ?? null,
-          minLengthMm: data.minLengthMm ?? null,
-          minWidthMm: data.minWidthMm ?? null,
-          minHeightMm: data.minHeightMm ?? null,
-          minWeightKg: data.minWeightKg ?? null,
-          maxLengthMm: data.maxLengthMm ?? null,
-          maxWidthMm: data.maxWidthMm ?? null,
-          maxHeightMm: data.maxHeightMm ?? null,
-          maxWeightKg: data.maxWeightKg ?? null,
-          numberOfPallets: data.numberOfPallets ?? null,
+          code: withDefaults.code,
+          description: withDefaults.description ?? null,
+          storageBinId: withDefaults.storageBinId ?? null,
+          location: withDefaults.location ?? null,
+          minLengthMm: withDefaults.minLengthMm ?? null,
+          minWidthMm: withDefaults.minWidthMm ?? null,
+          minHeightMm: withDefaults.minHeightMm ?? null,
+          minWeightKg: withDefaults.minWeightKg ?? null,
+          maxLengthMm: withDefaults.maxLengthMm ?? null,
+          maxWidthMm: withDefaults.maxWidthMm ?? null,
+          maxHeightMm: withDefaults.maxHeightMm ?? null,
+          maxWeightKg: withDefaults.maxWeightKg ?? null,
+          numberOfPallets: withDefaults.numberOfPallets ?? null,
           createdBy: data.createdBy,
           updatedBy: data.updatedBy,
         }, context.organizationId, context.tx);
@@ -239,20 +245,34 @@ export const resolvers = {
         if (!uSuccess) {
           throw new GraphQLError(prettifyError(uError), { extensions: { code: 'BAD_USER_INPUT' } });
         }
+        const existing = await transportsRepository.getTransportById(id, context.organizationId || undefined);
+        const merged = withCapacityTemplateDefaults({
+          code: uData.code ?? existing?.code ?? '',
+          description: uData.description ?? existing?.description,
+          minLengthMm: uData.minLengthMm ?? existing?.minLengthMm,
+          minWidthMm: uData.minWidthMm ?? existing?.minWidthMm,
+          minHeightMm: uData.minHeightMm ?? existing?.minHeightMm,
+          minWeightKg: uData.minWeightKg ?? existing?.minWeightKg,
+          maxLengthMm: uData.maxLengthMm ?? existing?.maxLengthMm,
+          maxWidthMm: uData.maxWidthMm ?? existing?.maxWidthMm,
+          maxHeightMm: uData.maxHeightMm ?? existing?.maxHeightMm,
+          maxWeightKg: uData.maxWeightKg ?? existing?.maxWeightKg,
+          numberOfPallets: uData.numberOfPallets ?? existing?.numberOfPallets,
+        });
         const record = await transportsRepository.updateTransport({
           code: uData.code,
-          description: uData.description,
+          description: merged.description,
           storageBinId: uData.storageBinId,
           location: uData.location,
-          minLengthMm: uData.minLengthMm,
-          minWidthMm: uData.minWidthMm,
-          minHeightMm: uData.minHeightMm,
-          minWeightKg: uData.minWeightKg,
-          maxLengthMm: uData.maxLengthMm,
-          maxWidthMm: uData.maxWidthMm,
-          maxHeightMm: uData.maxHeightMm,
-          maxWeightKg: uData.maxWeightKg,
-          numberOfPallets: uData.numberOfPallets,
+          minLengthMm: merged.minLengthMm,
+          minWidthMm: merged.minWidthMm,
+          minHeightMm: merged.minHeightMm,
+          minWeightKg: merged.minWeightKg,
+          maxLengthMm: merged.maxLengthMm,
+          maxWidthMm: merged.maxWidthMm,
+          maxHeightMm: merged.maxHeightMm,
+          maxWeightKg: merged.maxWeightKg,
+          numberOfPallets: merged.numberOfPallets,
           updatedBy: uData.updatedBy,
         }, id, context.organizationId || undefined, context.tx);
         if (!record) return null;
