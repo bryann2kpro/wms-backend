@@ -6,11 +6,14 @@
 
 import { db } from '@/db';
 import { TransportTable, TransportType, TransportInsertType } from './transport.model';
-import { eq, and, like } from 'drizzle-orm';
+import { eq, and, like, notInArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 import { pagination, PgQueryType } from '@/util/pagination';
 import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model';
+import { TRANSPORT_CAPACITY_TEMPLATES } from './transport-capacity.util';
+
+const SYSTEM_TEMPLATE_CODES = Object.keys(TRANSPORT_CAPACITY_TEMPLATES);
 
 // ============================================
 // FILTER TYPES
@@ -19,6 +22,8 @@ import { PaginationParams, PaginatedResponse } from '@/features/rbac/rbac.model'
 export type TransportFilter = {
   id?: string;
   code?: string;
+  /** When true (default), hide system tonnage template rows (1T, 3T, …). */
+  vehiclesOnly?: boolean;
 };
 
 export class TransportRepositoryClass {
@@ -48,6 +53,10 @@ export class TransportRepositoryClass {
 
       if (filter.code) {
         whereCondition.push(like(TransportTable.code, `%${filter.code}%`));
+      }
+
+      if (filter.vehiclesOnly !== false) {
+        whereCondition.push(notInArray(TransportTable.code, SYSTEM_TEMPLATE_CODES));
       }
 
       const baseQuery = db

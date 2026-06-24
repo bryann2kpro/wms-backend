@@ -24,6 +24,8 @@ export const typeDefs = `#graphql
     maxHeightMm: String
     maxWeightKg: String
     numberOfPallets: Int
+    """Resolved tonnage class from code, e.g. 3T for WTH4155 (3 TON)."""
+    capacityClass: String
     createdAt: String!
     updatedAt: String!
     createdBy: String!

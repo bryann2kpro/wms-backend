@@ -22,6 +22,8 @@ export const typeDefs = `#graphql
     lossQty: String!
     rackId: ID!
     rackLabel: String
+    """Bin type of the rack this quant is stored on (e.g. LOOSE_STORAGE, FIXED, PALLET_STORAGE). Lets the UI distinguish loose stock from carton/pallet stock."""
+    rackBinType: String
     lotNo: String
     expiryDate: String
     organizationId: ID!
