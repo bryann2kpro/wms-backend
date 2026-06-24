@@ -562,14 +562,13 @@ export class InboundServices {
                 );
             }
 
-            // CTN: plain Ordered - Delivered, plus one extra carton per full loose_quantity's
-            // worth of loss. Loose pieces: complement of the loss within its partial carton
-            // (e.g. losing 8 of a 10-pieces-per-carton SKU still needs 2 more to make it whole).
+            // Mixed-radix subtraction: Ordered (whole cartons) minus Delivered (cartons +
+            // loose pieces), borrowing between the two via loose_quantity — e.g. Ordered 100
+            // CTN, Delivered 40 CTN + 6 loose, loose_quantity 10 -> 1000-406=594 -> 59 CTN + 4.
             const radix = looseQuantity ?? 1;
-            const extraCtnFromLoss = Math.floor(cumulativeLoss / radix);
-            const lossRemainder = cumulativeLoss % radix;
-            const remainingCtn = Math.max(0, expectedCtn - cumulativeCtn) + extraCtnFromLoss;
-            const remainingLoosePcs = lossRemainder === 0 ? 0 : radix - lossRemainder;
+            const remainingPieces = Math.max(0, (expectedCtn - cumulativeCtn) * radix - cumulativeLoss);
+            const remainingCtn = Math.floor(remainingPieces / radix);
+            const remainingLoosePcs = remainingPieces % radix;
             result.set(skuCode, { remainingCtn, remainingLoosePcs });
         }
 
