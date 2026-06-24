@@ -105,7 +105,6 @@ type PutawayRack = {
   width: string | null;
   height: string | null;
   weight: string | null;
-  maxPallet: string | null;
 };
 
 type CommittedOccupantRow = {
@@ -409,7 +408,6 @@ export class InboundPutawaySuggestionService {
     width?: string | null;
     height?: string | null;
     weight?: string | null;
-    maxPallet?: string | null;
   }): PutawayRack {
     return {
       rackId: rack.rackId,
@@ -420,7 +418,6 @@ export class InboundPutawaySuggestionService {
       width: rack.width ?? null,
       height: rack.height ?? null,
       weight: rack.weight ?? null,
-      maxPallet: rack.maxPallet ?? null,
     };
   }
 

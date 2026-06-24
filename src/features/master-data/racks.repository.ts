@@ -199,7 +199,6 @@ export class RacksRepositoryClass {
     width: string | null;
     height: string | null;
     weight: string | null;
-    maxPallet: string | null;
   }>> {
     const client = tx ?? db;
     return client
@@ -212,7 +211,6 @@ export class RacksRepositoryClass {
         width: RacksTable.width,
         height: RacksTable.height,
         weight: RacksTable.weight,
-        maxPallet: RacksTable.maxPallet,
       })
       .from(RacksTable)
       .where(

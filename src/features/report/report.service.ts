@@ -32,6 +32,7 @@ const STOCK_COUNT_CHECKLIST_HTML_PATH = path.join(__dirname, 'html', 'stock-coun
 const DO_PICKING_LIST_HTML_PATH = path.join(__dirname, 'html', 'do-picking-list.html');
 const STOCK_BALANCE_HTML_PATH = path.join(__dirname, 'html', 'stock-balance.html');
 const STOCK_TRANSFER_WORK_QUEUE_HTML_PATH = path.join(__dirname, 'html', 'stock-transfer-work-queue.html');
+const GRN_REMAINING_REPORT_HTML_PATH = path.join(__dirname, 'html', 'grn-remaining-report.html');
 
 // Movement Report row shape
 export interface MovementReportRow {
@@ -819,6 +820,72 @@ export async function generateDoPickingListPdf(
   const filename = `DO_Picking_List_${dateStr}.pdf`;
 
   return { pdfBase64: pdfBuffer.toString('base64'), filename };
+}
+
+// ── GRN Remaining Quantity Report ─────────────────────────────────────────────
+
+export type GrnRemainingReportRow = {
+  grnNo: string;
+  poNo: string | null;
+  receivedAt: Date | null;
+  skuCode: string;
+  skuDescription: string;
+  remainingCtn: number;
+  remainingLoosePcs: number;
+};
+
+export async function renderGrnRemainingReportHtml(
+  rows: GrnRemainingReportRow[],
+): Promise<string> {
+  const template = await readFile(GRN_REMAINING_REPORT_HTML_PATH, 'utf-8');
+  const generatedAt = new Date().toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' });
+
+  const tableRows = rows
+    .map((row, i) => {
+      const rowAlt = i % 2 !== 0 ? ' tr-alt' : '';
+      const received = row.receivedAt
+        ? new Date(row.receivedAt).toLocaleDateString('en-MY', { dateStyle: 'medium' })
+        : '—';
+      return `<tr class="tr-data${rowAlt}">
+        <td class="col-no">${i + 1}</td>
+        <td class="col-grn">${escapeHtml(row.grnNo)}</td>
+        <td class="col-po">${escapeHtml(row.poNo ?? '—')}</td>
+        <td class="col-sku">${escapeHtml(row.skuCode)}</td>
+        <td class="col-desc">${escapeHtml(row.skuDescription)}</td>
+        <td class="col-qty">${formatQtyNum(row.remainingCtn)} CTN${row.remainingLoosePcs > 0 ? ` + ${formatQtyNum(row.remainingLoosePcs)} pcs` : ''}</td>
+        <td class="col-date">${escapeHtml(received)}</td>
+      </tr>`;
+    })
+    .join('\n');
+
+  return template
+    .replace(/\{\{generatedAt\}\}/g, generatedAt)
+    .replace(/\{\{totalLines\}\}/g, String(rows.length))
+    .replace(/\{\{tableRows\}\}/, tableRows || '<tr class="tr-data"><td colspan="7" style="text-align:center; color:var(--text-muted);">No outstanding lines</td></tr>');
+}
+
+/** Printable PDF of every GRN line still owed against its PO/ASN (remainingCtn/remainingLoosePcs snapshot). */
+export async function generateGrnRemainingReportPdf(
+  organizationId: string,
+): Promise<{ pdfBase64: string; filename: string }> {
+  const { grnItemsRepository } = await import('@/composition-root');
+  const rawRows = await grnItemsRepository.getRemainingItems(organizationId);
+
+  const rows: GrnRemainingReportRow[] = rawRows.map((r) => ({
+    grnNo: r.grnNo,
+    poNo: r.poNo ?? null,
+    receivedAt: r.receivedAt ?? null,
+    skuCode: r.skuCode,
+    skuDescription: r.skuDescription,
+    remainingCtn: Number(r.remainingCtn ?? 0),
+    remainingLoosePcs: Number(r.remainingLoosePcs ?? 0),
+  }));
+
+  const html = await renderGrnRemainingReportHtml(rows);
+  // Landscape — 7 columns need the extra width A4 portrait can't give after margins.
+  const pdfBuffer = await htmlToPdf(html, { landscape: true });
+  const dateStr = new Date().toISOString().split('T')[0];
+  return { pdfBase64: pdfBuffer.toString('base64'), filename: `GRN_Remaining_Report_${dateStr}.pdf` };
 }
 
 // ── Stock Balance Report ──────────────────────────────────────────────────────

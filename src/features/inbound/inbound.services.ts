@@ -425,6 +425,156 @@ export class InboundServices {
         return result;
     }
 
+    /**
+     * Sum received qty AND loss qty per skuCode across all prior GRNs for a PO.
+     * Same counting policy as {@link sumPriorGrnReceivedBySkuCode} (all statuses count,
+     * excludeGrnId omits the GRN being edited so it doesn't double-count against itself) —
+     * kept separate so the over-receipt enforcement above is untouched.
+     */
+    private async sumPriorGrnReceivedAndLossBySkuCode(
+        poNo: string,
+        organizationId: string,
+        tx: DbTransaction,
+        excludeGrnId?: string,
+    ): Promise<Map<string, { qty: number; lossQty: number }>> {
+        const result = new Map<string, { qty: number; lossQty: number }>();
+
+        const grnsResult = await this.grnsRepository.getGrns({ poNo }, undefined, organizationId);
+        const grns = grnsResult && 'query' in grnsResult ? grnsResult.query : [];
+        if (!grns.length) return result;
+
+        const totalsBySkuId = new Map<string, { qty: number; lossQty: number }>();
+        for (const grn of grns) {
+            if (excludeGrnId && grn.id === excludeGrnId) continue;
+            const items = await this.grnItemsRepository.getGrnItems({ grnId: grn.id }, tx);
+            if (!items) continue;
+            for (const item of items) {
+                const qty = Number(item.qty ?? 0);
+                const lossQty = Number(item.lossQty ?? 0);
+                const prev = totalsBySkuId.get(item.skuId) ?? { qty: 0, lossQty: 0 };
+                totalsBySkuId.set(item.skuId, {
+                    qty: prev.qty + (Number.isFinite(qty) ? qty : 0),
+                    lossQty: prev.lossQty + (Number.isFinite(lossQty) ? lossQty : 0),
+                });
+            }
+        }
+        if (totalsBySkuId.size === 0) return result;
+
+        const skuIds = [...totalsBySkuId.keys()];
+        const skuResult = await this.skuRepository.getSku({ skuId: skuIds }, undefined, tx);
+        const codeBySkuId = new Map<string, string>();
+        for (const sku of skuResult.query as Array<{ skuId: string; skuCode: string }>) {
+            codeBySkuId.set(sku.skuId, sku.skuCode);
+        }
+
+        for (const [skuId, totals] of totalsBySkuId) {
+            const code = codeBySkuId.get(skuId);
+            if (!code) continue;
+            const prev = result.get(code) ?? { qty: 0, lossQty: 0 };
+            result.set(code, { qty: prev.qty + totals.qty, lossQty: prev.lossQty + totals.lossQty });
+        }
+        return result;
+    }
+
+    /**
+     * Compute the "remaining qty owed" snapshot for each item being submitted on a
+     * PO/ASN-linked GRN — see po-fulfillment design: remaining = (expected − cumulative
+     * delivered) expressed as whole CTN + loose pieces via the SKU's loose_quantity, with
+     * loss added back in (lost pieces still count as owed). Manual GRNs (no poNo) or lines
+     * not on the ASN simply get { remainingCtn: null, remainingLoosePcs: null }.
+     *
+     * Throws when a line has cumulative loss > 0 but its SKU has no loose_quantity set —
+     * the caller (grns.resolvers.ts) should let this reject the submission.
+     *
+     * @param excludeGrnId  Pass the GRN's own id when re-submitting an existing GRN (its
+     *                      current items are excluded from the prior-received sum).
+     */
+    async computeRemainingForItems(
+        data: {
+            poNo?: string | null;
+            organizationId: string;
+            items: Array<{ skuCode?: string | null; qty: string | number; lossQty?: string | number | null }>;
+        },
+        tx: DbTransaction,
+        excludeGrnId?: string,
+    ): Promise<Map<string, { remainingCtn: number | null; remainingLoosePcs: number | null }>> {
+        const result = new Map<string, { remainingCtn: number | null; remainingLoosePcs: number | null }>();
+
+        const poNo = data.poNo?.trim();
+        if (!poNo) return result; // manual GRN — nothing to compute against
+
+        const asn = await this.esAdvanceNoticeRepository.findByTranid(poNo);
+        if (!asn) return result; // no ASN for this PO — not applicable
+
+        const payload = asn.payload as { lines?: Array<{ itemid?: string; quantity?: number | string }> } | undefined;
+        const expectedBySkuCode = new Map<string, number>();
+        for (const line of payload?.lines ?? []) {
+            const code = line.itemid?.trim();
+            if (!code) continue;
+            const qty = Number(line.quantity ?? 0);
+            if (!Number.isFinite(qty)) continue;
+            expectedBySkuCode.set(code, (expectedBySkuCode.get(code) ?? 0) + qty);
+        }
+        if (expectedBySkuCode.size === 0) return result;
+
+        const thisSubmissionBySkuCode = new Map<string, { qty: number; lossQty: number }>();
+        for (const item of data.items) {
+            const code = item.skuCode?.trim();
+            if (!code) continue;
+            const qty = Number(item.qty ?? 0);
+            const lossQty = Number(item.lossQty ?? 0);
+            const prev = thisSubmissionBySkuCode.get(code) ?? { qty: 0, lossQty: 0 };
+            thisSubmissionBySkuCode.set(code, {
+                qty: prev.qty + (Number.isFinite(qty) ? qty : 0),
+                lossQty: prev.lossQty + (Number.isFinite(lossQty) ? lossQty : 0),
+            });
+        }
+        if (thisSubmissionBySkuCode.size === 0) return result;
+
+        const priorBySkuCode = await this.sumPriorGrnReceivedAndLossBySkuCode(
+            poNo,
+            data.organizationId,
+            tx,
+            excludeGrnId,
+        );
+
+        const skuCodes = [...thisSubmissionBySkuCode.keys()];
+        const skuResult = await this.skuRepository.getSku({ skuCode: skuCodes }, undefined, tx);
+        const looseQtyBySkuCode = new Map<string, number | null>();
+        for (const sku of skuResult.query as Array<{ skuCode: string; looseQuantity?: string | number | null }>) {
+            const lq = sku.looseQuantity != null ? Number(sku.looseQuantity) : null;
+            looseQtyBySkuCode.set(sku.skuCode, lq != null && Number.isFinite(lq) && lq > 0 ? lq : null);
+        }
+
+        for (const [skuCode, thisSubmission] of thisSubmissionBySkuCode) {
+            const expectedCtn = expectedBySkuCode.get(skuCode);
+            if (expectedCtn === undefined) continue; // not on the ASN — leave unset
+
+            const prior = priorBySkuCode.get(skuCode) ?? { qty: 0, lossQty: 0 };
+            const cumulativeCtn = prior.qty + thisSubmission.qty;
+            const cumulativeLoss = prior.lossQty + thisSubmission.lossQty;
+            const looseQuantity = looseQtyBySkuCode.get(skuCode) ?? null;
+
+            if (cumulativeLoss > 0 && looseQuantity == null) {
+                throw new Error(
+                    `Cannot compute remaining qty for SKU ${skuCode}: loss qty recorded but ` +
+                    `the SKU has no loose_quantity (pieces per carton) configured.`,
+                );
+            }
+
+            // Mixed-radix subtraction: Ordered (whole cartons) minus Delivered (cartons +
+            // loose pieces), borrowing between the two via loose_quantity — e.g. Ordered 100
+            // CTN, Delivered 40 CTN + 6 loose, loose_quantity 10 -> 1000-406=594 -> 59 CTN + 4.
+            const radix = looseQuantity ?? 1;
+            const remainingPieces = Math.max(0, (expectedCtn - cumulativeCtn) * radix - cumulativeLoss);
+            const remainingCtn = Math.floor(remainingPieces / radix);
+            const remainingLoosePcs = remainingPieces % radix;
+            result.set(skuCode, { remainingCtn, remainingLoosePcs });
+        }
+
+        return result;
+    }
+
     private normalizeSupplierCode(code: string): string {
         return code.replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim().toUpperCase();
     }

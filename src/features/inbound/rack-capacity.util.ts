@@ -8,8 +8,6 @@ export type RackDimensions = {
   width?: string | null;
   height?: string | null;
   weight?: string | null;
-  /** Max cartons/pallets when volume/weight capacity cannot be computed. */
-  maxPallet?: string | null;
 };
 
 export type SkuCaseDimensions = {
@@ -79,9 +77,7 @@ export function maxCasesForSkuInRack(
   if (maxByVolume != null && maxByWeight != null) {
     return Math.min(maxByVolume, maxByWeight);
   }
-  const dimensional = maxByVolume ?? maxByWeight;
-  if (dimensional != null) return dimensional;
-  return positiveNum(rack.maxPallet);
+  return maxByVolume ?? maxByWeight;
 }
 
 export type RackOccupant = {
