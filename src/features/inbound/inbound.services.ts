@@ -178,13 +178,21 @@ export class InboundServices {
                 }, tx);
 
                 // 4. Create GRN items (same as createGrn)
-                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
+                const remainingBySkuCode = data.status === 'Submitted'
+                    ? await this.computeRemainingForItems(
+                        { poNo: data.poNo, organizationId, items: data.items ?? [] },
+                        tx,
+                    )
+                    : new Map<string, { remainingCtn: number | null; remainingLoosePcs: number | null }>();
+
+                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; remainingCtn?: string | null; remainingLoosePcs?: string | null; createdBy: string; updatedBy?: string }> = [];
                 if (data.items?.length) {
                     for (const item of data.items) {
                         const skuIdToUse = await this.resolveOrCreateSkuForItem(item, createdBy, updatedBy, tx);
                         if (!skuIdToUse) continue;
                         const allocations = resolveGrnItemRackAllocations(item);
                         const lossAllocations = resolveGrnItemLossRackAllocations(item);
+                        const remaining = item.skuCode ? remainingBySkuCode.get(item.skuCode) : undefined;
                         grnItemRows.push({
                             grnId: grn.id,
                             skuId: skuIdToUse,
@@ -195,6 +203,8 @@ export class InboundServices {
                             rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                             expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                             lotNo: item.lotNo ?? null,
+                            remainingCtn: remaining?.remainingCtn != null ? String(remaining.remainingCtn) : null,
+                            remainingLoosePcs: remaining?.remainingLoosePcs != null ? String(remaining.remainingLoosePcs) : null,
                             createdBy,
                             updatedBy,
                         });

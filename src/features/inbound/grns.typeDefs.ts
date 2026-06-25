@@ -207,13 +207,15 @@ export const typeDefs = `#graphql
 
     """One outstanding line on the Remaining Quantity report."""
     type GrnRemainingLine {
+        grnId: ID!
         grnNo: String!
         poNo: String
         receivedAt: String
         skuCode: String!
         skuDescription: String!
-        remainingCtn: Float!
-        remainingLoosePcs: Float!
+        """Null when this line has no PO/ASN to compare against (manual GRN line)."""
+        remainingCtn: Float
+        remainingLoosePcs: Float
     }
 
     """

@@ -825,14 +825,23 @@ export async function generateDoPickingListPdf(
 // ── GRN Remaining Quantity Report ─────────────────────────────────────────────
 
 export type GrnRemainingReportRow = {
+  grnId: string;
   grnNo: string;
   poNo: string | null;
   receivedAt: Date | null;
   skuCode: string;
   skuDescription: string;
-  remainingCtn: number;
-  remainingLoosePcs: number;
+  /** Null/0 -> fully fulfilled (or no PO/ASN to compare against) -> rendered as "—". */
+  remainingCtn: number | null;
+  remainingLoosePcs: number | null;
 };
+
+function formatRemainingCell(ctn: number | null, pcs: number | null): string {
+  if (!ctn && !pcs) return '—';
+  const parts = [`${formatQtyNum(ctn ?? 0)} CTN`];
+  if (pcs) parts.push(`${formatQtyNum(pcs)} pcs`);
+  return parts.join(' + ');
+}
 
 export async function renderGrnRemainingReportHtml(
   rows: GrnRemainingReportRow[],
@@ -840,21 +849,48 @@ export async function renderGrnRemainingReportHtml(
   const template = await readFile(GRN_REMAINING_REPORT_HTML_PATH, 'utf-8');
   const generatedAt = new Date().toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' });
 
-  const tableRows = rows
-    .map((row, i) => {
-      const rowAlt = i % 2 !== 0 ? ' tr-alt' : '';
-      const received = row.receivedAt
-        ? new Date(row.receivedAt).toLocaleDateString('en-MY', { dateStyle: 'medium' })
+  // GRNs are the unit of "outstanding" — group rows by grnId (already ordered by the
+  // query) so every line of a qualifying GRN renders together under one header row.
+  const grnOrder: string[] = [];
+  const rowsByGrn = new Map<string, GrnRemainingReportRow[]>();
+  for (const row of rows) {
+    if (!rowsByGrn.has(row.grnId)) {
+      grnOrder.push(row.grnId);
+      rowsByGrn.set(row.grnId, []);
+    }
+    rowsByGrn.get(row.grnId)!.push(row);
+  }
+
+  let lineNo = 0;
+  const tableRows = grnOrder
+    .map((grnId) => {
+      const grnRows = rowsByGrn.get(grnId)!;
+      const first = grnRows[0];
+      const received = first.receivedAt
+        ? new Date(first.receivedAt).toLocaleDateString('en-MY', { dateStyle: 'medium' })
         : '—';
-      return `<tr class="tr-data${rowAlt}">
-        <td class="col-no">${i + 1}</td>
-        <td class="col-grn">${escapeHtml(row.grnNo)}</td>
-        <td class="col-po">${escapeHtml(row.poNo ?? '—')}</td>
-        <td class="col-sku">${escapeHtml(row.skuCode)}</td>
-        <td class="col-desc">${escapeHtml(row.skuDescription)}</td>
-        <td class="col-qty">${formatQtyNum(row.remainingCtn)} CTN${row.remainingLoosePcs > 0 ? ` + ${formatQtyNum(row.remainingLoosePcs)} pcs` : ''}</td>
-        <td class="col-date">${escapeHtml(received)}</td>
+      const headerRow = `<tr class="tr-group">
+        <td colspan="7">
+          <span class="group-grn">${escapeHtml(first.grnNo)}</span>
+          <span class="group-meta">PO ${escapeHtml(first.poNo ?? '—')} &middot; Received ${escapeHtml(received)}</span>
+        </td>
       </tr>`;
+      const itemRows = grnRows
+        .map((row, idx) => {
+          lineNo += 1;
+          const rowAlt = idx % 2 !== 0 ? ' tr-alt' : '';
+          return `<tr class="tr-data${rowAlt}">
+            <td class="col-no">${lineNo}</td>
+            <td></td>
+            <td></td>
+            <td class="col-sku">${escapeHtml(row.skuCode)}</td>
+            <td class="col-desc">${escapeHtml(row.skuDescription)}</td>
+            <td class="col-qty">${formatRemainingCell(row.remainingCtn, row.remainingLoosePcs)}</td>
+            <td></td>
+          </tr>`;
+        })
+        .join('\n');
+      return headerRow + '\n' + itemRows;
     })
     .join('\n');
 
@@ -872,13 +908,14 @@ export async function generateGrnRemainingReportPdf(
   const rawRows = await grnItemsRepository.getRemainingItems(organizationId);
 
   const rows: GrnRemainingReportRow[] = rawRows.map((r) => ({
+    grnId: r.grnId,
     grnNo: r.grnNo,
     poNo: r.poNo ?? null,
     receivedAt: r.receivedAt ?? null,
     skuCode: r.skuCode,
     skuDescription: r.skuDescription,
-    remainingCtn: Number(r.remainingCtn ?? 0),
-    remainingLoosePcs: Number(r.remainingLoosePcs ?? 0),
+    remainingCtn: r.remainingCtn != null ? Number(r.remainingCtn) : null,
+    remainingLoosePcs: r.remainingLoosePcs != null ? Number(r.remainingLoosePcs) : null,
   }));
 
   const html = await renderGrnRemainingReportHtml(rows);

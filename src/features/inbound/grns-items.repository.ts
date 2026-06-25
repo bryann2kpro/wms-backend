@@ -6,7 +6,7 @@
 
 import { db } from '@/db';
 import { GrnItemsTable, GrnsTable } from './grns.model';
-import { eq, and, or, gt, sql, desc } from 'drizzle-orm';
+import { eq, and, or, gt, sql, desc, asc, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import type { DbTransaction } from '@/types/db-transaction';
 import { SkuTable } from '@/features/master-data/sku.model';
@@ -51,14 +51,30 @@ export class GrnItemsRepositoryClass {
     }
 
     /**
-     * GRN lines that still owe qty against their PO/ASN — the snapshot taken at submit
-     * time (remainingCtn/remainingLoosePcs), joined with GRN + SKU display fields for the
-     * "Remaining quantity" report.
+     * Full item context for every GRN that has at least one line still owing qty against
+     * its PO/ASN — i.e. GRNs are the unit of "is this outstanding", but once a GRN
+     * qualifies, ALL of its lines come back (fulfilled lines included) so the report can
+     * show the whole GRN together instead of isolated, context-less rows.
      */
     async getRemainingItems(organizationId: string) {
         try {
+            const qualifyingGrnIds = db
+                .select({ grnId: GrnItemsTable.grnId })
+                .from(GrnItemsTable)
+                .innerJoin(GrnsTable, eq(GrnItemsTable.grnId, GrnsTable.id))
+                .where(
+                    and(
+                        eq(GrnsTable.organizationId, organizationId),
+                        or(
+                            gt(sql`${GrnItemsTable.remainingCtn}::numeric`, 0),
+                            gt(sql`${GrnItemsTable.remainingLoosePcs}::numeric`, 0),
+                        ),
+                    ),
+                );
+
             const rows = await db
                 .select({
+                    grnId: GrnsTable.id,
                     grnNo: GrnsTable.grnNo,
                     poNo: GrnsTable.poNo,
                     receivedAt: GrnsTable.receivedAt,
@@ -70,16 +86,8 @@ export class GrnItemsRepositoryClass {
                 .from(GrnItemsTable)
                 .innerJoin(GrnsTable, eq(GrnItemsTable.grnId, GrnsTable.id))
                 .innerJoin(SkuTable, eq(GrnItemsTable.skuId, SkuTable.skuId))
-                .where(
-                    and(
-                        eq(GrnsTable.organizationId, organizationId),
-                        or(
-                            gt(sql`${GrnItemsTable.remainingCtn}::numeric`, 0),
-                            gt(sql`${GrnItemsTable.remainingLoosePcs}::numeric`, 0),
-                        ),
-                    ),
-                )
-                .orderBy(desc(GrnsTable.receivedAt));
+                .where(inArray(GrnItemsTable.grnId, qualifyingGrnIds))
+                .orderBy(desc(GrnsTable.receivedAt), asc(SkuTable.skuCode));
             logger.info('✅ [GrnItemsRepository.getRemainingItems] Remaining items fetched successfully');
             return rows;
         } catch (error) {

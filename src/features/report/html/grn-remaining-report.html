@@ -179,6 +179,28 @@
         .tr-data:last-of-type td { border-bottom: none; }
         .tr-data.tr-alt td { background: var(--row-alt); }
 
+        .tr-group td {
+            background: var(--row-alt);
+            border-bottom: 1px solid var(--border-strong);
+            border-top: 2px solid var(--border-strong);
+            padding: 0.45rem 0.75rem;
+        }
+
+        .tr-group:first-child td { border-top: none; }
+
+        .group-grn {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .group-meta {
+            margin-left: 0.75rem;
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+        }
+
         .col-no {
             font-family: 'IBM Plex Mono', monospace;
             font-size: 0.72rem;
