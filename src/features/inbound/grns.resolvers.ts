@@ -504,13 +504,16 @@ export const resolvers = {
         grnRemainingReport: async (_: unknown, __: unknown, context: GraphQLContext) => {
             const rows = await grnItemsRepository.getRemainingItems(context.organizationId ?? '');
             return rows.map((row) => ({
+                grnId: row.grnId,
                 grnNo: row.grnNo,
                 poNo: row.poNo ?? null,
                 receivedAt: row.receivedAt?.toISOString?.() ?? row.receivedAt ?? null,
+                supplierName: row.supplierName ?? null,
+                endUserName: row.endUserName ?? null,
                 skuCode: row.skuCode,
                 skuDescription: row.skuDescription,
-                remainingCtn: Number(row.remainingCtn ?? 0),
-                remainingLoosePcs: Number(row.remainingLoosePcs ?? 0),
+                remainingCtn: row.remainingCtn != null ? Number(row.remainingCtn) : null,
+                remainingLoosePcs: row.remainingLoosePcs != null ? Number(row.remainingLoosePcs) : null,
             }));
         },
         grns: async (_: unknown, args: {

@@ -825,14 +825,25 @@ export async function generateDoPickingListPdf(
 // ── GRN Remaining Quantity Report ─────────────────────────────────────────────
 
 export type GrnRemainingReportRow = {
+  grnId: string;
   grnNo: string;
   poNo: string | null;
   receivedAt: Date | null;
+  supplierName: string | null;
+  endUserName: string | null;
   skuCode: string;
   skuDescription: string;
-  remainingCtn: number;
-  remainingLoosePcs: number;
+  /** Null/0 -> fully fulfilled (or no PO/ASN to compare against) -> rendered as "—". */
+  remainingCtn: number | null;
+  remainingLoosePcs: number | null;
 };
+
+function formatRemainingCell(ctn: number | null, pcs: number | null): string {
+  if (!ctn && !pcs) return '—';
+  const parts = [`${formatQtyNum(ctn ?? 0)} CTN`];
+  if (pcs) parts.push(`${formatQtyNum(pcs)} pcs`);
+  return parts.join(' + ');
+}
 
 export async function renderGrnRemainingReportHtml(
   rows: GrnRemainingReportRow[],
@@ -840,28 +851,67 @@ export async function renderGrnRemainingReportHtml(
   const template = await readFile(GRN_REMAINING_REPORT_HTML_PATH, 'utf-8');
   const generatedAt = new Date().toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' });
 
-  const tableRows = rows
-    .map((row, i) => {
-      const rowAlt = i % 2 !== 0 ? ' tr-alt' : '';
-      const received = row.receivedAt
-        ? new Date(row.receivedAt).toLocaleDateString('en-MY', { dateStyle: 'medium' })
+  // GRNs are the unit of "outstanding" — group rows by grnId (already ordered by the
+  // query) so every line of a qualifying GRN renders together under one header row.
+  const grnOrder: string[] = [];
+  const rowsByGrn = new Map<string, GrnRemainingReportRow[]>();
+  for (const row of rows) {
+    if (!rowsByGrn.has(row.grnId)) {
+      grnOrder.push(row.grnId);
+      rowsByGrn.set(row.grnId, []);
+    }
+    rowsByGrn.get(row.grnId)!.push(row);
+  }
+
+  const cards = grnOrder
+    .map((grnId) => {
+      const grnRows = rowsByGrn.get(grnId)!;
+      const first = grnRows[0];
+      const received = first.receivedAt
+        ? new Date(first.receivedAt).toLocaleDateString('en-MY', { dateStyle: 'medium' })
         : '—';
-      return `<tr class="tr-data${rowAlt}">
-        <td class="col-no">${i + 1}</td>
-        <td class="col-grn">${escapeHtml(row.grnNo)}</td>
-        <td class="col-po">${escapeHtml(row.poNo ?? '—')}</td>
-        <td class="col-sku">${escapeHtml(row.skuCode)}</td>
-        <td class="col-desc">${escapeHtml(row.skuDescription)}</td>
-        <td class="col-qty">${formatQtyNum(row.remainingCtn)} CTN${row.remainingLoosePcs > 0 ? ` + ${formatQtyNum(row.remainingLoosePcs)} pcs` : ''}</td>
-        <td class="col-date">${escapeHtml(received)}</td>
-      </tr>`;
+      const itemRows = grnRows
+        .map((row, idx) => {
+          const rowAlt = idx % 2 !== 0 ? ' tr-alt' : '';
+          return `<tr class="tr-data${rowAlt}">
+            <td class="col-no">${idx + 1}</td>
+            <td class="col-sku">${escapeHtml(row.skuCode)}</td>
+            <td class="col-desc">${escapeHtml(row.skuDescription)}</td>
+            <td class="col-qty">${formatRemainingCell(row.remainingCtn, row.remainingLoosePcs)}</td>
+          </tr>`;
+        })
+        .join('\n');
+      return `<div class="grn-card">
+        <div class="grn-info">
+          <div class="info-row"><span class="info-label">GRN No</span><span class="info-value">${escapeHtml(first.grnNo)}</span></div>
+          <div class="info-row"><span class="info-label">PO No</span><span class="info-value">${escapeHtml(first.poNo ?? '—')}</span></div>
+          <div class="info-row"><span class="info-label">Supplier</span><span class="info-value">${escapeHtml(first.supplierName ?? '—')}</span></div>
+          <div class="info-row"><span class="info-label">End User</span><span class="info-value">${escapeHtml(first.endUserName ?? '—')}</span></div>
+          <div class="info-row"><span class="info-label">Received</span><span class="info-value">${escapeHtml(received)}</span></div>
+        </div>
+        <div class="grn-items">
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align:center; width:8%">#</th>
+                <th style="text-align:left; width:20%">SKU Code</th>
+                <th style="text-align:left; width:52%">Description</th>
+                <th style="text-align:center; width:20%">Remaining</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemRows}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
     })
     .join('\n');
 
   return template
     .replace(/\{\{generatedAt\}\}/g, generatedAt)
     .replace(/\{\{totalLines\}\}/g, String(rows.length))
-    .replace(/\{\{tableRows\}\}/, tableRows || '<tr class="tr-data"><td colspan="7" style="text-align:center; color:var(--text-muted);">No outstanding lines</td></tr>');
+    .replace(/\{\{cards\}\}/, cards || '<div class="grn-card"><div class="grn-items" style="padding:1.5rem; text-align:center; color:var(--text-muted);">No outstanding lines</div></div>');
 }
 
 /** Printable PDF of every GRN line still owed against its PO/ASN (remainingCtn/remainingLoosePcs snapshot). */
@@ -872,20 +922,23 @@ export async function generateGrnRemainingReportPdf(
   const rawRows = await grnItemsRepository.getRemainingItems(organizationId);
 
   const rows: GrnRemainingReportRow[] = rawRows.map((r) => ({
+    grnId: r.grnId,
     grnNo: r.grnNo,
     poNo: r.poNo ?? null,
     receivedAt: r.receivedAt ?? null,
+    supplierName: r.supplierName ?? null,
+    endUserName: r.endUserName ?? null,
     skuCode: r.skuCode,
     skuDescription: r.skuDescription,
-    remainingCtn: Number(r.remainingCtn ?? 0),
-    remainingLoosePcs: Number(r.remainingLoosePcs ?? 0),
+    remainingCtn: r.remainingCtn != null ? Number(r.remainingCtn) : null,
+    remainingLoosePcs: r.remainingLoosePcs != null ? Number(r.remainingLoosePcs) : null,
   }));
 
   const html = await renderGrnRemainingReportHtml(rows);
   // Landscape — 7 columns need the extra width A4 portrait can't give after margins.
   const pdfBuffer = await htmlToPdf(html, { landscape: true });
   const dateStr = new Date().toISOString().split('T')[0];
-  return { pdfBase64: pdfBuffer.toString('base64'), filename: `GRN_Remaining_Report_${dateStr}.pdf` };
+  return { pdfBase64: pdfBuffer.toString('base64'), filename: `GRN_Unfulfillment_Report_${dateStr}.pdf` };
 }
 
 // ── Stock Balance Report ──────────────────────────────────────────────────────
