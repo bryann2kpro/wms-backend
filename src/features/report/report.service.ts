@@ -922,7 +922,7 @@ export async function generateGrnRemainingReportPdf(
   // Landscape — 7 columns need the extra width A4 portrait can't give after margins.
   const pdfBuffer = await htmlToPdf(html, { landscape: true });
   const dateStr = new Date().toISOString().split('T')[0];
-  return { pdfBase64: pdfBuffer.toString('base64'), filename: `GRN_Remaining_Report_${dateStr}.pdf` };
+  return { pdfBase64: pdfBuffer.toString('base64'), filename: `GRN_Unfulfillment_Report_${dateStr}.pdf` };
 }
 
 // ── Stock Balance Report ──────────────────────────────────────────────────────
