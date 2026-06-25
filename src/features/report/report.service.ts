@@ -829,6 +829,8 @@ export type GrnRemainingReportRow = {
   grnNo: string;
   poNo: string | null;
   receivedAt: Date | null;
+  supplierName: string | null;
+  endUserName: string | null;
   skuCode: string;
   skuDescription: string;
   /** Null/0 -> fully fulfilled (or no PO/ASN to compare against) -> rendered as "—". */
@@ -861,43 +863,55 @@ export async function renderGrnRemainingReportHtml(
     rowsByGrn.get(row.grnId)!.push(row);
   }
 
-  let lineNo = 0;
-  const tableRows = grnOrder
+  const cards = grnOrder
     .map((grnId) => {
       const grnRows = rowsByGrn.get(grnId)!;
       const first = grnRows[0];
       const received = first.receivedAt
         ? new Date(first.receivedAt).toLocaleDateString('en-MY', { dateStyle: 'medium' })
         : '—';
-      const headerRow = `<tr class="tr-group">
-        <td colspan="7">
-          <span class="group-grn">${escapeHtml(first.grnNo)}</span>
-          <span class="group-meta">PO ${escapeHtml(first.poNo ?? '—')} &middot; Received ${escapeHtml(received)}</span>
-        </td>
-      </tr>`;
       const itemRows = grnRows
         .map((row, idx) => {
-          lineNo += 1;
           const rowAlt = idx % 2 !== 0 ? ' tr-alt' : '';
           return `<tr class="tr-data${rowAlt}">
-            <td class="col-no">${lineNo}</td>
-            <td></td>
-            <td></td>
+            <td class="col-no">${idx + 1}</td>
             <td class="col-sku">${escapeHtml(row.skuCode)}</td>
             <td class="col-desc">${escapeHtml(row.skuDescription)}</td>
             <td class="col-qty">${formatRemainingCell(row.remainingCtn, row.remainingLoosePcs)}</td>
-            <td></td>
           </tr>`;
         })
         .join('\n');
-      return headerRow + '\n' + itemRows;
+      return `<div class="grn-card">
+        <div class="grn-info">
+          <div class="info-row"><span class="info-label">GRN No</span><span class="info-value">${escapeHtml(first.grnNo)}</span></div>
+          <div class="info-row"><span class="info-label">PO No</span><span class="info-value">${escapeHtml(first.poNo ?? '—')}</span></div>
+          <div class="info-row"><span class="info-label">Supplier</span><span class="info-value">${escapeHtml(first.supplierName ?? '—')}</span></div>
+          <div class="info-row"><span class="info-label">End User</span><span class="info-value">${escapeHtml(first.endUserName ?? '—')}</span></div>
+          <div class="info-row"><span class="info-label">Received</span><span class="info-value">${escapeHtml(received)}</span></div>
+        </div>
+        <div class="grn-items">
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align:center; width:8%">#</th>
+                <th style="text-align:left; width:20%">SKU Code</th>
+                <th style="text-align:left; width:52%">Description</th>
+                <th style="text-align:center; width:20%">Remaining</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemRows}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
     })
     .join('\n');
 
   return template
     .replace(/\{\{generatedAt\}\}/g, generatedAt)
     .replace(/\{\{totalLines\}\}/g, String(rows.length))
-    .replace(/\{\{tableRows\}\}/, tableRows || '<tr class="tr-data"><td colspan="7" style="text-align:center; color:var(--text-muted);">No outstanding lines</td></tr>');
+    .replace(/\{\{cards\}\}/, cards || '<div class="grn-card"><div class="grn-items" style="padding:1.5rem; text-align:center; color:var(--text-muted);">No outstanding lines</div></div>');
 }
 
 /** Printable PDF of every GRN line still owed against its PO/ASN (remainingCtn/remainingLoosePcs snapshot). */
@@ -912,6 +926,8 @@ export async function generateGrnRemainingReportPdf(
     grnNo: r.grnNo,
     poNo: r.poNo ?? null,
     receivedAt: r.receivedAt ?? null,
+    supplierName: r.supplierName ?? null,
+    endUserName: r.endUserName ?? null,
     skuCode: r.skuCode,
     skuDescription: r.skuDescription,
     remainingCtn: r.remainingCtn != null ? Number(r.remainingCtn) : null,

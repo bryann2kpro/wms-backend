@@ -10,6 +10,8 @@ import { eq, and, or, gt, sql, desc, asc, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import type { DbTransaction } from '@/types/db-transaction';
 import { SkuTable } from '@/features/master-data/sku.model';
+import { SuppliersTable } from '@/features/master-data/suppliers.model';
+import { EndUserTable } from '@/features/master-data/enduser.model';
 
 export type GrnItemsType = typeof GrnItemsTable.$inferSelect;
 export type GrnItemsInsertType = typeof GrnItemsTable.$inferInsert;
@@ -78,6 +80,8 @@ export class GrnItemsRepositoryClass {
                     grnNo: GrnsTable.grnNo,
                     poNo: GrnsTable.poNo,
                     receivedAt: GrnsTable.receivedAt,
+                    supplierName: SuppliersTable.supplierName,
+                    endUserName: EndUserTable.userName,
                     skuCode: SkuTable.skuCode,
                     skuDescription: SkuTable.skuDescription,
                     remainingCtn: GrnItemsTable.remainingCtn,
@@ -86,6 +90,8 @@ export class GrnItemsRepositoryClass {
                 .from(GrnItemsTable)
                 .innerJoin(GrnsTable, eq(GrnItemsTable.grnId, GrnsTable.id))
                 .innerJoin(SkuTable, eq(GrnItemsTable.skuId, SkuTable.skuId))
+                .leftJoin(SuppliersTable, eq(GrnsTable.supplierId, SuppliersTable.supplierId))
+                .leftJoin(EndUserTable, eq(GrnsTable.endUserId, EndUserTable.endUserId))
                 .where(inArray(GrnItemsTable.grnId, qualifyingGrnIds))
                 .orderBy(desc(GrnsTable.receivedAt), asc(SkuTable.skuCode));
             logger.info('✅ [GrnItemsRepository.getRemainingItems] Remaining items fetched successfully');

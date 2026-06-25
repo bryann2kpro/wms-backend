@@ -508,6 +508,8 @@ export const resolvers = {
                 grnNo: row.grnNo,
                 poNo: row.poNo ?? null,
                 receivedAt: row.receivedAt?.toISOString?.() ?? row.receivedAt ?? null,
+                supplierName: row.supplierName ?? null,
+                endUserName: row.endUserName ?? null,
                 skuCode: row.skuCode,
                 skuDescription: row.skuDescription,
                 remainingCtn: row.remainingCtn != null ? Number(row.remainingCtn) : null,

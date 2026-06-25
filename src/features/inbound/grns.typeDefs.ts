@@ -211,6 +211,8 @@ export const typeDefs = `#graphql
         grnNo: String!
         poNo: String
         receivedAt: String
+        supplierName: String
+        endUserName: String
         skuCode: String!
         skuDescription: String!
         """Null when this line has no PO/ASN to compare against (manual GRN line)."""
