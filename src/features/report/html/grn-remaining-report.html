@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GRN Unfulfillment Report</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:            #F3F2ED;
+            --surface:       #FFFFFF;
+            --border:        #D4D1C9;
+            --border-strong: #8C8880;
+            --text-primary:  #1C1917;
+            --text-secondary:#57534E;
+            --text-muted:    #A8A29E;
+            --th-bg:         #1C1917;
+            --th-text:       #F3F2ED;
+            --row-alt:       #ECEAE3;
+            --accent:        #92400E;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            font-family: 'IBM Plex Sans', system-ui, sans-serif;
+            color: var(--text-primary);
+            padding: 2.5rem 2rem;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .report-wrap {
+            max-width: 1150px;
+            margin: 0 auto;
+        }
+
+        .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 2rem;
+            padding-bottom: 1.25rem;
+            border-bottom: 2px solid var(--text-primary);
+            gap: 1.5rem 2rem;
+        }
+
+        .brand-wrap {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .doc-header .logo {
+            width: 56px;
+            height: auto;
+            object-fit: contain;
+            margin-top: 0.1rem;
+            flex: 0 0 auto;
+        }
+
+        .brand-text { min-width: 0; }
+
+        .brand {
+            font-weight: 700;
+            font-size: 0.925rem;
+            letter-spacing: 0.02em;
+            line-height: 1.25;
+            color: var(--text-primary);
+        }
+
+        .reg-no {
+            font-weight: 500;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        .brand-sub {
+            margin-top: 0.25rem;
+            font-size: 0.65rem;
+            line-height: 1.45;
+            color: var(--text-muted);
+        }
+
+        .doc-title-block {
+            text-align: right;
+            flex-shrink: 0;
+            min-width: 11rem;
+        }
+
+        .doc-eyebrow {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.575rem;
+            font-weight: 500;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.3rem;
+        }
+
+        .doc-heading {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.1;
+            color: var(--text-primary);
+        }
+
+        .doc-meta {
+            margin-top: 0.55rem;
+            text-align: right;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            line-height: 1.75;
+        }
+
+        .doc-meta .label {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+        }
+
+        .doc-meta strong {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 500;
+            font-size: 0.72rem;
+            color: var(--text-primary);
+        }
+
+        .doc-meta .meta-row {
+            display: flex;
+            justify-content: flex-end;
+            align-items: baseline;
+            gap: 0.4rem;
+        }
+
+        .cards-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .grn-card {
+            display: flex;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            page-break-inside: avoid;
+        }
+
+        .grn-info {
+            flex: 0 0 230px;
+            background: var(--row-alt);
+            border-right: 1px solid var(--border);
+            padding: 1rem;
+        }
+
+        .grn-info .info-row + .info-row { margin-top: 0.6rem; }
+
+        .grn-info .info-label {
+            display: block;
+            font-size: 0.58rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.15rem;
+        }
+
+        .grn-info .info-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            word-break: break-word;
+        }
+
+        .grn-items {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        thead th {
+            background: var(--th-bg);
+            color: var(--th-text);
+            padding: 0.6rem 0.75rem;
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 0.6rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            border: none;
+        }
+
+        thead th + th {
+            border-left: 1px solid rgba(255, 255, 255, 0.07);
+        }
+
+        .tr-data td {
+            padding: 0.55rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            font-size: 0.8rem;
+            vertical-align: top;
+        }
+
+        .tr-data:last-of-type td { border-bottom: none; }
+        .tr-data.tr-alt td { background: var(--row-alt); }
+
+        .col-no {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .col-sku {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .col-desc {
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+        }
+
+        .col-qty {
+            text-align: center;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .doc-footer {
+            margin-top: 2rem;
+        }
+
+        .footer-summary {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        @media print {
+            @page { size: A4 landscape; margin: 12mm 14mm; }
+
+            :root {
+                --bg:            #FFFFFF;
+                --surface:       #FFFFFF;
+                --border:        #CCCCCC;
+                --border-strong: #888888;
+                --text-primary:  #000000;
+                --text-secondary:#333333;
+                --text-muted:    #777777;
+                --th-bg:         #000000;
+                --th-text:       #FFFFFF;
+                --row-alt:       #F2F2F2;
+                --accent:        #7C3513;
+            }
+
+            body {
+                background: white;
+                padding: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            tr { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-wrap">
+        <header class="doc-header">
+            <div class="brand-wrap">
+                <img class="logo" alt="SME logo" src="https://smee-bucket-348170387599-ap-southeast-5-an.s3.ap-southeast-5.amazonaws.com/sme-edaran/sme-logo.jpg">
+                <div class="brand-text">
+                    <div class="brand">SME EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
+                    <div class="brand-sub">
+                        NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
+                        SUNGAI BULOH, 47000 SELANGOR.<br/>
+                        TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
+                    </div>
+                </div>
+            </div>
+            <div class="doc-title-block">
+                <div class="doc-eyebrow">Inbound &middot; Warehouse</div>
+                <h1 class="doc-heading">Unfulfillment Report</h1>
+                <div class="doc-meta">
+                    <div class="meta-row">
+                        <span class="label">Generated&nbsp;</span>
+                        <strong>{{generatedAt}}</strong>
+                    </div>
+                    <div class="meta-row">
+                        <span class="label">Lines outstanding&nbsp;</span>
+                        <strong>{{totalLines}}</strong>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="cards-wrap">
+            {{cards}}
+        </div>
+
+        <div class="doc-footer">
+            <div class="footer-summary">Total outstanding lines: {{totalLines}}</div>
+        </div>
+    </div>
+</body>
+</html>

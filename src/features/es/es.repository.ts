@@ -55,10 +55,11 @@ export class EsRepositoryClass {
    * Find an existing advance notice by tranid.
    * Used for duplicate detection before saving.
    */
-  async findByTranid(tranid: string): Promise<EsAdvanceNoticeType | null> {
+  async findByTranid(tranid: string, tx?: DbTransaction): Promise<EsAdvanceNoticeType | null> {
     try {
       logger.info(`ℹ️ [EsRepository.findByTranid] Checking for tranid: ${tranid}`);
-      const [record] = await db
+      const query = tx ?? db;
+      const [record] = await query
         .select()
         .from(EsAdvanceNoticesTable)
         .where(eq(EsAdvanceNoticesTable.tranid, tranid))

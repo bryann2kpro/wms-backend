@@ -79,6 +79,13 @@ export const typeDefs = `#graphql
         expiryDate: String
         """Lot number assigned by supplier/manufacturer to identify this production batch."""
         lotNo: String
+        """
+        Snapshot of cartons still owed against the linked PO/ASN, taken when this GRN was
+        submitted for approval. Null when not linked to a PO/ASN line.
+        """
+        remainingCtn: Float
+        """Loose pieces still owed, alongside remainingCtn (see m_skus.loose_quantity)."""
+        remainingLoosePcs: Float
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -194,6 +201,23 @@ export const typeDefs = `#graphql
 
     extend type Query {
         grns(filter: GrnFilterInput, pageSize: Int, pageNumber: Int): GrnPaginatedResponse
+        """GRN lines still owed against their PO/ASN (remainingCtn/remainingLoosePcs snapshot)."""
+        grnRemainingReport: [GrnRemainingLine!]!
+    }
+
+    """One outstanding line on the Remaining Quantity report."""
+    type GrnRemainingLine {
+        grnId: ID!
+        grnNo: String!
+        poNo: String
+        receivedAt: String
+        supplierName: String
+        endUserName: String
+        skuCode: String!
+        skuDescription: String!
+        """Null when this line has no PO/ASN to compare against (manual GRN line)."""
+        remainingCtn: Float
+        remainingLoosePcs: Float
     }
 
     """
