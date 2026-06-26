@@ -513,7 +513,7 @@ export class InboundServices {
         const poNo = data.poNo?.trim();
         if (!poNo) return result; // manual GRN — nothing to compute against
 
-        const asn = await this.esAdvanceNoticeRepository.findByTranid(poNo);
+        const asn = await this.esAdvanceNoticeRepository.findByTranid(poNo, tx);
         if (!asn) return result; // no ASN for this PO — not applicable
 
         const payload = asn.payload as { lines?: Array<{ itemid?: string; quantity?: number | string }> } | undefined;
