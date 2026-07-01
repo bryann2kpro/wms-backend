@@ -20,7 +20,7 @@ concurrency:
 jobs:
   docker:
     if: ${{ github.event_name == 'push' || github.event.pull_request.merged == true }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       PROJECT_NAME: smee-backend
