@@ -248,9 +248,10 @@ export class PurchaseOrdersRepositoryClass {
           updatedAt: PurchaseOrderItemsTable.updatedAt,
           createdBy: PurchaseOrderItemsTable.createdBy,
           updatedBy: PurchaseOrderItemsTable.updatedBy,
-          skuDescription: sql<string | null>`(SELECT sku_description FROM ${SkuTable} WHERE sku_code = ${PurchaseOrderItemsTable.skuCode} LIMIT 1)`,
+          skuDescription: SkuTable.skuDescription,
         })
         .from(PurchaseOrderItemsTable)
+        .leftJoin(SkuTable, eq(PurchaseOrderItemsTable.skuCode, SkuTable.skuCode))
         .where(whereCondition.length > 0 ? and(...whereCondition) : undefined);
 
       const pageSize = paginationParams.pageSize ?? 10;
