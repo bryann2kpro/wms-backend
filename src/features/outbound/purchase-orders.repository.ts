@@ -248,8 +248,6 @@ export class PurchaseOrdersRepositoryClass {
           updatedAt: PurchaseOrderItemsTable.updatedAt,
           createdBy: PurchaseOrderItemsTable.createdBy,
           updatedBy: PurchaseOrderItemsTable.updatedBy,
-          // Correlated subquery to get one description per skuCode, avoiding row multiplication
-          // that would occur if SkuTable has multiple records with the same skuCode.
           skuDescription: sql<string | null>`(SELECT sku_description FROM ${SkuTable} WHERE sku_code = ${PurchaseOrderItemsTable.skuCode} LIMIT 1)`,
         })
         .from(PurchaseOrderItemsTable)
