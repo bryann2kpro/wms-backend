@@ -1142,13 +1142,12 @@ export class OutboundServices {
                         ? pickFaceStrategy.storageBinId
                         : null;
 
-                    // Get GRN batches for this SKU with available qty
+                    // Get GRN batches for this SKU (for grnItemId FK and available qty tracking)
                     const grnBatches = await this.deliveryOrderRepository.getGrnItemsWithAvailableQty(
                         doItem.skuId,
                         tx
                     );
 
-                    // Compute available qty per batch
                     const available = grnBatches
                         .map((b) => ({
                             ...b,
@@ -1165,8 +1164,8 @@ export class OutboundServices {
                     const flaggedCount = available.filter((b) => b.priorityFlag).length;
                     const useFlag = flaggedCount > 0 && flaggedCount < available.length;
 
-                    // Sort: priority group first, then by strategy within each group
-                    const sorted = [...available].sort((a, b) => {
+                    // Sort GRN batches by priority + strategy (for grnItemId assignment order)
+                    const sortedGrn = [...available].sort((a, b) => {
                         if (useFlag) {
                             if (a.priorityFlag && !b.priorityFlag) return -1;
                             if (!a.priorityFlag && b.priorityFlag) return 1;
@@ -1184,18 +1183,85 @@ export class OutboundServices {
                         }
                     });
 
-                    // Greedy allocation
+                    // Get current stock_quant bins for rack location (sorted by strategy)
+                    const stockQuantBins = await this.deliveryOrderRepository.getStockQuantBinsForSku(
+                        doItem.skuId,
+                        tx
+                    );
+
+                    const sortedBins = [...stockQuantBins].sort((a, b) => {
+                        switch (strategy) {
+                            case 'LIFO':
+                                return b.createdAt.getTime() - a.createdAt.getTime();
+                            case 'FEFO': {
+                                const aExp = a.expiryDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                                const bExp = b.expiryDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                                return aExp - bExp;
+                            }
+                            default: // FIFO
+                                return a.createdAt.getTime() - b.createdAt.getTime();
+                        }
+                    });
+
+                    // Greedy allocate across stock_quant bins for rack assignment.
+                    // Consume GRN batches in parallel to satisfy the grnItemId FK.
                     let remaining = qtyRequired;
-                    for (const batch of sorted) {
-                        if (remaining <= 0) break;
-                        const take = Math.min(batch.available, remaining);
-                        allInserts.push({
-                            doItemId: doItem.id,
-                            grnItemId: batch.id,
-                            rackId: pickFaceRackId ?? batch.rackId ?? undefined,
-                            qtyAllocated: String(take),
-                        });
-                        remaining -= take;
+                    let grnIdx = 0;
+                    const grnUsed = sortedGrn.map(() => 0);
+
+                    if (pickFaceRackId) {
+                        // FIXED_BIN override: single allocation with the fixed rack
+                        const totalGrnAvailable = sortedGrn.reduce((s, b) => s + b.available, 0);
+                        const take = Math.min(totalGrnAvailable, remaining);
+                        // Consume GRN batches for FK
+                        let toTake = take;
+                        for (let i = 0; i < sortedGrn.length && toTake > 0; i++) {
+                            const fromGrn = Math.min(sortedGrn[i].available, toTake);
+                            if (fromGrn > 0) {
+                                allInserts.push({
+                                    doItemId: doItem.id,
+                                    grnItemId: sortedGrn[i].id,
+                                    rackId: pickFaceRackId,
+                                    qtyAllocated: String(fromGrn),
+                                });
+                                toTake -= fromGrn;
+                            }
+                        }
+                    } else if (sortedBins.length > 0) {
+                        // Allocate bin-by-bin from stock_quant, assign grnItemId from GRN pool
+                        for (const bin of sortedBins) {
+                            if (remaining <= 0) break;
+                            let fromBin = Math.min(bin.quantity, remaining);
+                            // Consume GRN batches to cover this bin's allocation
+                            while (fromBin > 0 && grnIdx < sortedGrn.length) {
+                                const grnAvail = sortedGrn[grnIdx].available - grnUsed[grnIdx];
+                                if (grnAvail <= 0) { grnIdx++; continue; }
+                                const take = Math.min(grnAvail, fromBin);
+                                allInserts.push({
+                                    doItemId: doItem.id,
+                                    grnItemId: sortedGrn[grnIdx].id,
+                                    rackId: bin.rackId,
+                                    qtyAllocated: String(take),
+                                });
+                                grnUsed[grnIdx] += take;
+                                fromBin -= take;
+                                remaining -= take;
+                                if (grnUsed[grnIdx] >= sortedGrn[grnIdx].available) grnIdx++;
+                            }
+                        }
+                    } else {
+                        // No stock_quant bins — fall back to GRN rack
+                        for (const batch of sortedGrn) {
+                            if (remaining <= 0) break;
+                            const take = Math.min(batch.available, remaining);
+                            allInserts.push({
+                                doItemId: doItem.id,
+                                grnItemId: batch.id,
+                                rackId: batch.rackId ?? undefined,
+                                qtyAllocated: String(take),
+                            });
+                            remaining -= take;
+                        }
                     }
                 }
 
