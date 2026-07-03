@@ -83,6 +83,8 @@ export const typeDefs = `#graphql
         reservedQty: String
         "Pick list allocations — which GRN batches to pick from and how much (populated after allocatePickList)"
         allocations: [DoItemAllocation!]!
+        "Current rack locations from stock_quant — available immediately without allocatePickList"
+        stockQuantRacks: [String!]!
     }
 
     """
