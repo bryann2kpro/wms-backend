@@ -17,6 +17,7 @@ import { InventoryBalancesTable } from '../inventory/inventory-balance/inventory
 import { SkuTable } from '../master-data/sku.model';
 import { StockUnitTable } from '../master-data/stock-unit.model';
 import { RacksTable } from '../master-data/racks.model';
+import { StockQuantTable } from '../stock-quant/stock-quant.model';
 import { InvoicesTable, InvoiceItemsTable } from '../invoicing/invoices.model';
 import { PurchaseOrdersTable } from '../outbound/purchase-orders.model';
 import { OutletsTable } from '../master-data/outlets.model';
@@ -801,11 +802,11 @@ export async function getInventoryBalanceReportData(
 ): Promise<InventoryBalanceReportRow[]> {
   const rows = await db
     .select({
+      skuId: SkuTable.skuId,
       skuCode: SkuTable.skuCode,
       skuDescription: SkuTable.skuDescription,
       unitCode: StockUnitTable.unitCode,
       onHandQty: sql<number>`${InventoryBalancesTable.onHandQty}::float8`,
-      skuBatches: SkuTable.skuBatches,
     })
     .from(InventoryBalancesTable)
     .innerJoin(SkuTable, eq(InventoryBalancesTable.skuId, SkuTable.skuId))
@@ -823,39 +824,32 @@ export async function getInventoryBalanceReportData(
     }));
   }
 
-  // WITH_RACK: collect all rackIds, batch-fetch, build label map
-  const allRackIds = Array.from(
-    new Set(
-      rows.flatMap((r) =>
-        (r.skuBatches ?? []).flatMap((b) => b.rackIds ?? []),
-      ),
-    ),
-  );
+  // WITH_RACK: query stock_quant joined with m_racks for bin locations
+  const skuIds = rows.map((r) => r.skuId).filter((id): id is string => id !== null);
+  const racksBySkuId = new Map<string, string[]>();
 
-  const rackLabelMap = new Map<string, string>();
-  if (allRackIds.length > 0) {
-    const racks = await db
+  if (skuIds.length > 0) {
+    const quantRows = await db
       .select({
-        rackId: RacksTable.rackId,
+        skuId: StockQuantTable.skuId,
         rackRow: RacksTable.rackRow,
-        rackColumn: RacksTable.rackColumn,
         rackLevel: RacksTable.rackLevel,
+        rackColumn: RacksTable.rackColumn,
       })
-      .from(RacksTable)
-      .where(inArray(RacksTable.rackId, allRackIds));
+      .from(StockQuantTable)
+      .innerJoin(RacksTable, eq(StockQuantTable.rackId, RacksTable.rackId))
+      .where(inArray(StockQuantTable.skuId, skuIds));
 
-    for (const rack of racks) {
-      rackLabelMap.set(rack.rackId, `${rack.rackRow}-${rack.rackColumn}-${rack.rackLevel}`);
+    for (const qr of quantRows) {
+      const label = `${qr.rackRow}-${qr.rackLevel}-${qr.rackColumn}`;
+      const existing = racksBySkuId.get(qr.skuId) ?? [];
+      existing.push(label);
+      racksBySkuId.set(qr.skuId, existing);
     }
   }
 
-  return rows.map(({ skuCode, skuDescription, unitCode, onHandQty, skuBatches }) => {
-    const rackIds = Array.from(
-      new Set((skuBatches ?? []).flatMap((b) => b.rackIds ?? [])),
-    );
-    const rackLocations = rackIds
-      .map((id) => rackLabelMap.get(id))
-      .filter((label): label is string => label !== undefined);
+  return rows.map(({ skuCode, skuDescription, unitCode, onHandQty, skuId }) => {
+    const rackLocations = Array.from(new Set(racksBySkuId.get(skuId ?? '') ?? [])).sort();
     return { skuCode, skuDescription, unitCode, onHandQty, rackLocations };
   });
 }
