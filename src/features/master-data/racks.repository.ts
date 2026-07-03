@@ -184,6 +184,49 @@ export class RacksRepositoryClass {
   }
 
   /**
+   * Active racks with location + dimensions in one query (putaway suggestion).
+   * Avoids paginated getRack double-fetch when scanning all bins for capacity.
+   */
+  async listActiveRacksForPutaway(
+    organizationId: string,
+    tx?: DbTransaction,
+  ): Promise<Array<{
+    rackId: string;
+    rackRow: string;
+    rackColumn: string;
+    rackLevel: string;
+    length: string | null;
+    width: string | null;
+    height: string | null;
+    weight: string | null;
+  }>> {
+    const client = tx ?? db;
+    return client
+      .select({
+        rackId: RacksTable.rackId,
+        rackRow: RacksTable.rackRow,
+        rackColumn: RacksTable.rackColumn,
+        rackLevel: RacksTable.rackLevel,
+        length: RacksTable.length,
+        width: RacksTable.width,
+        height: RacksTable.height,
+        weight: RacksTable.weight,
+      })
+      .from(RacksTable)
+      .where(
+        and(
+          eq(RacksTable.organizationId, organizationId),
+          eq(RacksTable.isActive, true),
+        ),
+      )
+      .orderBy(
+        asc(RacksTable.rackRow),
+        asc(RacksTable.rackLevel),
+        asc(RacksTable.rackColumn),
+      );
+  }
+
+  /**
    * Get rack dimensions (length/width/height/weight) for all racks in an organization
    * @param organizationId - Organization ID for multi-tenant filtering
    */

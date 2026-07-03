@@ -31,7 +31,13 @@ export const typeDefs = `#graphql
         true/false only computed once Approved, to gate the "Send to ES" action —
         a partially-received PO is guaranteed to be rejected by NetSuite.
         """
+        endUserId: ID
         poFulfilled: Boolean
+        """
+        True when Send to ES must be hidden — no real ES ASN for this End User PO
+        (synthetic/manual ASN or PO not ingested from NetSuite).
+        """
+        manualInbound: Boolean!
         createdAt: String!
         updatedAt: String!
         createdByUser: GrnAuditUser
@@ -58,6 +64,8 @@ export const typeDefs = `#graphql
         skuDescription: String
         qty: String!
         lossQty: String!
+        """Rack designated for loose/loss items (LOOSE_STORAGE bin type)."""
+        lossRackId: ID
         remarks: String
         """Primary rack (first rackId if multiple are provided)."""
         rack: Rack
@@ -65,10 +73,19 @@ export const typeDefs = `#graphql
         rackIds: [ID!]
         """Per-rack carton allocations for this GRN item."""
         rackAllocations: [GrnRackAllocation!]
+        """Per-rack loose/loss allocations for this GRN item's lossQty."""
+        lossRackAllocations: [GrnLossRackAllocation!]
         """Optional expiry date for this GRN item."""
         expiryDate: String
         """Lot number assigned by supplier/manufacturer to identify this production batch."""
         lotNo: String
+        """
+        Snapshot of cartons still owed against the linked PO/ASN, taken when this GRN was
+        submitted for approval. Null when not linked to a PO/ASN line.
+        """
+        remainingCtn: Float
+        """Loose pieces still owed, alongside remainingCtn (see m_skus.loose_quantity)."""
+        remainingLoosePcs: Float
         createdAt: String!
         updatedAt: String!
         createdBy: ID!
@@ -83,6 +100,8 @@ export const typeDefs = `#graphql
         skuId: ID
         qty: String!
         lossQty: String
+        """Rack designated for loose/loss items (LOOSE_STORAGE bin type)."""
+        lossRackId: ID
         remarks: String
         """Deprecated: use rackIds instead."""
         rackId: ID
@@ -90,10 +109,13 @@ export const typeDefs = `#graphql
         rackIds: [ID!]
         """Per-rack carton allocations (preferred over rackIds when splitting putaway)."""
         rackAllocations: [GrnRackAllocationInput!]
+        """Per-rack loose/loss allocations (preferred over lossRackId when splitting loose storage)."""
+        lossRackAllocations: [GrnLossRackAllocationInput!]
         """Optional expiry date for this GRN item."""
         expiryDate: String
         """Lot number assigned by supplier/manufacturer to identify this production batch."""
         lotNo: String
+        orderedQty: String
         skuCode: String
         skuDescription: String
         skuUom: ID
@@ -112,6 +134,7 @@ export const typeDefs = `#graphql
         notes: String
         proofUrl: String
         warehouseId: ID
+        endUserId: ID
         status: String
         createdBy: String
         updatedBy: String
@@ -132,6 +155,7 @@ export const typeDefs = `#graphql
         notes: String
         proofUrl: String
         warehouseId: ID
+        endUserId: ID
         status: String
         approvedBy: ID
         approvedAt: String
@@ -177,6 +201,23 @@ export const typeDefs = `#graphql
 
     extend type Query {
         grns(filter: GrnFilterInput, pageSize: Int, pageNumber: Int): GrnPaginatedResponse
+        """GRN lines still owed against their PO/ASN (remainingCtn/remainingLoosePcs snapshot)."""
+        grnRemainingReport: [GrnRemainingLine!]!
+    }
+
+    """One outstanding line on the Remaining Quantity report."""
+    type GrnRemainingLine {
+        grnId: ID!
+        grnNo: String!
+        poNo: String
+        receivedAt: String
+        supplierName: String
+        endUserName: String
+        skuCode: String!
+        skuDescription: String!
+        """Null when this line has no PO/ASN to compare against (manual GRN line)."""
+        remainingCtn: Float
+        remainingLoosePcs: Float
     }
 
     """
@@ -252,6 +293,20 @@ export const typeDefs = `#graphql
     }
 
     input GrnRackAllocationInput {
+        rackId: ID!
+        quantity: Float!
+    }
+
+    """
+    Loose/loss rack allocation for a GRN line (loose-storage rack + qty).
+    """
+    type GrnLossRackAllocation {
+        rackId: ID!
+        quantity: Float!
+        rackLabel: String
+    }
+
+    input GrnLossRackAllocationInput {
         rackId: ID!
         quantity: Float!
     }
@@ -339,10 +394,12 @@ export const typeDefs = `#graphql
         notes: String
         proofUrl: String
         warehouseId: ID
+        endUserId: ID
         status: String
         items: [CreateGrnItemInput!]
         inboundQty: Float
         skuId: ID
+        poFulfilled: Boolean
         """ID of the advance notice this GRN was created from. Optional — omit for manual GRNs."""
         advanceNoticeId: ID
     }

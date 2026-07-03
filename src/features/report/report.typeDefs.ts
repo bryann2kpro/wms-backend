@@ -78,6 +78,14 @@ export const typeDefs = `#graphql
   }
 
   """
+  Optional filter for Internal Transfer Work Queue PDF generation
+  """
+  input StockTransferWorkQueueFilterInput {
+    "Filter by transfer number search text"
+    search: String
+  }
+
+  """
   Row item for Proforma Invoice Summary export data.
   """
   type InvoiceSummaryReportRow {
@@ -154,9 +162,21 @@ export const typeDefs = `#graphql
     generateDoPickingList(filter: DoPickingListFilterInput): GenerateChecklistPayload! @auth
 
     """
+    Generate an Internal Transfer Work Queue PDF — approved IN_TRANSIT / AWAITING_DISPATCH transfers.
+    Returns a printable work queue list for the storekeeper.
+    """
+    generateStockTransferWorkQueueList(filter: StockTransferWorkQueueFilterInput): GenerateChecklistPayload! @auth
+
+    """
     Generate a Stock Balance PDF. Returns base64-encoded PDF and suggested filename.
     WITHOUT_RACK: principal-facing summary. WITH_RACK: includes rack location labels.
     """
     generateStockBalanceReport(type: InventoryBalanceReportType!): GenerateReportPayload! @auth
+
+    """
+    Generate the GRN Remaining Quantity Report PDF — every GRN line still owed
+    against its PO/ASN (remainingCtn/remainingLoosePcs snapshot taken at submission).
+    """
+    generateGrnRemainingReportPdf: GenerateChecklistPayload! @auth
   }
 `;

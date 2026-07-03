@@ -1,0 +1,1 @@
+ALTER TABLE "main"."grns" ADD COLUMN "end_user_id" uuid;

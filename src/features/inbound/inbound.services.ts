@@ -8,11 +8,13 @@ import { SkuRepositoryClass } from "../master-data/sku.repository";
 import type { DbTransaction } from "@/types/db-transaction";
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 import { InventoryMovementRepositoryClass } from "../inventory/inventory-movement/inventory.repository";
-import { GrnItemRacksTable } from "./grns.model";
+import { GrnItemRacksTable, GrnItemLossRacksTable } from "./grns.model";
 import {
   buildGrnItemRackRows,
+  buildGrnItemLossRackRows,
   primaryRackIdFromAllocations,
   resolveGrnItemRackAllocations,
+  resolveGrnItemLossRackAllocations,
 } from "./grn-rack-allocation.util";
 import { OrganizationRepositoryClass } from "../master-data/organization.repository";
 import { EsAdvanceNoticeRepositoryClass } from "../es/es.repository";
@@ -27,12 +29,15 @@ export type CreateInboundItemInput = {
     skuId?: string | null;
     qty: string;
     lossQty?: string | null;
+    lossRackId?: string | null;
     remarks?: string | null;
     rackId?: string | null;
     rackIds?: string[] | null;
     rackAllocations?: Array<{ rackId: string; quantity: string | number }> | null;
+    lossRackAllocations?: Array<{ rackId: string; quantity: string | number }> | null;
     expiryDate?: string | null;
     lotNo?: string | null;
+    orderedQty?: string | null;
     skuCode?: string | null;
     skuDescription?: string | null;
     skuUom?: string | null;
@@ -57,6 +62,8 @@ export type CreateInboundInput = {
     items?: CreateInboundItemInput[] | null;
     /** ID of the advance notice this GRN was created from. Optional — omit for manual GRNs. */
     advanceNoticeId?: string | null;
+    poFulfilled?: boolean | null;
+    endUserId?: string | null;
 };
 
 export class InboundServices {
@@ -104,6 +111,7 @@ export class InboundServices {
                 const receivedAt = data.receivedAt != null ? new Date(data.receivedAt) : null;
                 const deliveryDate = receivedAt ?? new Date();
                 let supplierDeliveryId: string | undefined = data.supplierDeliveryId ?? undefined;
+                let advanceNoticeId: string | undefined = data.advanceNoticeId ?? undefined;
 
                 const organizationId = data.organizationId;
 
@@ -147,6 +155,10 @@ export class InboundServices {
                 // generate grn no
                 const grnNo = await this.grnsRepository.generateGrnNo(tx);
 
+                if (data.poFulfilled === false && !advanceNoticeId) {
+                    advanceNoticeId = await this.resolveManualAdvanceNoticeId(data, tx);
+                }
+
                 // 3. Create GRN (same payload as createGrn)
                 const grn = await this.grnsRepository.createGrn({
                     grnNo: grnNo,
@@ -161,35 +173,45 @@ export class InboundServices {
                     updatedBy,
                     status: data.status ?? 'Draft',
                     receivedAt: receivedAt ?? undefined,
-                    advanceNoticeId: data.advanceNoticeId ?? undefined,
+                    advanceNoticeId,
+                    endUserId: data.endUserId ?? undefined,
                 }, tx);
 
                 // 4. Create GRN items (same as createGrn)
-                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
+                const remainingBySkuCode = data.status === 'Submitted'
+                    ? await this.computeRemainingForItems(
+                        { poNo: data.poNo, organizationId, items: data.items ?? [] },
+                        tx,
+                    )
+                    : new Map<string, { remainingCtn: number | null; remainingLoosePcs: number | null }>();
+
+                const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; remainingCtn?: string | null; remainingLoosePcs?: string | null; createdBy: string; updatedBy?: string }> = [];
                 if (data.items?.length) {
                     for (const item of data.items) {
                         const skuIdToUse = await this.resolveOrCreateSkuForItem(item, createdBy, updatedBy, tx);
                         if (!skuIdToUse) continue;
                         const allocations = resolveGrnItemRackAllocations(item);
+                        const lossAllocations = resolveGrnItemLossRackAllocations(item);
+                        const remaining = item.skuCode ? remainingBySkuCode.get(item.skuCode) : undefined;
                         grnItemRows.push({
                             grnId: grn.id,
                             skuId: skuIdToUse,
                             qty: item.qty,
                             lossQty: item.lossQty ?? '0',
+                            lossRackId: primaryRackIdFromAllocations(lossAllocations) ?? item.lossRackId ?? null,
                             remarks: item.remarks ?? undefined,
                             rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                             expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                             lotNo: item.lotNo ?? null,
+                            remainingCtn: remaining?.remainingCtn != null ? String(remaining.remainingCtn) : null,
+                            remainingLoosePcs: remaining?.remainingLoosePcs != null ? String(remaining.remainingLoosePcs) : null,
                             createdBy,
                             updatedBy,
                         });
                     }
                     if (grnItemRows.length > 0) {
                         const createdItems = await this.grnItemsRepository.createGrnItems(grnItemRows, tx);
-                        if (createdItems === false) {
-                            logger.error('[InboundServices] Failed to create GRN items batch');
-                            throw new Error('Failed to create GRN items');
-                        } else if (createdItems.length && data.items) {
+                        if (createdItems.length && data.items) {
                             const rackRows = createdItems.flatMap((createdItem, index) => {
                                 const source = data.items![index];
                                 if (!source) return [];
@@ -198,13 +220,21 @@ export class InboundServices {
                             if (rackRows.length > 0) {
                                 await tx.insert(GrnItemRacksTable).values(rackRows);
                             }
+                            const lossRackRows = createdItems.flatMap((createdItem, index) => {
+                                const source = data.items![index];
+                                if (!source) return [];
+                                return buildGrnItemLossRackRows(createdItem.id, source);
+                            });
+                            if (lossRackRows.length > 0) {
+                                await tx.insert(GrnItemLossRacksTable).values(lossRackRows);
+                            }
                         }
                     }
                 }
 
                 // Mark the advance notice as linked so it no longer appears in the dropdown
-                if (data.advanceNoticeId) {
-                    await this.esAdvanceNoticeRepository.markLinked(data.advanceNoticeId, grn.id);
+                if (advanceNoticeId) {
+                    await this.esAdvanceNoticeRepository.markLinked(advanceNoticeId, grn.id, tx);
                 }
 
                 logger.info('✅ [InboundServices.createInbound] Inbound Flow completed successfully');
@@ -221,6 +251,52 @@ export class InboundServices {
             logger.info('✅ [InboundServices.createInbound] Inbound created successfully');
         }
         return result;
+    }
+
+    private async resolveAsnLineUnits(skuUom: string | null | undefined): Promise<string> {
+        const raw = skuUom?.trim() ?? '';
+        if (!raw) return 'CTN';
+        if (InboundServices.UUID_RE.test(raw)) {
+            const unit = await this.stockUnitRepository.getStockUnitById(raw);
+            return unit?.unitCode?.trim() || 'CTN';
+        }
+        const byCode = await this.stockUnitRepository.getStockUnitByCode(raw);
+        if (byCode?.unitCode) return byCode.unitCode.trim();
+        const byCodeUpper = await this.stockUnitRepository.getStockUnitByCode(raw.toUpperCase());
+        return byCodeUpper?.unitCode?.trim() || raw;
+    }
+
+    private async resolveManualAdvanceNoticeId(data: CreateInboundInput, tx: DbTransaction): Promise<string> {
+        const poNo = data.poNo?.trim();
+        if (!poNo) {
+            throw new Error('PO reference is required for partial delivery.');
+        }
+
+        const existing = await this.esAdvanceNoticeRepository.findByTranid(poNo);
+        if (existing) return existing.id;
+
+        const items = data.items ?? [];
+        const lines = await Promise.all(
+            items.map(async (item, index) => {
+                const skuCode = item.skuCode?.trim() ?? '';
+                const orderedNumber = Number(item.orderedQty);
+                return {
+                    lineuniquekey: index + 1,
+                    itemid: skuCode,
+                    quantity: Number.isFinite(orderedNumber) ? orderedNumber : 0,
+                    units: await this.resolveAsnLineUnits(item.skuUom),
+                };
+            }),
+        );
+
+        const created = await this.esAdvanceNoticeRepository.createSyntheticAdvanceNotice({
+            tranid: poNo,
+            payload: {
+                tranid: poNo,
+                lines,
+            },
+        }, tx);
+        return created.id;
     }
 
     /**
@@ -356,6 +432,156 @@ export class InboundServices {
             if (!code) continue;
             result.set(code, (result.get(code) ?? 0) + qty);
         }
+        return result;
+    }
+
+    /**
+     * Sum received qty AND loss qty per skuCode across all prior GRNs for a PO.
+     * Same counting policy as {@link sumPriorGrnReceivedBySkuCode} (all statuses count,
+     * excludeGrnId omits the GRN being edited so it doesn't double-count against itself) —
+     * kept separate so the over-receipt enforcement above is untouched.
+     */
+    private async sumPriorGrnReceivedAndLossBySkuCode(
+        poNo: string,
+        organizationId: string,
+        tx: DbTransaction,
+        excludeGrnId?: string,
+    ): Promise<Map<string, { qty: number; lossQty: number }>> {
+        const result = new Map<string, { qty: number; lossQty: number }>();
+
+        const grnsResult = await this.grnsRepository.getGrns({ poNo }, undefined, organizationId);
+        const grns = grnsResult && 'query' in grnsResult ? grnsResult.query : [];
+        if (!grns.length) return result;
+
+        const totalsBySkuId = new Map<string, { qty: number; lossQty: number }>();
+        for (const grn of grns) {
+            if (excludeGrnId && grn.id === excludeGrnId) continue;
+            const items = await this.grnItemsRepository.getGrnItems({ grnId: grn.id }, tx);
+            if (!items) continue;
+            for (const item of items) {
+                const qty = Number(item.qty ?? 0);
+                const lossQty = Number(item.lossQty ?? 0);
+                const prev = totalsBySkuId.get(item.skuId) ?? { qty: 0, lossQty: 0 };
+                totalsBySkuId.set(item.skuId, {
+                    qty: prev.qty + (Number.isFinite(qty) ? qty : 0),
+                    lossQty: prev.lossQty + (Number.isFinite(lossQty) ? lossQty : 0),
+                });
+            }
+        }
+        if (totalsBySkuId.size === 0) return result;
+
+        const skuIds = [...totalsBySkuId.keys()];
+        const skuResult = await this.skuRepository.getSku({ skuId: skuIds }, undefined, tx);
+        const codeBySkuId = new Map<string, string>();
+        for (const sku of skuResult.query as Array<{ skuId: string; skuCode: string }>) {
+            codeBySkuId.set(sku.skuId, sku.skuCode);
+        }
+
+        for (const [skuId, totals] of totalsBySkuId) {
+            const code = codeBySkuId.get(skuId);
+            if (!code) continue;
+            const prev = result.get(code) ?? { qty: 0, lossQty: 0 };
+            result.set(code, { qty: prev.qty + totals.qty, lossQty: prev.lossQty + totals.lossQty });
+        }
+        return result;
+    }
+
+    /**
+     * Compute the "remaining qty owed" snapshot for each item being submitted on a
+     * PO/ASN-linked GRN — see po-fulfillment design: remaining = (expected − cumulative
+     * delivered) expressed as whole CTN + loose pieces via the SKU's loose_quantity, with
+     * loss added back in (lost pieces still count as owed). Manual GRNs (no poNo) or lines
+     * not on the ASN simply get { remainingCtn: null, remainingLoosePcs: null }.
+     *
+     * Throws when a line has cumulative loss > 0 but its SKU has no loose_quantity set —
+     * the caller (grns.resolvers.ts) should let this reject the submission.
+     *
+     * @param excludeGrnId  Pass the GRN's own id when re-submitting an existing GRN (its
+     *                      current items are excluded from the prior-received sum).
+     */
+    async computeRemainingForItems(
+        data: {
+            poNo?: string | null;
+            organizationId: string;
+            items: Array<{ skuCode?: string | null; qty: string | number; lossQty?: string | number | null }>;
+        },
+        tx: DbTransaction,
+        excludeGrnId?: string,
+    ): Promise<Map<string, { remainingCtn: number | null; remainingLoosePcs: number | null }>> {
+        const result = new Map<string, { remainingCtn: number | null; remainingLoosePcs: number | null }>();
+
+        const poNo = data.poNo?.trim();
+        if (!poNo) return result; // manual GRN — nothing to compute against
+
+        const asn = await this.esAdvanceNoticeRepository.findByTranid(poNo, tx);
+        if (!asn) return result; // no ASN for this PO — not applicable
+
+        const payload = asn.payload as { lines?: Array<{ itemid?: string; quantity?: number | string }> } | undefined;
+        const expectedBySkuCode = new Map<string, number>();
+        for (const line of payload?.lines ?? []) {
+            const code = line.itemid?.trim();
+            if (!code) continue;
+            const qty = Number(line.quantity ?? 0);
+            if (!Number.isFinite(qty)) continue;
+            expectedBySkuCode.set(code, (expectedBySkuCode.get(code) ?? 0) + qty);
+        }
+        if (expectedBySkuCode.size === 0) return result;
+
+        const thisSubmissionBySkuCode = new Map<string, { qty: number; lossQty: number }>();
+        for (const item of data.items) {
+            const code = item.skuCode?.trim();
+            if (!code) continue;
+            const qty = Number(item.qty ?? 0);
+            const lossQty = Number(item.lossQty ?? 0);
+            const prev = thisSubmissionBySkuCode.get(code) ?? { qty: 0, lossQty: 0 };
+            thisSubmissionBySkuCode.set(code, {
+                qty: prev.qty + (Number.isFinite(qty) ? qty : 0),
+                lossQty: prev.lossQty + (Number.isFinite(lossQty) ? lossQty : 0),
+            });
+        }
+        if (thisSubmissionBySkuCode.size === 0) return result;
+
+        const priorBySkuCode = await this.sumPriorGrnReceivedAndLossBySkuCode(
+            poNo,
+            data.organizationId,
+            tx,
+            excludeGrnId,
+        );
+
+        const skuCodes = [...thisSubmissionBySkuCode.keys()];
+        const skuResult = await this.skuRepository.getSku({ skuCode: skuCodes }, undefined, tx);
+        const looseQtyBySkuCode = new Map<string, number | null>();
+        for (const sku of skuResult.query as Array<{ skuCode: string; looseQuantity?: string | number | null }>) {
+            const lq = sku.looseQuantity != null ? Number(sku.looseQuantity) : null;
+            looseQtyBySkuCode.set(sku.skuCode, lq != null && Number.isFinite(lq) && lq > 0 ? lq : null);
+        }
+
+        for (const [skuCode, thisSubmission] of thisSubmissionBySkuCode) {
+            const expectedCtn = expectedBySkuCode.get(skuCode);
+            if (expectedCtn === undefined) continue; // not on the ASN — leave unset
+
+            const prior = priorBySkuCode.get(skuCode) ?? { qty: 0, lossQty: 0 };
+            const cumulativeCtn = prior.qty + thisSubmission.qty;
+            const cumulativeLoss = prior.lossQty + thisSubmission.lossQty;
+            const looseQuantity = looseQtyBySkuCode.get(skuCode) ?? null;
+
+            if (cumulativeLoss > 0 && looseQuantity == null) {
+                throw new Error(
+                    `Cannot compute remaining qty for SKU ${skuCode}: loss qty recorded but ` +
+                    `the SKU has no loose_quantity (pieces per carton) configured.`,
+                );
+            }
+
+            // Mixed-radix subtraction: Ordered (whole cartons) minus Delivered (cartons +
+            // loose pieces), borrowing between the two via loose_quantity — e.g. Ordered 100
+            // CTN, Delivered 40 CTN + 6 loose, loose_quantity 10 -> 1000-406=594 -> 59 CTN + 4.
+            const radix = looseQuantity ?? 1;
+            const remainingPieces = Math.max(0, (expectedCtn - cumulativeCtn) * radix - cumulativeLoss);
+            const remainingCtn = Math.floor(remainingPieces / radix);
+            const remainingLoosePcs = remainingPieces % radix;
+            result.set(skuCode, { remainingCtn, remainingLoosePcs });
+        }
+
         return result;
     }
 

@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Internal Transfer Work Queue</title>
+    <style>
+        :root {
+            --bg:            #F3F2ED;
+            --surface:       #FFFFFF;
+            --border:        #D4D1C9;
+            --border-strong: #8C8880;
+            --text-primary:  #1C1917;
+            --text-secondary:#57534E;
+            --text-muted:    #A8A29E;
+            --th-bg:         #1C1917;
+            --th-text:       #F3F2ED;
+            --row-alt:       #ECEAE3;
+            --group-bg:      #ECEAE3;
+            --accent:        #92400E;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+            color: var(--text-primary);
+            padding: 2.5rem 2rem;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .report-wrap { max-width: 960px; margin: 0 auto; }
+
+        .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 2rem;
+            padding-bottom: 1.25rem;
+            border-bottom: 2px solid var(--text-primary);
+            gap: 1.5rem 2rem;
+        }
+
+        .brand-wrap {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .doc-header .logo {
+            width: 56px;
+            height: auto;
+            object-fit: contain;
+            margin-top: 0.1rem;
+            flex: 0 0 auto;
+        }
+
+        .brand-text { min-width: 0; }
+
+        .brand {
+            font-weight: 700;
+            font-size: 0.925rem;
+            letter-spacing: 0.02em;
+            line-height: 1.25;
+            color: var(--text-primary);
+        }
+
+        .reg-no {
+            font-weight: 500;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        .brand-sub {
+            margin-top: 0.25rem;
+            font-size: 0.65rem;
+            line-height: 1.45;
+            color: var(--text-muted);
+        }
+
+        .filter-line {
+            margin-top: 0.65rem;
+            font-size: 0.72rem;
+            line-height: 1.45;
+            color: var(--text-secondary);
+        }
+
+        .filter-line .filter-prefix {
+            font-size: 0.6rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+        }
+
+        .filter-line strong {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .doc-title-block {
+            text-align: right;
+            flex-shrink: 0;
+            min-width: 11rem;
+        }
+
+        .doc-eyebrow {
+            font-family: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
+            font-size: 0.575rem;
+            font-weight: 500;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.3rem;
+        }
+
+        .doc-heading {
+            margin: 0;
+            font-size: 1.35rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.1;
+            color: var(--text-primary);
+        }
+
+        .doc-meta {
+            margin-top: 0.55rem;
+            text-align: right;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            line-height: 1.75;
+        }
+
+        .doc-meta .label {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+        }
+
+        .doc-meta strong {
+            font-family: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
+            font-weight: 500;
+            font-size: 0.72rem;
+            color: var(--text-primary);
+        }
+
+        .doc-meta .meta-row {
+            display: flex;
+            justify-content: flex-end;
+            align-items: baseline;
+            gap: 0.4rem;
+        }
+
+        .table-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        table { width: 100%; border-collapse: collapse; }
+
+        thead th {
+            background: var(--th-bg);
+            color: var(--th-text);
+            padding: 0.7rem 0.75rem;
+            font-size: 0.62rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            border: none;
+        }
+
+        thead th + th { border-left: 1px solid rgba(255, 255, 255, 0.07); }
+
+        .tr-group td {
+            background: var(--group-bg);
+            padding: 0.55rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        .tr-data td {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            font-size: 0.78rem;
+            vertical-align: top;
+        }
+
+        .tr-data:last-of-type td { border-bottom: none; }
+        .tr-data.tr-alt td { background: var(--row-alt); }
+
+        .col-mono {
+            font-family: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
+            font-size: 0.72rem;
+        }
+
+        .col-muted { color: var(--text-secondary); }
+
+        .col-center { text-align: center; }
+
+        .doc-footer {
+            margin-top: 2rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
+        }
+
+        @media print {
+            @page { size: A4 landscape; margin: 10mm 12mm; }
+
+            :root {
+                --bg: #FFFFFF;
+                --surface: #FFFFFF;
+                --border: #CCCCCC;
+                --text-primary: #000000;
+                --text-secondary: #333333;
+                --text-muted: #777777;
+                --th-bg: #000000;
+                --th-text: #FFFFFF;
+                --row-alt: #F2F2F2;
+                --group-bg: #E8E8E8;
+            }
+
+            body {
+                background: white;
+                padding: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            tr { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-wrap">
+        <header class="doc-header">
+            <div class="brand-wrap">
+                {{logoImgHtml}}
+                <div class="brand-text">
+                    <div class="brand">SME EDARAN SDN BHD <span class="reg-no">(794707-P)</span></div>
+                    <div class="brand-sub">
+                        NO LOT 1553, JALAN KUSTA, KAWASAN PERINDUSTRIAN KAMPUNG JAYA,<br/>
+                        SUNGAI BULOH, 47000 SELANGOR.<br/>
+                        TEL: 03-6157 6644 &nbsp;&nbsp; FAX: 03-6148 8803
+                    </div>
+                    <div class="filter-line">
+                        <span class="filter-prefix">Search</span>:
+                        <strong>{{searchLabel}}</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="doc-title-block">
+                <div class="doc-eyebrow">Inventory &middot; Warehouse</div>
+                <h1 class="doc-heading">Internal Transfer Work Queue</h1>
+                <div class="doc-meta">
+                    <div class="meta-row">
+                        <span class="label">Generated&nbsp;</span>
+                        <strong>{{generatedAt}}</strong>
+                    </div>
+                    <div class="meta-row">
+                        <span class="label">Transfers&nbsp;</span>
+                        <strong>{{totalTransfers}}</strong>
+                    </div>
+                    <div class="meta-row">
+                        <span class="label">Lines&nbsp;</span>
+                        <strong>{{totalLines}}</strong>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="text-align:left">Transfer No.</th>
+                        <th style="text-align:left">Source &rarr; Dest</th>
+                        <th style="text-align:left">SKU / Lot</th>
+                        <th style="text-align:center; width:90px">Qty</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{tableRows}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="doc-footer">
+            Transfers: {{totalTransfers}} &nbsp;&middot;&nbsp; Lines: {{totalLines}}
+        </div>
+    </div>
+</body>
+</html>

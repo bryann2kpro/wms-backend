@@ -63,6 +63,7 @@ function makeQuantStore() {
       expiryDate: null,
       description: null,
       quantity,
+      lossQty: "0",
       reservedQty,
       rackId,
       organizationId: ORG,
@@ -77,7 +78,10 @@ function makeQuantStore() {
   };
 
   const totalOnHand = () =>
-    Array.from(rows.values()).reduce((sum, r) => sum + Number(r.quantity), 0);
+    Array.from(rows.values()).reduce(
+      (sum, r) => sum + Number(r.quantity) + Number(r.lossQty ?? 0),
+      0,
+    );
 
   return { rows, seed, totalOnHand };
 }
@@ -138,16 +142,23 @@ function makeStockQuantRepo(store: ReturnType<typeof makeQuantStore>) {
     getStockQuantById: vi.fn(async (_org: string, id: string) => store.rows.get(id) ?? null),
 
     debitStockQuantIfAvailable: vi.fn(
-      async (_org: string, id: string, qty: string, _user: string) => {
+      async (_org: string, id: string, qty: string, _user: string, _tx?: unknown, lossQty = "0") => {
         const row = store.rows.get(id);
         if (!row) throw new Error("row not found");
         const available = Number(row.quantity) - Number(row.reservedQty);
-        if (available < Number(qty)) {
+        const availableLoss = Number(row.lossQty ?? 0);
+        if (available < Number(qty) || availableLoss < Number(lossQty)) {
           throw new Error("Insufficient available stock or row not found");
         }
         const newQty = Number(row.quantity) - Number(qty);
+        const newLoss = availableLoss - Number(lossQty);
         row.quantity = newQty.toFixed(2);
-        if (Number(row.quantity) === 0 && Number(row.reservedQty) === 0) {
+        row.lossQty = newLoss.toFixed(2);
+        if (
+          Number(row.quantity) === 0 &&
+          Number(row.reservedQty) === 0 &&
+          Number(row.lossQty) === 0
+        ) {
           store.rows.delete(id);
         }
         return row;
@@ -155,12 +166,15 @@ function makeStockQuantRepo(store: ReturnType<typeof makeQuantStore>) {
     ),
 
     creditStockQuant: vi.fn(
-      async (params: { rackId: string; qty: string; lotNo?: string | null }) => {
+      async (params: { rackId: string; qty: string; lossQty?: string | null; lotNo?: string | null }) => {
         const existing = Array.from(store.rows.values()).find(
           (r) => r.rackId === params.rackId && (r.lotNo ?? null) === (params.lotNo ?? null),
         );
         if (existing) {
           existing.quantity = (Number(existing.quantity) + Number(params.qty)).toFixed(2);
+          existing.lossQty = (
+            Number(existing.lossQty ?? 0) + Number(params.lossQty ?? 0)
+          ).toFixed(2);
           return existing;
         }
         const id = `quant-${params.rackId}-${store.rows.size}`;
@@ -171,6 +185,7 @@ function makeStockQuantRepo(store: ReturnType<typeof makeQuantStore>) {
           expiryDate: null,
           description: null,
           quantity: Number(params.qty).toFixed(2),
+          lossQty: Number(params.lossQty ?? 0).toFixed(2),
           reservedQty: "0",
           rackId: params.rackId,
           organizationId: ORG,
@@ -366,7 +381,7 @@ describe("StockTransferService — validation & guards", () => {
         USER,
         ORG,
       ),
-    ).rejects.toThrow("positive number");
+    ).rejects.toThrow("At least one of quantity or loss quantity");
   });
 
   test("draft does not move stock", async () => {
@@ -385,91 +400,59 @@ describe("StockTransferService — validation & guards", () => {
     expect(ctx.store.totalOnHand()).toBe(before);
   });
 
-  test("reserved-qty guard: approve rejects when available < qty", async () => {
+  test("reserved-qty guard: draft rejects when available carton < qty", async () => {
     const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100", "95");
 
-    const draft = await ctx.service.createTransferDraft(
-      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
-      ctx.tx,
-      USER,
-      ORG,
-    );
-
     await expect(
-      ctx.service.approveTransfer(draft.id, ORG, USER, ctx.tx),
-    ).rejects.toThrow("Insufficient available stock");
+      ctx.service.createTransferDraft(
+        { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }] },
+        ctx.tx,
+        USER,
+        ORG,
+      ),
+    ).rejects.toThrow("Insufficient available carton stock");
   });
 });
 
 describe("StockTransferService.approveTransfer — B2B happy path", () => {
-  test("debits source, credits dest, writes OUT+IN movements, net movement zero, invariant held", async () => {
+  test("dispatch → IN_TRANSIT writes only TRANSFER_OUT; receive → COMPLETED credits dest", async () => {
     const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
     const before = ctx.store.totalOnHand();
-
-    await createAndApprove(ctx, {
-      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "30" }],
-    });
-
-    // Source debited.
-    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("70.00");
-    // Dest credited (a new row on RACK_A2 with qty 30).
-    const destRow = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_A2);
-    expect(destRow?.quantity).toBe("30.00");
-
-    // Invariant: B2B does not change total on-hand.
-    expect(ctx.store.totalOnHand()).toBe(before);
-
-    // One TRANSFER_OUT and one TRANSFER_IN movement written.
-    const created = (ctx.movementRepo as unknown as { __created: InventoryMovementsInsertType[] }).__created;
-    const out = created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_OUT);
-    const inn = created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_IN);
-    expect(out).toHaveLength(1);
-    expect(inn).toHaveLength(1);
-    // Net movement quantity is zero (out qty == in qty).
-    const net = inn.reduce((s, m) => s + Number(m.quantity), 0) - out.reduce((s, m) => s + Number(m.quantity), 0);
-    expect(net).toBe(0);
-    // OUT recorded at source rack, IN at dest rack.
-    expect(out[0].rackId).toBe(RACK_A1);
-    expect(inn[0].rackId).toBe(RACK_A2);
-  });
-});
-
-describe("StockTransferService — W2W dispatch / receive / cancel", () => {
-  test("dispatch → IN_TRANSIT writes only TRANSFER_OUT; receive → COMPLETED credits dest", async () => {
-    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
-    ctx.store.seed(QUANT_A1, RACK_A1, "100");
-
     const created = (ctx.movementRepo as unknown as { __created: InventoryMovementsInsertType[] }).__created;
 
     const dispatched = await createAndApprove(ctx, {
-      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }],
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "30" }],
     });
 
     expect(dispatched.status).toBe(STOCK_TRANSFER_STATUS.IN_TRANSIT);
+    expect(dispatched.receivedAt).toBeNull();
+    expect(dispatched.receivedBy).toBeNull();
     // Source debited, dest NOT yet credited.
-    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("60.00");
-    expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_B1)).toBe(false);
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("70.00");
+    expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_A2)).toBe(false);
     // Only TRANSFER_OUT so far.
     expect(created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_OUT)).toHaveLength(1);
     expect(created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_IN)).toHaveLength(0);
 
-    // Receive.
     const received = await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
     expect(received.status).toBe(STOCK_TRANSFER_STATUS.COMPLETED);
-    const destRow = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_B1);
-    expect(destRow?.quantity).toBe("40.00");
+    const destRow = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_A2);
+    expect(destRow?.quantity).toBe("30.00");
     expect(created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_IN)).toHaveLength(1);
+    expect(ctx.store.totalOnHand()).toBe(before);
   });
+});
 
+describe("StockTransferService — B2B receive / cancel", () => {
   test("double-receive is rejected", async () => {
-    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
     await createAndApprove(ctx, {
-      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }],
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "40" }],
     });
 
     await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
@@ -480,16 +463,15 @@ describe("StockTransferService — W2W dispatch / receive / cancel", () => {
   });
 
   test("cancel → CANCELLED re-credits SOURCE rack", async () => {
-    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
     const before = ctx.store.totalOnHand();
 
     await createAndApprove(ctx, {
-      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }],
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "40" }],
     });
 
-    // Mid-flight: source debited, stock "in transit".
     expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("60.00");
 
     const cancelled = await ctx.service.cancelTransfer(
@@ -502,24 +484,135 @@ describe("StockTransferService — W2W dispatch / receive / cancel", () => {
 
     expect(cancelled.status).toBe(STOCK_TRANSFER_STATUS.CANCELLED);
     expect(cancelled.cancelReason).toBe("changed mind");
-    // Source re-credited to its original total; dest never credited.
     expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("100.00");
+    expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_A2)).toBe(false);
+    expect(ctx.store.totalOnHand()).toBe(before);
+  });
+});
+
+describe("StockTransferService — W2W two-leg dispatch / receive / cancel", () => {
+  test("approve → AWAITING_DISPATCH (no stock move); dispatch → IN_TRANSIT debits source; receive → COMPLETED", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    const created = (ctx.movementRepo as unknown as { __created: InventoryMovementsInsertType[] }).__created;
+    const before = ctx.store.totalOnHand();
+
+    const draft = await ctx.service.createTransferDraft(
+      { lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }] },
+      ctx.tx,
+      USER,
+      ORG,
+    );
+    const approved = await ctx.service.approveTransfer(draft.id, ORG, USER, ctx.tx);
+
+    expect(approved.status).toBe(STOCK_TRANSFER_STATUS.AWAITING_DISPATCH);
+    expect(approved.dispatchedAt).toBeNull();
+    // Source unchanged until dispatch.
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("100");
+    expect(created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_OUT)).toHaveLength(0);
+    expect(ctx.store.totalOnHand()).toBe(before);
+
+    const dispatched = await ctx.service.dispatchTransfer("transfer-1", ORG, USER, ctx.tx);
+    expect(dispatched.status).toBe(STOCK_TRANSFER_STATUS.IN_TRANSIT);
+    expect(dispatched.dispatchedAt).not.toBeNull();
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("60.00");
     expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_B1)).toBe(false);
-    // Invariant restored.
+    expect(created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_OUT)).toHaveLength(1);
+    expect(created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_IN)).toHaveLength(0);
+
+    const received = await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
+    expect(received.status).toBe(STOCK_TRANSFER_STATUS.COMPLETED);
+    const destRow = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_B1);
+    expect(destRow?.quantity).toBe("40.00");
+    expect(created.filter((m) => m.movementType === InventoryMovementType.TRANSFER_IN)).toHaveLength(1);
     expect(ctx.store.totalOnHand()).toBe(before);
   });
 
-  test("cancel after completion is rejected (B2B is not cancellable)", async () => {
-    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+  test("cancel from AWAITING_DISPATCH → CANCELLED with no stock change", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    const before = ctx.store.totalOnHand();
+
+    await createAndApprove(ctx, {
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }],
+    });
+
+    expect(ctx.transferRepo.__getHeader()?.status).toBe(STOCK_TRANSFER_STATUS.AWAITING_DISPATCH);
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("100");
+
+    const cancelled = await ctx.service.cancelTransfer(
+      "transfer-1",
+      ORG,
+      USER,
+      "no longer needed",
+      ctx.tx,
+    );
+
+    expect(cancelled.status).toBe(STOCK_TRANSFER_STATUS.CANCELLED);
+    expect(cancelled.cancelReason).toBe("no longer needed");
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("100");
+    expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_B1)).toBe(false);
+    expect(ctx.store.totalOnHand()).toBe(before);
+  });
+
+  test("double-receive is rejected", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
     ctx.store.seed(QUANT_A1, RACK_A1, "100");
 
     await createAndApprove(ctx, {
-      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }],
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }],
     });
+    await ctx.service.dispatchTransfer("transfer-1", ORG, USER, ctx.tx);
+    await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
+
+    await expect(
+      ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx),
+    ).rejects.toThrow("Only in-transit transfers can be received");
+  });
+
+  test("cancel from IN_TRANSIT → CANCELLED re-credits SOURCE rack", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    const before = ctx.store.totalOnHand();
+
+    await createAndApprove(ctx, {
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "40" }],
+    });
+    await ctx.service.dispatchTransfer("transfer-1", ORG, USER, ctx.tx);
+
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("60.00");
+
+    const cancelled = await ctx.service.cancelTransfer(
+      "transfer-1",
+      ORG,
+      USER,
+      "changed mind",
+      ctx.tx,
+    );
+
+    expect(cancelled.status).toBe(STOCK_TRANSFER_STATUS.CANCELLED);
+    expect(cancelled.cancelReason).toBe("changed mind");
+    expect(ctx.store.rows.get(QUANT_A1)!.quantity).toBe("100.00");
+    expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_B1)).toBe(false);
+    expect(ctx.store.totalOnHand()).toBe(before);
+  });
+
+  test("cancel after completion is rejected", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_B1]: WH_B });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100");
+
+    await createAndApprove(ctx, {
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_B1, quantity: "10" }],
+    });
+    await ctx.service.dispatchTransfer("transfer-1", ORG, USER, ctx.tx);
+    await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
 
     await expect(
       ctx.service.cancelTransfer("transfer-1", ORG, USER, "nope", ctx.tx),
-    ).rejects.toThrow("Only in-transit transfers can be cancelled");
+    ).rejects.toThrow("Only in-transit or awaiting-dispatch transfers can be cancelled");
   });
 });
 
@@ -541,5 +634,96 @@ describe("StockTransferService.createTransferDraft — duplicate lines", () => {
         ORG,
       ),
     ).rejects.toThrow("Duplicate transfer line");
+  });
+});
+
+describe("StockTransferService — loose (LOSS) movement", () => {
+  test("loose-only B2B: source loss -5, dest +5 after receive; carton unchanged", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "10", "0", { lossQty: "5" });
+
+    await createAndApprove(ctx, {
+      lines: [
+        {
+          sourceStockQuantId: QUANT_A1,
+          destinationRackId: RACK_A2,
+          quantity: "0",
+          lossQuantity: "5",
+        },
+      ],
+    });
+
+    expect(ctx.store.rows.get(QUANT_A1)?.quantity).toBe("10.00");
+    expect(ctx.store.rows.get(QUANT_A1)?.lossQty).toBe("0.00");
+    expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_A2)).toBe(false);
+
+    await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
+
+    const dest = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_A2);
+    expect(dest?.quantity).toBe("0.00");
+    expect(dest?.lossQty).toBe("5.00");
+  });
+
+  test("carton + loose in one transfer", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "10", "0", { lossQty: "8" });
+
+    await createAndApprove(ctx, {
+      lines: [
+        {
+          sourceStockQuantId: QUANT_A1,
+          destinationRackId: RACK_A2,
+          quantity: "2",
+          lossQuantity: "5",
+        },
+      ],
+    });
+
+    expect(ctx.store.rows.get(QUANT_A1)?.quantity).toBe("8.00");
+    expect(ctx.store.rows.get(QUANT_A1)?.lossQty).toBe("3.00");
+    expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_A2)).toBe(false);
+
+    await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
+
+    const dest = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_A2);
+    expect(dest?.quantity).toBe("2.00");
+    expect(dest?.lossQty).toBe("5.00");
+  });
+
+  test("insufficient loose rejects entire transfer", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "10", "0", { lossQty: "3" });
+
+    await expect(
+      createAndApprove(ctx, {
+        lines: [
+          {
+            sourceStockQuantId: QUANT_A1,
+            destinationRackId: RACK_A2,
+            quantity: "0",
+            lossQuantity: "5",
+          },
+        ],
+      }),
+    ).rejects.toThrow("Insufficient loose stock");
+  });
+
+  test("carton-only (loss=0) behaves as before", async () => {
+    const ctx = buildService({ [RACK_A1]: WH_A, [RACK_A2]: WH_A });
+    ctx.store.seed(QUANT_A1, RACK_A1, "100", "0", { lossQty: "4" });
+
+    await createAndApprove(ctx, {
+      lines: [{ sourceStockQuantId: QUANT_A1, destinationRackId: RACK_A2, quantity: "10" }],
+    });
+
+    expect(ctx.store.rows.get(QUANT_A1)?.quantity).toBe("90.00");
+    expect(ctx.store.rows.get(QUANT_A1)?.lossQty).toBe("4.00");
+    expect(Array.from(ctx.store.rows.values()).some((r) => r.rackId === RACK_A2)).toBe(false);
+
+    await ctx.service.receiveTransfer("transfer-1", ORG, USER, ctx.tx);
+
+    const dest = Array.from(ctx.store.rows.values()).find((r) => r.rackId === RACK_A2);
+    expect(dest?.quantity).toBe("10.00");
+    expect(dest?.lossQty).toBe("0.00");
   });
 });

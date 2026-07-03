@@ -84,7 +84,7 @@ export class PurchaseOrdersRepositoryClass {
       const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
       const data = await paginatedQuery.query;
 
-      logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrders] Purchase orders fetched successfully");
+      // logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrders] Purchase orders fetched successfully");
       return { query: data as PurchaseOrderType[], pagination: paginatedQuery.pagination };
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.getPurchaseOrders] Error:", error);
@@ -219,7 +219,7 @@ export class PurchaseOrdersRepositoryClass {
     paginationParams: PaginationParams
   ): Promise<PaginatedResponse<PurchaseOrderItemType>> {
     try {
-      logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrderItems] Getting purchase order items...");
+      // logger.info("ℹ️ [PurchaseOrdersRepository.getPurchaseOrderItems] Getting purchase order items...");
       const whereCondition: ReturnType<typeof eq>[] = [];
 
       if (Array.isArray(filter.id)) {
@@ -260,7 +260,7 @@ export class PurchaseOrdersRepositoryClass {
       const paginatedQuery = pagination(baseQuery as unknown as PgQueryType, pageSize, pageNumber, totalCount);
       const data = await paginatedQuery.query;
 
-      logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrderItems] Purchase order items fetched successfully");
+      // logger.info("✅ [PurchaseOrdersRepository.getPurchaseOrderItems] Purchase order items fetched successfully");
       return { query: data as (PurchaseOrderItemType & { skuDescription: string | null })[], pagination: paginatedQuery.pagination };
     } catch (error) {
       logger.error("❌ [PurchaseOrdersRepository.getPurchaseOrderItems] Error:", error);

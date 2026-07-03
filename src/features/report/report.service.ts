@@ -5,6 +5,7 @@
  * Movement Report PDF is generated from the same HTML template as the preview so UI matches.
  */
 
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,6 +31,8 @@ const PROFORMA_INVOICES_HTML_PATH = path.join(__dirname, 'html', 'proforma-invoi
 const STOCK_COUNT_CHECKLIST_HTML_PATH = path.join(__dirname, 'html', 'stock-count-checklist.html');
 const DO_PICKING_LIST_HTML_PATH = path.join(__dirname, 'html', 'do-picking-list.html');
 const STOCK_BALANCE_HTML_PATH = path.join(__dirname, 'html', 'stock-balance.html');
+const STOCK_TRANSFER_WORK_QUEUE_HTML_PATH = path.join(__dirname, 'html', 'stock-transfer-work-queue.html');
+const GRN_REMAINING_REPORT_HTML_PATH = path.join(__dirname, 'html', 'grn-remaining-report.html');
 
 // Movement Report row shape
 export interface MovementReportRow {
@@ -384,16 +387,49 @@ function formatAmount(value: number): string {
 }
 
 /**
+ * Resolve Chrome/Chromium for Puppeteer PDF generation.
+ * Docker sets PUPPETEER_EXECUTABLE_PATH; local dev may use bundled or system Chrome.
+ */
+function resolvePuppeteerExecutablePath(): string | undefined {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+
+  const bundled = puppeteer.executablePath();
+  if (existsSync(bundled)) {
+    return bundled;
+  }
+
+  if (process.platform === 'darwin') {
+    const macChrome =
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    if (existsSync(macChrome)) {
+      return macChrome;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Render HTML to PDF using Puppeteer (same layout as preview).
  * Waits for Tailwind CDN script so styles are applied before printing.
  */
 export async function htmlToPdf(
   html: string,
-  options?: { landscape?: boolean; preferCSSPageSize?: boolean },
+  options?: {
+    landscape?: boolean;
+    preferCSSPageSize?: boolean;
+    /** Default networkidle0 for Tailwind CDN templates; use domcontentloaded when HTML is self-contained */
+    waitUntil?: 'load' | 'domcontentloaded' | 'networkidle0';
+    timeout?: number;
+  },
 ): Promise<Buffer> {
+  const executablePath = resolvePuppeteerExecutablePath();
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    ...(executablePath ? { executablePath } : {}),
   });
   try {
     const page = await browser.newPage();
@@ -404,7 +440,10 @@ export async function htmlToPdf(
     } else if (options?.landscape) {
       await page.setViewport({ width: 1600, height: 900, deviceScaleFactor: 1 });
     }
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 20000 });
+    await page.setContent(html, {
+      waitUntil: options?.waitUntil ?? 'networkidle0',
+      timeout: options?.timeout ?? 20000,
+    });
 
     const pdfBuffer = options?.preferCSSPageSize
       ? await page.pdf({
@@ -783,6 +822,125 @@ export async function generateDoPickingListPdf(
   return { pdfBase64: pdfBuffer.toString('base64'), filename };
 }
 
+// ── GRN Remaining Quantity Report ─────────────────────────────────────────────
+
+export type GrnRemainingReportRow = {
+  grnId: string;
+  grnNo: string;
+  poNo: string | null;
+  receivedAt: Date | null;
+  supplierName: string | null;
+  endUserName: string | null;
+  skuCode: string;
+  skuDescription: string;
+  /** Null/0 -> fully fulfilled (or no PO/ASN to compare against) -> rendered as "—". */
+  remainingCtn: number | null;
+  remainingLoosePcs: number | null;
+};
+
+function formatRemainingCell(ctn: number | null, pcs: number | null): string {
+  if (!ctn && !pcs) return '—';
+  const parts = [`${formatQtyNum(ctn ?? 0)} CTN`];
+  if (pcs) parts.push(`${formatQtyNum(pcs)} pcs`);
+  return parts.join(' + ');
+}
+
+export async function renderGrnRemainingReportHtml(
+  rows: GrnRemainingReportRow[],
+): Promise<string> {
+  const template = await readFile(GRN_REMAINING_REPORT_HTML_PATH, 'utf-8');
+  const generatedAt = new Date().toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' });
+
+  // GRNs are the unit of "outstanding" — group rows by grnId (already ordered by the
+  // query) so every line of a qualifying GRN renders together under one header row.
+  const grnOrder: string[] = [];
+  const rowsByGrn = new Map<string, GrnRemainingReportRow[]>();
+  for (const row of rows) {
+    if (!rowsByGrn.has(row.grnId)) {
+      grnOrder.push(row.grnId);
+      rowsByGrn.set(row.grnId, []);
+    }
+    rowsByGrn.get(row.grnId)!.push(row);
+  }
+
+  const cards = grnOrder
+    .map((grnId) => {
+      const grnRows = rowsByGrn.get(grnId)!;
+      const first = grnRows[0];
+      const received = first.receivedAt
+        ? new Date(first.receivedAt).toLocaleDateString('en-MY', { dateStyle: 'medium' })
+        : '—';
+      const itemRows = grnRows
+        .map((row, idx) => {
+          const rowAlt = idx % 2 !== 0 ? ' tr-alt' : '';
+          return `<tr class="tr-data${rowAlt}">
+            <td class="col-no">${idx + 1}</td>
+            <td class="col-sku">${escapeHtml(row.skuCode)}</td>
+            <td class="col-desc">${escapeHtml(row.skuDescription)}</td>
+            <td class="col-qty">${formatRemainingCell(row.remainingCtn, row.remainingLoosePcs)}</td>
+          </tr>`;
+        })
+        .join('\n');
+      return `<div class="grn-card">
+        <div class="grn-info">
+          <div class="info-row"><span class="info-label">GRN No</span><span class="info-value">${escapeHtml(first.grnNo)}</span></div>
+          <div class="info-row"><span class="info-label">PO No</span><span class="info-value">${escapeHtml(first.poNo ?? '—')}</span></div>
+          <div class="info-row"><span class="info-label">Supplier</span><span class="info-value">${escapeHtml(first.supplierName ?? '—')}</span></div>
+          <div class="info-row"><span class="info-label">End User</span><span class="info-value">${escapeHtml(first.endUserName ?? '—')}</span></div>
+          <div class="info-row"><span class="info-label">Received</span><span class="info-value">${escapeHtml(received)}</span></div>
+        </div>
+        <div class="grn-items">
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align:center; width:8%">#</th>
+                <th style="text-align:left; width:20%">SKU Code</th>
+                <th style="text-align:left; width:52%">Description</th>
+                <th style="text-align:center; width:20%">Remaining</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemRows}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    })
+    .join('\n');
+
+  return template
+    .replace(/\{\{generatedAt\}\}/g, generatedAt)
+    .replace(/\{\{totalLines\}\}/g, String(rows.length))
+    .replace(/\{\{cards\}\}/, cards || '<div class="grn-card"><div class="grn-items" style="padding:1.5rem; text-align:center; color:var(--text-muted);">No outstanding lines</div></div>');
+}
+
+/** Printable PDF of every GRN line still owed against its PO/ASN (remainingCtn/remainingLoosePcs snapshot). */
+export async function generateGrnRemainingReportPdf(
+  organizationId: string,
+): Promise<{ pdfBase64: string; filename: string }> {
+  const { grnItemsRepository } = await import('@/composition-root');
+  const rawRows = await grnItemsRepository.getRemainingItems(organizationId);
+
+  const rows: GrnRemainingReportRow[] = rawRows.map((r) => ({
+    grnId: r.grnId,
+    grnNo: r.grnNo,
+    poNo: r.poNo ?? null,
+    receivedAt: r.receivedAt ?? null,
+    supplierName: r.supplierName ?? null,
+    endUserName: r.endUserName ?? null,
+    skuCode: r.skuCode,
+    skuDescription: r.skuDescription,
+    remainingCtn: r.remainingCtn != null ? Number(r.remainingCtn) : null,
+    remainingLoosePcs: r.remainingLoosePcs != null ? Number(r.remainingLoosePcs) : null,
+  }));
+
+  const html = await renderGrnRemainingReportHtml(rows);
+  // Landscape — 7 columns need the extra width A4 portrait can't give after margins.
+  const pdfBuffer = await htmlToPdf(html, { landscape: true });
+  const dateStr = new Date().toISOString().split('T')[0];
+  return { pdfBase64: pdfBuffer.toString('base64'), filename: `GRN_Unfulfillment_Report_${dateStr}.pdf` };
+}
+
 // ── Stock Balance Report ──────────────────────────────────────────────────────
 
 export type InventoryBalanceReportType = 'WITHOUT_RACK' | 'WITH_RACK';
@@ -905,5 +1063,217 @@ export async function generateStockBalancePdf(
   const pdfBuffer = await htmlToPdf(html);
   const dateStr = new Date().toISOString().split('T')[0];
   const filename = `Stock_Balance_Report_${dateStr}.pdf`;
+  return { pdfBase64: pdfBuffer.toString('base64'), filename };
+}
+
+// ── Internal Transfer Work Queue ─────────────────────────────────────────────
+
+/** Keep in sync with work-queue pageSize in bin-transfer-work-queue.tsx */
+const STOCK_TRANSFER_WORK_QUEUE_FETCH_CAP = 200;
+
+const STOCK_TRANSFER_WORK_QUEUE_STATUSES = ['IN_TRANSIT', 'AWAITING_DISPATCH'] as const;
+
+interface StockTransferWorkQueueRack {
+  rackRow: string;
+  rackColumn: string;
+  rackLevel: string | number;
+}
+
+interface StockTransferWorkQueueLine {
+  transferNo: string;
+  typeLabel: string;
+  statusLabel: string;
+  sourceDest: string;
+  skuLot: string;
+  qty: string;
+}
+
+interface StockTransferWorkQueueGroup {
+  transferNo: string;
+  typeLabel: string;
+  statusLabel: string;
+  lineCount: number;
+  lines: StockTransferWorkQueueLine[];
+}
+
+function formatStockTransferRackLocation(rack: StockTransferWorkQueueRack | null): string {
+  if (!rack) return '—';
+  return `${rack.rackRow}-${rack.rackLevel}-${rack.rackColumn}`;
+}
+
+function formatStockTransferTypeLabel(type: string): string {
+  return type === 'BIN_TO_BIN' ? 'Bin → Bin' : 'Warehouse → Warehouse';
+}
+
+function formatStockTransferQueueStatusLabel(status: string): string {
+  return status === 'AWAITING_DISPATCH' ? 'Awaiting Dispatch' : 'In Transit';
+}
+
+function formatStockTransferQtyDisplay(quantity: string, lossQuantity?: string | null): string {
+  const carton = parseFloat(String(quantity ?? 0)) || 0;
+  const loss = parseFloat(String(lossQuantity ?? 0)) || 0;
+  const parts: string[] = [];
+  if (carton > 0) parts.push(`${Number.isInteger(carton) ? carton : carton.toFixed(2)} CTN`);
+  if (loss > 0) parts.push(`${Number.isInteger(loss) ? loss : loss.toFixed(2)} Loss`);
+  return parts.length > 0 ? parts.join(' + ') : '0';
+}
+
+export async function renderStockTransferWorkQueueHtml(
+  groups: StockTransferWorkQueueGroup[],
+  options?: { searchLabel?: string },
+): Promise<string> {
+  const [template, logoImgHtml] = await Promise.all([
+    readFile(STOCK_TRANSFER_WORK_QUEUE_HTML_PATH, 'utf-8'),
+    getSmeLogoImgHtml('SME logo'),
+  ]);
+  const generatedAt = new Date().toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' });
+  const totalLines = groups.reduce((sum, g) => sum + g.lines.length, 0);
+
+  const tableRows = groups
+    .flatMap((group) =>
+      group.lines.map((line, i) => {
+        const rowAlt = i % 2 !== 0 ? ' tr-alt' : '';
+        return `<tr class="tr-data${rowAlt}">
+          <td class="col-mono col-muted">${escapeHtml(line.transferNo)}</td>
+          <td>${escapeHtml(line.sourceDest)}</td>
+          <td class="col-mono">${escapeHtml(line.skuLot)}</td>
+          <td class="col-center">${escapeHtml(line.qty)}</td>
+        </tr>`;
+      }),
+    )
+    .join('\n');
+
+  const searchLabel = (options?.searchLabel ?? 'All transfers').trim() || 'All transfers';
+
+  return template
+    .replace(/\{\{logoImgHtml\}\}/g, logoImgHtml)
+    .replace(/\{\{generatedAt\}\}/g, generatedAt)
+    .replace(/\{\{totalTransfers\}\}/g, String(groups.length))
+    .replace(/\{\{totalLines\}\}/g, String(totalLines))
+    .replace(/\{\{searchLabel\}\}/g, escapeHtml(searchLabel))
+    .replace(/\{\{tableRows\}\}/, tableRows);
+}
+
+/**
+ * Generate Internal Transfer Work Queue PDF — approved IN_TRANSIT / AWAITING_DISPATCH transfers.
+ */
+export async function generateStockTransferWorkQueuePdf(
+  organizationId: string,
+  filter?: { search?: string },
+): Promise<{ pdfBase64: string; filename: string }> {
+  const {
+    stockTransferRepository,
+    skuRepository,
+    racksRepository,
+  } = await import('@/composition-root');
+
+  const search = filter?.search?.trim() || undefined;
+  const mergedTransfers: Awaited<ReturnType<typeof stockTransferRepository.listStockTransfers>>['query'] = [];
+  const seen = new Set<string>();
+
+  for (const status of STOCK_TRANSFER_WORK_QUEUE_STATUSES) {
+    const result = await stockTransferRepository.listStockTransfers(
+      organizationId,
+      {
+        status,
+        search,
+        sortBy: 'CREATED_AT',
+        sortOrder: 'ASC',
+      },
+      { pageSize: STOCK_TRANSFER_WORK_QUEUE_FETCH_CAP, pageNumber: 1 },
+    );
+    for (const transfer of result.query) {
+      if (seen.has(transfer.id)) continue;
+      seen.add(transfer.id);
+      mergedTransfers.push(transfer);
+    }
+  }
+
+  mergedTransfers.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+  const allItems = (
+    await Promise.all(
+      mergedTransfers.map((transfer) =>
+        stockTransferRepository.getStockTransferItems(transfer.id),
+      ),
+    )
+  ).flat();
+
+  const skuIds = [...new Set(allItems.map((item) => item.skuId))];
+  const skuMap = new Map<string, { skuCode: string | null }>();
+  if (skuIds.length > 0) {
+    const skuResult = await skuRepository.getSku({ skuId: skuIds });
+    for (const sku of skuResult.query) {
+      skuMap.set(sku.skuId, { skuCode: sku.skuCode ?? null });
+    }
+  }
+
+  const rackIds = [
+    ...new Set(
+      allItems.flatMap((item) => [item.sourceRackId, item.destinationRackId].filter(Boolean)),
+    ),
+  ] as string[];
+  const rackMap = new Map<string, StockTransferWorkQueueRack>();
+  if (rackIds.length > 0) {
+    const rackResult = await racksRepository.getRack(
+      { rackId: rackIds },
+      { pageSize: rackIds.length, pageNumber: 1 },
+      organizationId,
+    );
+    for (const rack of rackResult.query) {
+      rackMap.set(rack.rackId, {
+        rackRow: rack.rackRow,
+        rackColumn: rack.rackColumn,
+        rackLevel: rack.rackLevel,
+      });
+    }
+  }
+
+  const itemsByTransferId = new Map<string, typeof allItems>();
+  for (const item of allItems) {
+    const arr = itemsByTransferId.get(item.stockTransferId) ?? [];
+    arr.push(item);
+    itemsByTransferId.set(item.stockTransferId, arr);
+  }
+
+  const groups: StockTransferWorkQueueGroup[] = mergedTransfers.map((transfer) => {
+    const typeLabel = formatStockTransferTypeLabel(transfer.type);
+    const statusLabel = formatStockTransferQueueStatusLabel(transfer.status);
+    const items = itemsByTransferId.get(transfer.id) ?? [];
+
+    const lines: StockTransferWorkQueueLine[] = items.map((item) => {
+      const skuCode = skuMap.get(item.skuId)?.skuCode ?? '—';
+      const lot = item.lotNo?.trim() || 'No lot';
+      const sourceRack = item.sourceRackId ? (rackMap.get(item.sourceRackId) ?? null) : null;
+      const destRack = item.destinationRackId ? (rackMap.get(item.destinationRackId) ?? null) : null;
+      return {
+        transferNo: transfer.transferNo,
+        typeLabel,
+        statusLabel,
+        sourceDest: `${formatStockTransferRackLocation(sourceRack)} → ${formatStockTransferRackLocation(destRack)}`,
+        skuLot: `${skuCode} / ${lot}`,
+        qty: formatStockTransferQtyDisplay(item.quantity, item.lossQuantity),
+      };
+    });
+
+    return {
+      transferNo: transfer.transferNo,
+      typeLabel,
+      statusLabel,
+      lineCount: lines.length,
+      lines,
+    };
+  });
+
+  const html = await renderStockTransferWorkQueueHtml(groups, {
+    searchLabel: search ?? 'All transfers',
+  });
+  const pdfBuffer = await htmlToPdf(html, {
+    landscape: true,
+    waitUntil: 'domcontentloaded',
+    timeout: 30000,
+  });
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = `Internal_Transfer_Work_Queue_${dateStr}.pdf`;
   return { pdfBase64: pdfBuffer.toString('base64'), filename };
 }

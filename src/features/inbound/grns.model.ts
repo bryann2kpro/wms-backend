@@ -46,6 +46,8 @@ export const GrnsTable = MainSchema.table('grns', {
    */
   advanceNoticeId: uuid('advance_notice_id').references(() => EsAdvanceNoticesTable.id),
 
+  endUserId: uuid('end_user_id'),
+
   nsError: jsonb('ns_error'),
   nsSentAt: timestamp('ns_sent_at', { withTimezone: true }),
 
@@ -75,6 +77,7 @@ export const GrnItemsTable = MainSchema.table('grn_items', {
   skuId: uuid('sku_id').notNull(),
   qty: numeric('qty', { precision: 10, scale: 2 }).notNull(),
   lossQty: numeric('loss_qty', { precision: 10, scale: 2 }).notNull().default('0'),
+  lossRackId: uuid('loss_rack_id'),
   remarks: text('remarks'),
   rackId: uuid('rack_id'),
   /**
@@ -93,6 +96,14 @@ export const GrnItemsTable = MainSchema.table('grn_items', {
    * If ALL batches for a SKU are flagged, the flags cancel out and base strategy applies.
    */
   priorityFlag: boolean('priority_flag').notNull().default(false),
+
+  /**
+   * Snapshot of qty still owed against the linked PO/ASN at the moment this
+   * GRN was submitted for approval. NULL when not linked to a PO/ASN, or
+   * when this item predates the feature. Never recomputed after submission.
+   */
+  remainingCtn: numeric('remaining_ctn', { precision: 10, scale: 2 }),
+  remainingLoosePcs: numeric('remaining_loose_pcs', { precision: 10, scale: 2 }),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -115,3 +126,19 @@ export const GrnItemRacksTable = MainSchema.table('grn_item_racks', {
 
 export type GrnItemRackType = typeof GrnItemRacksTable.$inferSelect;
 export type GrnItemRackInsertType = typeof GrnItemRacksTable.$inferInsert;
+
+/**
+ * GRN Item Loss Racks Join Table
+ *
+ * @description Maps GRN items to one or more loose-storage racks for the loss quantity.
+ * Mirrors GrnItemRacksTable but for `lossQty` instead of `qty`.
+ */
+export const GrnItemLossRacksTable = MainSchema.table('grn_item_loss_racks', {
+  id: uuid('id').defaultRandom().notNull().primaryKey(),
+  grnItemId: uuid('grn_item_id').notNull(),
+  rackId: uuid('rack_id').notNull(),
+  quantity: numeric('quantity', { precision: 10, scale: 2 }).notNull().default('0'),
+});
+
+export type GrnItemLossRackType = typeof GrnItemLossRacksTable.$inferSelect;
+export type GrnItemLossRackInsertType = typeof GrnItemLossRacksTable.$inferInsert;

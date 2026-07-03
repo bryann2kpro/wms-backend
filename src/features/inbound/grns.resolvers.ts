@@ -12,7 +12,7 @@ import { db } from '@/db';
 import { withAudit } from '@/features/audit-log/audit.wrapper';
 import { GraphQLContext } from '@/graphql/context';
 import { GraphQLError } from 'graphql';
-import { GrnType, GrnItemRacksTable } from './grns.model';
+import { GrnType, GrnItemRacksTable, GrnItemLossRacksTable, GrnItemsTable } from './grns.model';
 import { RacksTable } from '@/features/master-data/racks.model';
 import { eq, inArray } from 'drizzle-orm';
 import { logger } from '@/util/logger';
@@ -24,9 +24,12 @@ import type { PaginationMeta } from '@/features/rbac/rbac.model';
 import { recordGrnApprovalStockQuants } from './grn-stock-quant.service';
 import {
     assertGrnItemRackAllocations,
+    assertGrnItemLossRackAllocations,
     buildGrnItemRackRows,
+    buildGrnItemLossRackRows,
     primaryRackIdFromAllocations,
     resolveGrnItemRackAllocations,
+    resolveGrnItemLossRackAllocations,
     type GrnItemRackInput,
 } from './grn-rack-allocation.util';
 
@@ -50,6 +53,7 @@ function transformGrn(grn: GrnType) {
         notes: grn.notes ?? null,
         proofUrl: grn.proofUrl ?? null,
         warehouseId: grn.warehouseId ?? null,
+        endUserId: grn.endUserId ?? null,
         nsError: grn.nsError ? JSON.stringify(grn.nsError) : null,
         nsSentAt: grn.nsSentAt ?? null,
         createdAt: grn.createdAt,
@@ -63,6 +67,7 @@ function transformGrnItem(
     item: GrnItemsType,
     skuMap?: Map<string, { skuCode: string | null; skuDescription: string | null }>,
     rackMap?: Map<string, Array<{ rackId: string; quantity: number | null; rackLabel: string | null }>>,
+    lossRackMap?: Map<string, Array<{ rackId: string; quantity: number | null; rackLabel: string | null }>>,
 ) {
     const sku = skuMap?.get(item.skuId);
     const rackLinks = rackMap?.get(item.id) ?? [];
@@ -90,6 +95,29 @@ function transformGrnItem(
         }));
     }
     const primaryRackId = rackIds[0] ?? null;
+
+    const lossRackLinks = lossRackMap?.get(item.id) ?? [];
+    let lossRackAllocations = lossRackLinks
+        .filter((link) => link.quantity != null && link.quantity > 0)
+        .map((link) => ({
+            rackId: link.rackId,
+            quantity: link.quantity as number,
+            rackLabel: link.rackLabel ?? null,
+        }));
+    if (lossRackAllocations.length === 0 && lossRackLinks.length > 0) {
+        const resolved = resolveGrnItemLossRackAllocations({
+            qty: item.qty,
+            lossQty: item.lossQty,
+            lossRackId: lossRackLinks[0]?.rackId ?? null,
+        });
+        lossRackAllocations = resolved.map((row) => ({
+            rackId: row.rackId,
+            quantity: row.quantity,
+            rackLabel: lossRackLinks.find((link) => link.rackId === row.rackId)?.rackLabel ?? null,
+        }));
+    }
+    const primaryLossRackId = lossRackAllocations[0]?.rackId ?? (item as any).lossRackId ?? null;
+
     return {
         id: item.id,
         grnId: item.grnId,
@@ -98,12 +126,16 @@ function transformGrnItem(
         skuDescription: sku?.skuDescription ?? null,
         qty: item.qty,
         lossQty: item.lossQty ?? '0',
+        lossRackId: primaryLossRackId,
         remarks: item.remarks,
         rackId: primaryRackId,
         rackIds,
         rackAllocations,
+        lossRackAllocations,
         expiryDate: (item as any).expiryDate?.toISOString?.() ?? (item as any).expiryDate ?? null,
         lotNo: (item as any).lotNo ?? null,
+        remainingCtn: (item as any).remainingCtn != null ? Number((item as any).remainingCtn) : null,
+        remainingLoosePcs: (item as any).remainingLoosePcs != null ? Number((item as any).remainingLoosePcs) : null,
         createdAt: item.createdAt?.toISOString?.() ?? item.createdAt,
         updatedAt: item.updatedAt?.toISOString?.() ?? item.updatedAt,
         createdBy: item.createdBy,
@@ -114,6 +146,8 @@ function transformGrnItem(
 type CreateInboundResolverItemInput = {
     skuId?: string | null;
     skuCode?: string | null;
+    qty?: string | null;
+    orderedQty?: string | null;
     lotNo?: string | null;
     expiryDate?: string | null;
 };
@@ -169,6 +203,22 @@ async function insertGrnItemRackRows(
     }
 }
 
+async function insertGrnItemLossRackRows(
+    createdItems: GrnItemsType[],
+    sourceItems: GrnItemRackInput[],
+    tx: import('@/types/db-transaction').DbTransaction,
+): Promise<void> {
+    const lossRackRows: Array<{ grnItemId: string; rackId: string; quantity: string }> = [];
+    createdItems.forEach((createdItem, index) => {
+        const source = sourceItems[index];
+        if (!source) return;
+        lossRackRows.push(...buildGrnItemLossRackRows(createdItem.id, source));
+    });
+    if (lossRackRows.length > 0) {
+        await tx.insert(GrnItemLossRacksTable).values(lossRackRows);
+    }
+}
+
 async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
     advanceNoticeId?: string | null;
     items?: CreateInboundResolverItemInput[] | null;
@@ -214,10 +264,48 @@ async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
     }
 }
 
+function assertPartialDeliveryInputs(input: {
+    poFulfilled?: boolean | null;
+    poNo?: string | null;
+    items?: CreateInboundResolverItemInput[] | null;
+}) {
+    if (input.poFulfilled !== false) return;
+
+    if (!input.poNo?.trim()) {
+        throw new GraphQLError('PO reference is required for partial delivery.', {
+            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+        });
+    }
+
+    if (!input.items?.length) {
+        throw new GraphQLError('Line items are required for partial delivery.', {
+            extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+        });
+    }
+
+    input.items.forEach((item, index) => {
+        const label = item.skuCode?.trim() || `line ${index + 1}`;
+        const orderedRaw = item.orderedQty?.trim();
+        if (!orderedRaw) {
+            throw new GraphQLError(`Ordered quantity is required for ${label}.`, {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+        const orderedQty = Number(orderedRaw);
+        const receivedQty = Number(item.qty ?? 0);
+        if (!Number.isFinite(orderedQty) || orderedQty < receivedQty) {
+            throw new GraphQLError(`Ordered quantity for ${label} must be greater than or equal to received quantity.`, {
+                extensions: { code: 'BAD_USER_INPUT', http: { status: 400 } },
+            });
+        }
+    });
+}
+
 type EsAdvanceNoticePayload = {
     tranid: string;
-    entity: string;
-    duedate: string;
+    entity?: string;
+    duedate?: string;
+    source?: string;
     lines?: Array<{
         lineuniquekey: number;
         itemid: string;
@@ -328,6 +416,30 @@ async function computePoFulfillment(poNo: string | null | undefined): Promise<{
     return { asn, fullyFulfilled: shortfalls.length === 0, shortfalls };
 }
 
+/**
+ * True when Send to ES must be hidden for this GRN.
+ * Hide unless the End User PO has a real ASN ingested from ES (NetSuite) — not a
+ * synthetic/manual ASN (payload.source = 'manual' or missing apiKeyId).
+ */
+function isRealEsAdvanceNotice(record: { apiKeyId: string | null; payload: unknown }): boolean {
+    const payload = record.payload as EsAdvanceNoticePayload;
+    if (payload.source === 'manual') return false;
+    return record.apiKeyId != null;
+}
+
+async function isManualInboundGrn(parent: {
+    id: string;
+    advanceNoticeId?: string | null;
+    poNo?: string | null;
+}): Promise<boolean> {
+    if (!parent.poNo?.trim()) return true;
+
+    const asn = await esRepository.findByTranid(parent.poNo.trim());
+    if (!asn) return true;
+
+    return !isRealEsAdvanceNotice(asn);
+}
+
 function paginateMappedAdvanceNotices<T>(
     items: T[],
     pageSize: number,
@@ -389,6 +501,21 @@ async function filterPartialLinkedAdvanceNotices(
 
 export const resolvers = {
     Query: {
+        grnRemainingReport: async (_: unknown, __: unknown, context: GraphQLContext) => {
+            const rows = await grnItemsRepository.getRemainingItems(context.organizationId ?? '');
+            return rows.map((row) => ({
+                grnId: row.grnId,
+                grnNo: row.grnNo,
+                poNo: row.poNo ?? null,
+                receivedAt: row.receivedAt?.toISOString?.() ?? row.receivedAt ?? null,
+                supplierName: row.supplierName ?? null,
+                endUserName: row.endUserName ?? null,
+                skuCode: row.skuCode,
+                skuDescription: row.skuDescription,
+                remainingCtn: row.remainingCtn != null ? Number(row.remainingCtn) : null,
+                remainingLoosePcs: row.remainingLoosePcs != null ? Number(row.remainingLoosePcs) : null,
+            }));
+        },
         grns: async (_: unknown, args: {
             filter?: GrnFilter & { page?: number; pageSize?: number; pageNumber?: number };
             pageSize?: number;
@@ -646,7 +773,35 @@ export const resolvers = {
                 }
             }
 
-            return result.map((item) => transformGrnItem(item, skuMap, rackMap));
+            let lossRackMap = new Map<string, Array<{ rackId: string; quantity: number | null; rackLabel: string | null }>>();
+            if (grnItemIds.length > 0) {
+                const lossRackLinks = await db
+                    .select({
+                        grnItemId: GrnItemLossRacksTable.grnItemId,
+                        rackId: GrnItemLossRacksTable.rackId,
+                        quantity: GrnItemLossRacksTable.quantity,
+                        rackRow: RacksTable.rackRow,
+                        rackLevel: RacksTable.rackLevel,
+                        rackColumn: RacksTable.rackColumn,
+                    })
+                    .from(GrnItemLossRacksTable)
+                    .leftJoin(RacksTable, eq(GrnItemLossRacksTable.rackId, RacksTable.rackId))
+                    .where(inArray(GrnItemLossRacksTable.grnItemId, grnItemIds));
+                for (const link of lossRackLinks) {
+                    const rackLabel = link.rackRow && link.rackLevel && link.rackColumn
+                        ? `${link.rackRow}-${link.rackLevel}-${link.rackColumn}`
+                        : null;
+                    const current = lossRackMap.get(link.grnItemId) ?? [];
+                    current.push({
+                        rackId: link.rackId,
+                        quantity: link.quantity != null ? Number(link.quantity) : null,
+                        rackLabel,
+                    });
+                    lossRackMap.set(link.grnItemId, current);
+                }
+            }
+
+            return result.map((item) => transformGrnItem(item, skuMap, rackMap, lossRackMap));
         },
         /**
          * Whether this GRN's PO/ASN is fully received yet — drives the "Send to ES"
@@ -660,6 +815,7 @@ export const resolvers = {
             if (!fulfillment.asn) return null;
             return fulfillment.fullyFulfilled;
         },
+        manualInbound: async (parent: ReturnType<typeof transformGrn>) => isManualInboundGrn(parent),
     },
     GrnItem: {
         rack: async (parent: { rackId?: string | null }) => {
@@ -691,15 +847,23 @@ export const resolvers = {
             proofUrl?: string | null;
             warehouseId?: string | null;
             status?: string | null;
-            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+            items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; lossRackId?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; orderedQty?: string | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
             advanceNoticeId?: string | null;
+            poFulfilled?: boolean | null;
+            endUserId?: string | null;
         } }, context: GraphQLContext) => {
             try {
+                assertPartialDeliveryInputs({
+                    poFulfilled: input.poFulfilled,
+                    poNo: input.poNo,
+                    items: input.items,
+                });
                 await assertLotTrackedAsnItemsHaveLotAndExpiry({
                     advanceNoticeId: input.advanceNoticeId,
                     items: input.items,
                 });
                 assertGrnItemRackAllocations(input.items);
+                assertGrnItemLossRackAllocations(input.items);
                 await assertSkuLotExpiryControls(input.items, context.organizationId ?? undefined);
                 const result = await inboundServices.createInbound({
                     userId: input.userId,
@@ -716,6 +880,8 @@ export const resolvers = {
                     status: input.status,
                     items: input.items ?? undefined,
                     advanceNoticeId: input.advanceNoticeId ?? undefined,
+                    poFulfilled: input.poFulfilled ?? undefined,
+                    endUserId: input.endUserId ?? undefined,
                 });
                 return result;
             } catch (error) {
@@ -745,7 +911,7 @@ export const resolvers = {
                     status?: string | null;
                     createdBy: string;
                     updatedBy?: string | null;  
-                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; lossRackId?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -774,6 +940,7 @@ export const resolvers = {
                     }
 
                     assertGrnItemRackAllocations(input.items);
+                    assertGrnItemLossRackAllocations(input.items);
                     await assertSkuLotExpiryControls(
                         input.items,
                         context.organizationId ?? undefined,
@@ -860,7 +1027,19 @@ export const resolvers = {
                     }, context.tx);
 
                     // 4. Create GRN items
-                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
+                    const finalStatus = input.status ?? 'Draft';
+                    const remainingBySkuCode = finalStatus === 'Submitted' && context.tx
+                        ? await inboundServices.computeRemainingForItems(
+                            {
+                                poNo: input.poNo,
+                                organizationId: context.organizationId ?? '',
+                                items: input.items ?? [],
+                            },
+                            context.tx,
+                        )
+                        : new Map<string, { remainingCtn: number | null; remainingLoosePcs: number | null }>();
+
+                    const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; remainingCtn?: string | null; remainingLoosePcs?: string | null; createdBy: string; updatedBy?: string }> = [];
                     if (input.items?.length) {
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -888,24 +1067,28 @@ export const resolvers = {
                                 continue;
                             }
                             const allocations = resolveGrnItemRackAllocations(item);
+                            const lossAllocations = resolveGrnItemLossRackAllocations(item);
+                            const remaining = item.skuCode ? remainingBySkuCode.get(item.skuCode) : undefined;
                             grnItemRows.push({
                                 grnId: grn.id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
+                                lossRackId: primaryRackIdFromAllocations(lossAllocations) ?? item.lossRackId ?? null,
                                 remarks: item.remarks ?? undefined,
                                 rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                                 expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                                 lotNo: item.lotNo ?? null,
+                                remainingCtn: remaining?.remainingCtn != null ? String(remaining.remainingCtn) : null,
+                                remainingLoosePcs: remaining?.remainingLoosePcs != null ? String(remaining.remainingLoosePcs) : null,
                                 createdBy,
                                 updatedBy,
                             });
                         }
                         const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
-                        if (createdItems === false) {
-                            logger.error('[grns.resolvers]: Failed to create GRN items batch');
-                        } else if (createdItems.length && input.items && context.tx) {
+                        if (createdItems.length && input.items && context.tx) {
                             await insertGrnItemRackRows(createdItems, input.items, context.tx);
+                            await insertGrnItemLossRackRows(createdItems, input.items, context.tx);
                         }
                     }
 
@@ -948,7 +1131,7 @@ export const resolvers = {
                     status?: string | null;
                     updatedBy?: string | null;
                     updatedAt?: Date;
-                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
+                    items?: Array<{ skuId?: string | null; qty: string; lossQty?: string | null; lossRackId?: string | null; remarks?: string | null; rackId?: string | null; rackIds?: string[] | null; expiryDate?: string | null; lotNo?: string | null; skuCode?: string | null; skuDescription?: string | null; skuUom?: string | null }> | null;
                 }
             }, context: GraphQLContext) => {
                 try {
@@ -967,6 +1150,7 @@ export const resolvers = {
 
                     if (input.items?.length) {
                         assertGrnItemRackAllocations(input.items);
+                        assertGrnItemLossRackAllocations(input.items);
                         await assertSkuLotExpiryControls(
                             input.items,
                             context.organizationId ?? undefined,
@@ -1035,7 +1219,21 @@ export const resolvers = {
                     // Replace GRN items and sync Supplier Delivery Items (skuId, qtyDelivered = item qty)
                     if (input.items != null && input.items.length > 0) {
                         const createdBy = existingGrn.createdBy;
-                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; createdBy: string; updatedBy?: string }> = [];
+                        const grnItemRows: Array<{ grnId: string; skuId: string; qty: string; lossQty?: string; lossRackId?: string | null; remarks?: string; rackId?: string | null; expiryDate?: Date | null; lotNo?: string | null; remainingCtn?: string | null; remainingLoosePcs?: string | null; createdBy: string; updatedBy?: string }> = [];
+
+                        const finalStatus = input.status !== undefined ? input.status : existingGrn.status;
+                        const finalPoNo = input.poNo !== undefined ? input.poNo : existingGrn.poNo;
+                        const remainingBySkuCode = finalStatus === 'Submitted' && context.tx
+                            ? await inboundServices.computeRemainingForItems(
+                                {
+                                    poNo: finalPoNo,
+                                    organizationId: context.organizationId ?? existingGrn.organizationId ?? '',
+                                    items: input.items,
+                                },
+                                context.tx,
+                                id,
+                            )
+                            : new Map<string, { remainingCtn: number | null; remainingLoosePcs: number | null }>();
 
                         for (const item of input.items) {
                             let skuIdToUse: string | null = null;
@@ -1063,15 +1261,20 @@ export const resolvers = {
                                 continue;
                             }
                             const allocations = resolveGrnItemRackAllocations(item);
+                            const lossAllocations = resolveGrnItemLossRackAllocations(item);
+                            const remaining = item.skuCode ? remainingBySkuCode.get(item.skuCode) : undefined;
                             grnItemRows.push({
                                 grnId: id,
                                 skuId: skuIdToUse,
                                 qty: item.qty,
                                 lossQty: item.lossQty ?? '0',
+                                lossRackId: primaryRackIdFromAllocations(lossAllocations) ?? item.lossRackId ?? null,
                                 remarks: item.remarks ?? undefined,
                                 rackId: primaryRackIdFromAllocations(allocations) ?? undefined,
                                 expiryDate: item.expiryDate != null ? new Date(item.expiryDate) : null,
                                 lotNo: item.lotNo ?? null,
+                                remainingCtn: remaining?.remainingCtn != null ? String(remaining.remainingCtn) : null,
+                                remainingLoosePcs: remaining?.remainingLoosePcs != null ? String(remaining.remainingLoosePcs) : null,
                                 createdBy,
                                 updatedBy,
                             });
@@ -1084,13 +1287,17 @@ export const resolvers = {
                             await db
                                 .delete(GrnItemRacksTable)
                                 .where(inArray(GrnItemRacksTable.grnItemId, existingIds));
+                            await db
+                                .delete(GrnItemLossRacksTable)
+                                .where(inArray(GrnItemLossRacksTable.grnItemId, existingIds));
                         }
 
                         await grnItemsRepository.deleteGrnItem({ grnId: id }, context.tx);
                         if (grnItemRows.length > 0) {
                             const createdItems = await grnItemsRepository.createGrnItems(grnItemRows, context.tx);
-                            if (createdItems !== false && input.items && context.tx) {
+                            if (createdItems.length && input.items && context.tx) {
                                 await insertGrnItemRackRows(createdItems, input.items, context.tx);
+                                await insertGrnItemLossRackRows(createdItems, input.items, context.tx);
                             }
                         }
 
@@ -1106,6 +1313,41 @@ export const resolvers = {
                                     createdBy: item.createdBy,
                                     updatedBy: item.updatedBy ?? updatedBy,
                                 }, context.tx);
+                            }
+                        }
+                    } else if (updateData.status === 'Submitted' && context.tx) {
+                        // Status-only transition to Submitted (e.g. from the GRN list's
+                        // "Submit" action), no items in this call — compute the remaining-qty
+                        // snapshot from the GRN's existing items instead of skipping it.
+                        const existingItems = await grnItemsRepository.getGrnItems({ grnId: id }, context.tx);
+                        if (existingItems && existingItems.length > 0) {
+                            const skuIds = [...new Set(existingItems.map((i) => i.skuId))];
+                            const skuResult = await skuRepository.getSku({ skuId: skuIds }, undefined, context.tx);
+                            const codeBySkuId = new Map(
+                                (skuResult.query as Array<{ skuId: string; skuCode: string }>).map(
+                                    (s) => [s.skuId, s.skuCode] as const,
+                                ),
+                            );
+                            const remainingBySkuCode = await inboundServices.computeRemainingForItems(
+                                {
+                                    poNo: existingGrn.poNo,
+                                    organizationId: context.organizationId ?? existingGrn.organizationId ?? '',
+                                    items: existingItems.map((i) => ({
+                                        skuCode: codeBySkuId.get(i.skuId) ?? null,
+                                        qty: i.qty,
+                                        lossQty: i.lossQty,
+                                    })),
+                                },
+                                context.tx,
+                                id,
+                            );
+                            for (const item of existingItems) {
+                                const code = codeBySkuId.get(item.skuId);
+                                const remaining = code ? remainingBySkuCode.get(code) : undefined;
+                                await context.tx.update(GrnItemsTable).set({
+                                    remainingCtn: remaining?.remainingCtn != null ? String(remaining.remainingCtn) : null,
+                                    remainingLoosePcs: remaining?.remainingLoosePcs != null ? String(remaining.remainingLoosePcs) : null,
+                                }).where(eq(GrnItemsTable.id, item.id));
                             }
                         }
                     }

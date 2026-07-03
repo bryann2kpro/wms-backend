@@ -13,11 +13,17 @@ export const typeDefs = `#graphql
     id: ID!
     skuId: ID!
     skuCode: String
+    """SKU stock unit code (e.g. CTN, PCS) from master UOM."""
+    stockUnitCode: String
     description: String
     quantity: String!
     reservedQty: String!
+    """Loose units stored on this quant row."""
+    lossQty: String!
     rackId: ID!
     rackLabel: String
+    """Bin type of the rack this quant is stored on (e.g. LOOSE_STORAGE, FIXED, PALLET_STORAGE). Lets the UI distinguish loose stock from carton/pallet stock."""
+    rackBinType: String
     lotNo: String
     expiryDate: String
     organizationId: ID!
@@ -66,6 +72,8 @@ export const typeDefs = `#graphql
   input UpdateStockQuantInput {
     description: String
     quantity: String
+    """Loose units on this quant row."""
+    lossQty: String
     rackId: ID
   }
 

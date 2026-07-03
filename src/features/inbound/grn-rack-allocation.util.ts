@@ -16,6 +16,8 @@ export type GrnItemRackInput = {
   rackId?: string | null;
   rackIds?: string[] | null;
   rackAllocations?: GrnRackAllocationInput[] | null;
+  lossRackId?: string | null;
+  lossRackAllocations?: GrnRackAllocationInput[] | null;
 };
 
 export type ResolvedGrnRackAllocation = {
@@ -138,4 +140,91 @@ export function primaryRackIdFromAllocations(
   allocations: ResolvedGrnRackAllocation[],
 ): string | undefined {
   return allocations[0]?.rackId;
+}
+
+export function grnItemLossQty(item: Pick<GrnItemRackInput, "lossQty">): number {
+  const qty = roundQtyPutaway(Number(item.lossQty ?? 0));
+  return Number.isFinite(qty) && qty > 0 ? qty : 0;
+}
+
+/**
+ * Resolve GRN line loose/loss rack allocations. Mirrors resolveGrnItemRackAllocations
+ * but keyed off lossQty/lossRackAllocations/lossRackId instead of qty/rackAllocations/rackId.
+ */
+export function resolveGrnItemLossRackAllocations(
+  item: GrnItemRackInput,
+): ResolvedGrnRackAllocation[] {
+  const lossQty = grnItemLossQty(item);
+  if (lossQty <= 0) return [];
+
+  const fromAllocations = (item.lossRackAllocations ?? [])
+    .map((row) => ({
+      rackId: (row.rackId ?? "").trim(),
+      quantity: roundQtyPutaway(Number(row.quantity)),
+    }))
+    .filter((row) => row.rackId && row.quantity > 0);
+
+  if (fromAllocations.length > 0) {
+    return fromAllocations.map((row) => ({
+      rackId: row.rackId,
+      quantity: row.quantity,
+      quantityStr: String(row.quantity),
+    }));
+  }
+
+  const single = (item.lossRackId ?? "").trim();
+  if (!single) return [];
+
+  return [
+    {
+      rackId: single,
+      quantity: lossQty,
+      quantityStr: String(lossQty),
+    },
+  ];
+}
+
+export function assertGrnItemLossRackAllocations(
+  items: GrnItemRackInput[] | null | undefined,
+): void {
+  if (!items?.length) return;
+
+  for (const item of items) {
+    const lossQty = grnItemLossQty(item);
+    if (lossQty <= 0) continue;
+
+    const allocations = resolveGrnItemLossRackAllocations(item);
+    if (allocations.length === 0) continue;
+
+    const total = roundQtyPutaway(
+      allocations.reduce((sum, row) => sum + row.quantity, 0),
+    );
+    if (total !== lossQty) {
+      throw new GraphQLError(
+        `Loose/loss rack allocation total (${total}) must equal loss quantity (${lossQty}).`,
+        { extensions: { code: "BAD_USER_INPUT", http: { status: 400 } } },
+      );
+    }
+
+    const seen = new Set<string>();
+    for (const row of allocations) {
+      if (seen.has(row.rackId)) {
+        throw new GraphQLError("Duplicate rack in lossRackAllocations for the same GRN line.", {
+          extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
+        });
+      }
+      seen.add(row.rackId);
+    }
+  }
+}
+
+export function buildGrnItemLossRackRows(
+  grnItemId: string,
+  item: GrnItemRackInput,
+): Array<{ grnItemId: string; rackId: string; quantity: string }> {
+  return resolveGrnItemLossRackAllocations(item).map((row) => ({
+    grnItemId,
+    rackId: row.rackId,
+    quantity: row.quantityStr,
+  }));
 }

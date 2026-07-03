@@ -55,10 +55,11 @@ export class EsRepositoryClass {
    * Find an existing advance notice by tranid.
    * Used for duplicate detection before saving.
    */
-  async findByTranid(tranid: string): Promise<EsAdvanceNoticeType | null> {
+  async findByTranid(tranid: string, tx?: DbTransaction): Promise<EsAdvanceNoticeType | null> {
     try {
       logger.info(`ℹ️ [EsRepository.findByTranid] Checking for tranid: ${tranid}`);
-      const [record] = await db
+      const query = tx ?? db;
+      const [record] = await query
         .select()
         .from(EsAdvanceNoticesTable)
         .where(eq(EsAdvanceNoticesTable.tranid, tranid))
@@ -187,10 +188,11 @@ export class EsRepositoryClass {
    * Mark an advance notice as linked to a GRN.
    * Called within the createInbound transaction after the GRN is created.
    */
-  async markLinked(id: string, grnId: string): Promise<void> {
+  async markLinked(id: string, grnId: string, tx?: DbTransaction): Promise<void> {
     try {
       logger.info(`ℹ️ [EsRepository.markLinked] Linking ASN ${id} to GRN ${grnId}`);
-      await db
+      const query = tx ?? db;
+      await query
         .update(EsAdvanceNoticesTable)
         .set({ linkedGrnId: grnId })
         .where(eq(EsAdvanceNoticesTable.id, id));
@@ -225,6 +227,36 @@ export class EsRepositoryClass {
       logger.error('❌ [EsRepository.saveAdvanceNotice] Error:', error);
       throw error;
     }
+  }
+
+  async createSyntheticAdvanceNotice(input: {
+    tranid: string;
+    payload: unknown;
+  }, tx?: DbTransaction): Promise<EsAdvanceNoticeType> {
+    try {
+      logger.info(`ℹ️ [EsRepository.createSyntheticAdvanceNotice] Saving manual advance notice for tranid: ${input.tranid}`);
+      const payload = this.stampManualSource(input.payload);
+      const query = tx ?? db;
+      const [record] = await query
+        .insert(EsAdvanceNoticesTable)
+        .values({
+          tranid: input.tranid,
+          payload,
+        })
+        .returning();
+      logger.info(`✅ [EsRepository.createSyntheticAdvanceNotice] Saved record id: ${record.id}`);
+      return record;
+    } catch (error) {
+      logger.error('❌ [EsRepository.createSyntheticAdvanceNotice] Error:', error);
+      throw error;
+    }
+  }
+
+  private stampManualSource(payload: unknown): Record<string, unknown> {
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      return { ...(payload as Record<string, unknown>), source: 'manual' };
+    }
+    return { source: 'manual' };
   }
 
   async saveAdvanceNoticeLog(input: {

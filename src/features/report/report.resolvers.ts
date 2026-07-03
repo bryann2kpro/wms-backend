@@ -13,8 +13,10 @@ import {
   generateInvoiceSummaryPdf,
   generateStockCountChecklistPdf,
   generateDoPickingListPdf,
+  generateStockTransferWorkQueuePdf,
   getInventoryBalanceReportData,
   generateStockBalancePdf,
+  generateGrnRemainingReportPdf,
   type InventoryBalanceReportType,
 } from './report.service';
 import z from 'zod';
@@ -160,6 +162,27 @@ export const resolvers = {
       return generateDoPickingListPdf(context.organizationId, filter);
     },
 
+    generateStockTransferWorkQueueList: async (
+      _: unknown,
+      args: { filter?: { search?: string } },
+      context: { organizationId: string },
+    ) => {
+      logger.info(
+        'ℹ️ [report.resolvers.generateStockTransferWorkQueueList] Generating work queue PDF...',
+      );
+
+      const filterSchema = z.object({
+        search: z.string().optional(),
+      });
+
+      const { success, data: filter, error } = filterSchema.safeParse(args.filter ?? {});
+      if (!success) {
+        throw new Error(`Invalid filter: ${z.prettifyError(error)}`);
+      }
+
+      return generateStockTransferWorkQueuePdf(context.organizationId, filter);
+    },
+
     generateStockBalanceReport: async (
       _: unknown,
       args: { type: InventoryBalanceReportType },
@@ -168,6 +191,15 @@ export const resolvers = {
       logger.info('ℹ️ [report.resolvers.generateStockBalanceReport] Generating stock balance PDF...');
       const rows = await getInventoryBalanceReportData(args.type, context.organizationId);
       return generateStockBalancePdf(rows, args.type);
+    },
+
+    generateGrnRemainingReportPdf: async (
+      _: unknown,
+      __: unknown,
+      context: { organizationId: string },
+    ) => {
+      logger.info('ℹ️ [report.resolvers.generateGrnRemainingReportPdf] Generating GRN remaining report PDF...');
+      return generateGrnRemainingReportPdf(context.organizationId);
     },
   },
 };

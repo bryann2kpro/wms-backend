@@ -142,21 +142,27 @@ export function capacityForSkuOnRack(
   occupants: RackOccupant[],
 ): RackSkuCapacityResult {
   const maxCapacity = maxCasesForSkuInRack(rack, targetSku);
-  const { usedVolumeMm3, usedWeightKg } = computeRackUsage(occupants);
+  const { usedVolumeMm3, usedWeightKg, totalCartons } = computeRackUsage(occupants);
 
   const rackVol = rackVolumeMm3(rack);
   const rackWt = positiveNum(rack.weight);
   const targetCaseVol = caseVolumeMm3(targetSku);
   const targetCaseWt = positiveNum(targetSku.caseGrossWeightKg);
 
-  let usedEquivalent = 0;
-  if (targetCaseVol && usedVolumeMm3 > 0) {
-    usedEquivalent = Math.max(usedEquivalent, usedVolumeMm3 / targetCaseVol);
+  const canConvertUsageToTargetSku = Boolean(targetCaseVol || targetCaseWt);
+  let currentQuantity: number;
+  if (canConvertUsageToTargetSku) {
+    let usedEquivalent = 0;
+    if (targetCaseVol && usedVolumeMm3 > 0) {
+      usedEquivalent = Math.max(usedEquivalent, usedVolumeMm3 / targetCaseVol);
+    }
+    if (targetCaseWt && usedWeightKg > 0) {
+      usedEquivalent = Math.max(usedEquivalent, usedWeightKg / targetCaseWt);
+    }
+    currentQuantity = Math.ceil(usedEquivalent);
+  } else {
+    currentQuantity = totalCartons;
   }
-  if (targetCaseWt && usedWeightKg > 0) {
-    usedEquivalent = Math.max(usedEquivalent, usedWeightKg / targetCaseWt);
-  }
-  const currentQuantity = Math.ceil(usedEquivalent);
 
   let availableCapacity: number | null = null;
   if (maxCapacity != null) {
@@ -196,6 +202,9 @@ export function rackHasCapacityForIncomingSku(
 ): boolean {
   if (!Number.isFinite(incomingQty) || incomingQty <= 0) return true;
   const { availableCapacity } = capacityForSkuOnRack(rack, targetSku, occupants);
-  if (availableCapacity == null) return true;
-  return incomingQty <= availableCapacity;
+  if (availableCapacity != null) {
+    return incomingQty <= availableCapacity;
+  }
+  // Capacity unknown — only allow putaway on empty racks.
+  return computeRackUsage(occupants).totalCartons <= 0;
 }

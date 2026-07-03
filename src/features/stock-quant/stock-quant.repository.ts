@@ -13,12 +13,15 @@ import { StockQuantTable } from "./stock-quant.model";
 import type { DbTransaction } from "@/types/db-transaction";
 import { SkuTable } from "../master-data/sku.model";
 import { RacksTable } from "../master-data/racks.model";
+import { StockUnitTable } from "../master-data/stock-unit.model";
 
 export type StockQuantType = typeof StockQuantTable.$inferSelect;
 export type StockQuantInsertType = typeof StockQuantTable.$inferInsert;
 export type StockQuantListType = StockQuantType & {
   skuCode: string | null;
   rackLabel: string | null;
+  rackBinType: string | null;
+  stockUnitCode: string | null;
 };
 
 export type StockQuantFilter = {
@@ -39,6 +42,7 @@ export type StockQuantUpdateInput = {
   description?: string | null;
   quantity?: string;
   reservedQty?: string;
+  lossQty?: string;
   rackId?: string;
   updatedBy: string;
 };
@@ -91,6 +95,7 @@ export class StockQuantRepositoryClass {
           description: StockQuantTable.description,
           quantity: StockQuantTable.quantity,
           reservedQty: StockQuantTable.reservedQty,
+          lossQty: StockQuantTable.lossQty,
           rackId: StockQuantTable.rackId,
           organizationId: StockQuantTable.organizationId,
           createdAt: StockQuantTable.createdAt,
@@ -98,10 +103,13 @@ export class StockQuantRepositoryClass {
           createdBy: StockQuantTable.createdBy,
           updatedBy: StockQuantTable.updatedBy,
           skuCode: SkuTable.skuCode,
+          stockUnitCode: StockUnitTable.unitCode,
           rackLabel: stockQuantRackLabelExpr,
+          rackBinType: RacksTable.binType,
         })
         .from(StockQuantTable)
         .leftJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
+        .leftJoin(StockUnitTable, eq(StockUnitTable.stockUnitId, SkuTable.skuUom))
         .leftJoin(RacksTable, eq(RacksTable.rackId, StockQuantTable.rackId))
         .where(whereClause)
         .orderBy(desc(StockQuantTable.updatedAt));
@@ -175,6 +183,7 @@ export class StockQuantRepositoryClass {
           description: StockQuantTable.description,
           quantity: StockQuantTable.quantity,
           reservedQty: StockQuantTable.reservedQty,
+          lossQty: StockQuantTable.lossQty,
           rackId: StockQuantTable.rackId,
           organizationId: StockQuantTable.organizationId,
           createdAt: StockQuantTable.createdAt,
@@ -182,10 +191,13 @@ export class StockQuantRepositoryClass {
           createdBy: StockQuantTable.createdBy,
           updatedBy: StockQuantTable.updatedBy,
           skuCode: SkuTable.skuCode,
+          stockUnitCode: StockUnitTable.unitCode,
           rackLabel: stockQuantRackLabelExpr,
+          rackBinType: RacksTable.binType,
         })
         .from(StockQuantTable)
         .leftJoin(SkuTable, eq(SkuTable.skuId, StockQuantTable.skuId))
+        .leftJoin(StockUnitTable, eq(StockUnitTable.stockUnitId, SkuTable.skuUom))
         .leftJoin(RacksTable, eq(RacksTable.rackId, StockQuantTable.rackId))
         .where(
           and(
@@ -558,12 +570,17 @@ export class StockQuantRepositoryClass {
     qty: string,
     userId: string,
     tx: DbTransaction,
+    lossQty = "0",
   ): Promise<StockQuantType> {
     try {
+      const cartonDebit = String(qty ?? "0").trim() || "0";
+      const lossDebit = String(lossQty ?? "0").trim() || "0";
+
       const [updated] = await tx
         .update(StockQuantTable)
         .set({
-          quantity: sql`${StockQuantTable.quantity} - ${qty}::numeric`,
+          quantity: sql`${StockQuantTable.quantity} - ${cartonDebit}::numeric`,
+          lossQty: sql`${StockQuantTable.lossQty} - ${lossDebit}::numeric`,
           updatedBy: userId,
           updatedAt: new Date(),
         })
@@ -571,18 +588,23 @@ export class StockQuantRepositoryClass {
           and(
             eq(StockQuantTable.id, quantId),
             eq(StockQuantTable.organizationId, organizationId),
-            sql`(${StockQuantTable.quantity} - ${StockQuantTable.reservedQty}) >= ${qty}::numeric`,
+            sql`(${StockQuantTable.quantity} - ${StockQuantTable.reservedQty}) >= ${cartonDebit}::numeric`,
+            sql`${StockQuantTable.lossQty} >= ${lossDebit}::numeric`,
           ),
         )
         .returning();
 
       if (!updated) {
         throw new Error(
-          `[StockQuantRepository.debitStockQuantIfAvailable] Insufficient available stock or row not found (id=${quantId}, qty=${qty})`,
+          `[StockQuantRepository.debitStockQuantIfAvailable] Insufficient available stock or row not found (id=${quantId}, qty=${cartonDebit}, lossQty=${lossDebit})`,
         );
       }
 
-      if (Number(updated.quantity) === 0 && Number(updated.reservedQty) === 0) {
+      if (
+        Number(updated.quantity) === 0 &&
+        Number(updated.reservedQty) === 0 &&
+        Number(updated.lossQty) === 0
+      ) {
         await tx
           .delete(StockQuantTable)
           .where(
@@ -614,6 +636,7 @@ export class StockQuantRepositoryClass {
       lotNo?: string | null;
       expiryDate?: Date | null;
       qty: string;
+      lossQty?: string | null;
       userId: string;
       description?: string | null;
     },
@@ -621,7 +644,19 @@ export class StockQuantRepositoryClass {
   ): Promise<StockQuantType> {
     try {
       const client = tx ?? db;
-      const { organizationId, skuId, rackId, lotNo, expiryDate, qty, userId, description } = params;
+      const {
+        organizationId,
+        skuId,
+        rackId,
+        lotNo,
+        expiryDate,
+        qty,
+        lossQty = "0",
+        userId,
+        description,
+      } = params;
+      const cartonCredit = String(qty ?? "0").trim() || "0";
+      const lossCredit = String(lossQty ?? "0").trim() || "0";
 
       const existing = await this.getStockQuantByRackSkuLotAndExpiry(
         organizationId,
@@ -636,7 +671,8 @@ export class StockQuantRepositoryClass {
         const [row] = await client
           .update(StockQuantTable)
           .set({
-            quantity: sql`${StockQuantTable.quantity} + ${qty}::numeric`,
+            quantity: sql`${StockQuantTable.quantity} + ${cartonCredit}::numeric`,
+            lossQty: sql`${StockQuantTable.lossQty} + ${lossCredit}::numeric`,
             updatedBy: userId,
             updatedAt: new Date(),
           })
@@ -660,7 +696,8 @@ export class StockQuantRepositoryClass {
           lotNo: lotTrimmed === "" ? null : lotTrimmed,
           expiryDate: expiryDate ?? null,
           description: description ?? null,
-          quantity: qty,
+          quantity: cartonCredit,
+          lossQty: lossCredit,
           reservedQty: "0",
           createdBy: userId,
           updatedBy: userId,
