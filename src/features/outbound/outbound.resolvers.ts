@@ -250,6 +250,7 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
       qtyAllocated: a.qtyAllocated,
       priorityFlag: a.priorityFlag,
     })),
+    stockQuantRacks: (item as any).stockQuantRacks ?? [],
   };
 }
 
@@ -462,18 +463,29 @@ export const resolvers = {
         const result = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(filter, paginationParams);
         const items = result.query;
         const doItemIds = items.map((i) => i.id);
-        const allocations = doItemIds.length > 0
-          ? await deliveryOrdersRepository.getDoItemAllocationsWithDetails(doItemIds)
-          : [];
+        const skuIds = [...new Set(items.map((i) => i.skuId).filter(Boolean))] as string[];
+        const [allocations, stockQuantRackRows] = await Promise.all([
+          doItemIds.length > 0
+            ? deliveryOrdersRepository.getDoItemAllocationsWithDetails(doItemIds)
+            : Promise.resolve([]),
+          deliveryOrdersRepository.getStockQuantRacksForSkus(skuIds),
+        ]);
         const allocByItemId = new Map<string, typeof allocations>();
         for (const a of allocations) {
           const arr = allocByItemId.get(a.doItemId) ?? [];
           arr.push(a);
           allocByItemId.set(a.doItemId, arr);
         }
+        const racksBySkuId = new Map<string, string[]>();
+        for (const r of stockQuantRackRows) {
+          const arr = racksBySkuId.get(r.skuId) ?? [];
+          if (!arr.includes(r.rackLabel)) arr.push(r.rackLabel);
+          racksBySkuId.set(r.skuId, arr);
+        }
         const itemsWithAllocations = items.map((item) => ({
           ...item,
           allocations: allocByItemId.get(item.id) ?? [],
+          stockQuantRacks: racksBySkuId.get(item.skuId ?? '') ?? [],
         }));
 
         logger.info("✅ [outbound.resolvers.deliveryOrderItems] Delivery order items fetched:", items.length);

@@ -597,6 +597,29 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
+  async getStockQuantRacksForSkus(skuIds: string[]): Promise<Array<{ skuId: string; rackLabel: string }>> {
+    if (skuIds.length === 0) return [];
+    try {
+      const rows = await db
+        .select({
+          skuId: StockQuantTable.skuId,
+          rackRow: RacksTable.rackRow,
+          rackLevel: RacksTable.rackLevel,
+          rackColumn: RacksTable.rackColumn,
+        })
+        .from(StockQuantTable)
+        .innerJoin(RacksTable, eq(StockQuantTable.rackId, RacksTable.rackId))
+        .where(inArray(StockQuantTable.skuId, skuIds));
+      return rows.map((r) => ({
+        skuId: r.skuId,
+        rackLabel: `${r.rackRow}-${r.rackColumn}${r.rackLevel != null ? `-${r.rackLevel}` : ''}`,
+      }));
+    } catch (error) {
+      logger.error('❌ [DeliveryOrdersRepository.getStockQuantRacksForSkus] Error:', error);
+      throw error;
+    }
+  }
+
   /**
    * Insert pick-list allocations for a delivery order.
    * Replaces any existing allocations for the same DO items.
