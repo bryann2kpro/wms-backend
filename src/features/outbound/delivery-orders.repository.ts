@@ -614,7 +614,7 @@ export class DeliveryOrdersRepositoryClass {
         .where(inArray(StockQuantTable.skuId, skuIds));
       return rows.map((r) => ({
         skuId: r.skuId,
-        rackLabel: `${r.rackRow}-${r.rackColumn}${r.rackLevel != null ? `-${r.rackLevel}` : ''}`,
+        rackLabel: `${r.rackRow}${r.rackLevel != null ? `-${r.rackLevel}` : ''}-${r.rackColumn}`,
         qty: parseFloat(String(r.qty)),
         expiryDate: r.expiryDate ?? null,
       }));
