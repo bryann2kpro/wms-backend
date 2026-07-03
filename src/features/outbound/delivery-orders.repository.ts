@@ -29,7 +29,8 @@ import { OutletsTable } from "@/features/master-data/outlets.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
-import { eq, and, like, inArray, gte, lte, or, sum, notInArray } from "drizzle-orm";
+import { eq, and, like, inArray, gte, lte, or, sum, notInArray, asc } from "drizzle-orm";
+import { StockQuantTable } from "@/features/stock-quant/stock-quant.model";
 
 export type DoItemAllocationWithDetails = {
   id: string;
@@ -558,6 +559,63 @@ export class DeliveryOrdersRepositoryClass {
       }));
     } catch (error) {
       logger.error('❌ [DeliveryOrdersRepository.getGrnItemsWithAvailableQty] Error:', error);
+      throw error;
+    }
+  }
+
+  async getStockQuantBinsForSku(
+    skuId: string,
+    tx?: DbTransaction
+  ): Promise<Array<{
+    rackId: string;
+    quantity: number;
+    expiryDate: Date | null;
+    createdAt: Date;
+  }>> {
+    try {
+      const dbClient = tx ?? db;
+      const rows = await dbClient
+        .select({
+          rackId: StockQuantTable.rackId,
+          quantity: StockQuantTable.quantity,
+          expiryDate: StockQuantTable.expiryDate,
+          createdAt: StockQuantTable.createdAt,
+        })
+        .from(StockQuantTable)
+        .where(eq(StockQuantTable.skuId, skuId))
+        .orderBy(asc(StockQuantTable.expiryDate));
+
+      return rows.map((r) => ({
+        rackId: r.rackId,
+        quantity: parseFloat(String(r.quantity)),
+        expiryDate: r.expiryDate ?? null,
+        createdAt: r.createdAt,
+      }));
+    } catch (error) {
+      logger.error('❌ [DeliveryOrdersRepository.getStockQuantBinsForSku] Error:', error);
+      throw error;
+    }
+  }
+
+  async getStockQuantRacksForSkus(skuIds: string[]): Promise<Array<{ skuId: string; rackLabel: string }>> {
+    if (skuIds.length === 0) return [];
+    try {
+      const rows = await db
+        .select({
+          skuId: StockQuantTable.skuId,
+          rackRow: RacksTable.rackRow,
+          rackLevel: RacksTable.rackLevel,
+          rackColumn: RacksTable.rackColumn,
+        })
+        .from(StockQuantTable)
+        .innerJoin(RacksTable, eq(StockQuantTable.rackId, RacksTable.rackId))
+        .where(inArray(StockQuantTable.skuId, skuIds));
+      return rows.map((r) => ({
+        skuId: r.skuId,
+        rackLabel: `${r.rackRow}-${r.rackColumn}${r.rackLevel != null ? `-${r.rackLevel}` : ''}`,
+      }));
+    } catch (error) {
+      logger.error('❌ [DeliveryOrdersRepository.getStockQuantRacksForSkus] Error:', error);
       throw error;
     }
   }
