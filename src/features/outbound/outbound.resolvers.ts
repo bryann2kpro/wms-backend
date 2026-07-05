@@ -250,7 +250,11 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
       qtyAllocated: a.qtyAllocated,
       priorityFlag: a.priorityFlag,
     })),
-    stockQuantRacks: (item as any).stockQuantRacks ?? [],
+    stockQuantRacks: ((item as any).stockQuantRacks ?? []).map((r: { rackLabel: string; qty: string; expiryDate: string | null }) => ({
+      rackLabel: r.rackLabel,
+      qty: r.qty,
+      expiryDate: r.expiryDate ?? null,
+    })),
   };
 }
 
@@ -476,10 +480,14 @@ export const resolvers = {
           arr.push(a);
           allocByItemId.set(a.doItemId, arr);
         }
-        const racksBySkuId = new Map<string, string[]>();
+        const racksBySkuId = new Map<string, { rackLabel: string; qty: string; expiryDate: string | null }[]>();
         for (const r of stockQuantRackRows) {
           const arr = racksBySkuId.get(r.skuId) ?? [];
-          if (!arr.includes(r.rackLabel)) arr.push(r.rackLabel);
+          arr.push({
+            rackLabel: r.rackLabel,
+            qty: String(r.qty),
+            expiryDate: r.expiryDate ? r.expiryDate.toISOString() : null,
+          });
           racksBySkuId.set(r.skuId, arr);
         }
         const itemsWithAllocations = items.map((item) => ({

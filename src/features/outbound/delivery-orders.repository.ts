@@ -597,7 +597,7 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
-  async getStockQuantRacksForSkus(skuIds: string[]): Promise<Array<{ skuId: string; rackLabel: string }>> {
+  async getStockQuantRacksForSkus(skuIds: string[]): Promise<Array<{ skuId: string; rackLabel: string; qty: number; expiryDate: Date | null }>> {
     if (skuIds.length === 0) return [];
     try {
       const rows = await db
@@ -606,13 +606,17 @@ export class DeliveryOrdersRepositoryClass {
           rackRow: RacksTable.rackRow,
           rackLevel: RacksTable.rackLevel,
           rackColumn: RacksTable.rackColumn,
+          qty: StockQuantTable.quantity,
+          expiryDate: StockQuantTable.expiryDate,
         })
         .from(StockQuantTable)
         .innerJoin(RacksTable, eq(StockQuantTable.rackId, RacksTable.rackId))
         .where(inArray(StockQuantTable.skuId, skuIds));
       return rows.map((r) => ({
         skuId: r.skuId,
-        rackLabel: `${r.rackRow}-${r.rackColumn}${r.rackLevel != null ? `-${r.rackLevel}` : ''}`,
+        rackLabel: `${r.rackRow}${r.rackLevel != null ? `-${r.rackLevel}` : ''}-${r.rackColumn}`,
+        qty: parseFloat(String(r.qty)),
+        expiryDate: r.expiryDate ?? null,
       }));
     } catch (error) {
       logger.error('❌ [DeliveryOrdersRepository.getStockQuantRacksForSkus] Error:', error);
