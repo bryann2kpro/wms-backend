@@ -135,10 +135,12 @@ export const typeDefs = `#graphql
     createStockQuant(input: CreateStockQuantInput!): StockQuant!
 
     """
-    Sync warehouse stock balance from the daily Excel file.
-    Upserts stock_quant (qty per rack per expiry batch), zeroes rows missing
-    from the file, sets inventory_balances on-hand totals, logs ADJUSTMENT
-    movements, and re-validates open DO picklist batch assignments.
+    Sync warehouse stock balance from the daily Excel file. FULL REPLACE:
+    the file is the source of truth. Upserts stock_quant (qty per rack per
+    expiry batch), zeroes all batches and balances missing from the file
+    (including SKUs the file does not mention), sets inventory_balances
+    on-hand totals, logs ADJUSTMENT movements, and re-validates open DO
+    picklist batch assignments.
     """
     syncStockBalance(rows: [StockBalanceSyncRowInput!]!): StockBalanceSyncResult!
 

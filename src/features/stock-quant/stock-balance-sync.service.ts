@@ -3,6 +3,8 @@
  *
  * @description Syncs the warehouse's daily stock balance Excel (one row per
  * bin + SKU + expiry batch) into stock_quant and inventory_balances.
+ * The file is the source of truth: FULL REPLACE. SKUs absent from the file are
+ * zeroed out entirely (stock_quant and inventory_balances).
  * - stock_quant rows are upserted per (sku, rack, expiry); rows not present in
  *   the file are zeroed (not deleted, to preserve FK references from open DO items).
  * - inventory_balances.on_hand_qty is set to the file total per SKU, and the
@@ -164,16 +166,12 @@ export async function syncStockBalance(
     const affectedSkuIds = [...skuTotals.keys()];
     if (affectedSkuIds.length === 0) return;
 
-    // --- Upsert stock_quant per SKU ---
+    // --- Upsert stock_quant (full replace: load ALL org rows so batches of
+    // SKUs absent from the file are zeroed too) ---
     const existingQuants = await tx
       .select()
       .from(StockQuantTable)
-      .where(
-        and(
-          eq(StockQuantTable.organizationId, organizationId),
-          inArray(StockQuantTable.skuId, affectedSkuIds),
-        ),
-      );
+      .where(eq(StockQuantTable.organizationId, organizationId));
 
     const matchedQuantIds = new Set<string>();
     for (const merged of mergedByKey.values()) {
@@ -272,6 +270,34 @@ export async function syncStockBalance(
           createdBy: userId,
         });
       }
+    }
+
+    // Full replace: SKUs the file does not mention at all go to zero on-hand.
+    const staleBalances = await tx
+      .select()
+      .from(InventoryBalancesTable)
+      .where(eq(InventoryBalancesTable.organizationId, organizationId));
+
+    for (const balance of staleBalances) {
+      if (skuTotals.has(balance.skuId)) continue;
+      const oldOnHand = Number(balance.onHandQty);
+      if (oldOnHand === 0) continue;
+
+      await tx
+        .update(InventoryBalancesTable)
+        .set({ onHandQty: "0", updatedAt: new Date() })
+        .where(eq(InventoryBalancesTable.id, balance.id));
+      result.balancesUpdated++;
+
+      await tx.insert(InventoryMovementsTable).values({
+        skuId: balance.skuId,
+        movementType: InventoryMovementType.ADJUSTMENT,
+        quantity: (-oldOnHand).toFixed(2),
+        balanceAfter: "0",
+        referenceNo,
+        reason: "Warehouse stock balance Excel sync (SKU not in file)",
+        createdBy: userId,
+      });
     }
 
     // --- Re-validate open DO picklist assignments ---
