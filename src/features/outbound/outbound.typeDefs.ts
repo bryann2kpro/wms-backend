@@ -298,8 +298,10 @@ export const typeDefs = `#graphql
         skuCode: String!
         skuId: ID
         qtyRequired: Float!
-        """Specific stock_quant row to reserve from (required from UI)."""
+        """Specific stock_quant row to reserve from (single-batch, legacy)."""
         stockQuantId: ID
+        """Multiple stock_quant batches — qty is split across them in order (FIFO)."""
+        stockQuantIds: [ID!]
     }
 
     """

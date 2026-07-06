@@ -33,6 +33,14 @@ export type StockQuantReservationLine = {
   qtyRequired: string | number;
   skuCode?: string;
   stockQuantId?: string;
+  /** Multiple batches selected at PO creation — qty is split across them in order. */
+  stockQuantIds?: string[];
+};
+
+/** One portion of a line's qty allocated to a specific stock_quant batch. */
+export type StockQuantPortion = {
+  stockQuantId: string;
+  qty: number;
 };
 
 function parseQty(v: string | number | null | undefined): number {
@@ -122,6 +130,27 @@ export async function assertSufficientStockQuantForLines(
     if (required <= 0) continue;
     const label = line.skuCode ?? line.skuId;
 
+    if (line.stockQuantIds && line.stockQuantIds.length > 0) {
+      let combined = 0;
+      for (const id of line.stockQuantIds) {
+        const row = await stockQuantRepository.getStockQuantById(
+          organizationId,
+          id,
+          tx,
+        );
+        if (!row || row.skuId !== line.skuId) {
+          throw new Error(`Selected stock quant batch is invalid for SKU "${label}".`);
+        }
+        combined = roundQtyPutaway(combined + availableOnRow(row));
+      }
+      if (combined < required) {
+        throw new Error(
+          `Insufficient stock quant for SKU "${label}": required ${required}, available ${combined} across selected batches.`,
+        );
+      }
+      continue;
+    }
+
     if (line.stockQuantId) {
       const row = await stockQuantRepository.getStockQuantById(
         organizationId,
@@ -204,35 +233,75 @@ export async function reserveStockQuantForPurchaseOrderLine(params: {
   skuCode?: string;
   qtyRequired: string | number;
   stockQuantId?: string;
+  /** Multiple batches selected at PO creation — qty is split across them in order. */
+  stockQuantIds?: string[];
   tx: DbTransaction;
-}): Promise<void> {
-  const { organizationId, userId, referenceNo, skuId, skuCode, qtyRequired, stockQuantId, tx } =
-    params;
+}): Promise<StockQuantPortion[]> {
+  const {
+    organizationId,
+    userId,
+    referenceNo,
+    skuId,
+    skuCode,
+    qtyRequired,
+    stockQuantId,
+    stockQuantIds,
+    tx,
+  } = params;
   const required = parseQty(qtyRequired);
-  if (required <= 0) return;
+  if (required <= 0) return [];
 
-  if (stockQuantId) {
-    const row = await stockQuantRepository.getStockQuantById(
-      organizationId,
-      stockQuantId,
-      tx,
-    );
-    if (!row || row.skuId !== skuId) {
-      const label = skuCode ?? skuId;
-      throw new Error(`Selected stock quant batch is invalid for SKU "${label}".`);
+  const selectedIds =
+    stockQuantIds && stockQuantIds.length > 0
+      ? stockQuantIds
+      : stockQuantId
+        ? [stockQuantId]
+        : [];
+
+  if (selectedIds.length > 0) {
+    const portions: StockQuantPortion[] = [];
+    let remaining = required;
+
+    for (const id of selectedIds) {
+      if (remaining <= 0) break;
+
+      const row = await stockQuantRepository.getStockQuantById(
+        organizationId,
+        id,
+        tx,
+      );
+      if (!row || row.skuId !== skuId) {
+        const label = skuCode ?? skuId;
+        throw new Error(`Selected stock quant batch is invalid for SKU "${label}".`);
+      }
+
+      const available = availableOnRow(row);
+      if (available <= 0) continue;
+
+      const take = roundQtyPutaway(Math.min(remaining, available));
+      await applyStockQuantReservation(
+        organizationId,
+        userId,
+        referenceNo,
+        row,
+        take,
+        tx,
+      );
+      portions.push({ stockQuantId: row.id, qty: take });
+      remaining = roundQtyPutaway(remaining - take);
     }
-    await applyStockQuantReservation(
-      organizationId,
-      userId,
-      referenceNo,
-      row,
-      required,
-      tx,
-    );
-    return;
+
+    if (remaining > 0) {
+      const label = skuCode ?? skuId;
+      throw new Error(
+        `Insufficient stock quant for SKU "${label}": could not allocate ${remaining} more unit(s) from selected batches.`,
+      );
+    }
+    return portions;
   }
 
   let remaining = required;
+  const portions: StockQuantPortion[] = [];
   const strategy = await getPickingStrategy(skuId, organizationId, tx);
   const rows = sortStockQuantsForPickingStrategy(
     await loadAvailableStockQuants(organizationId, skuId, tx),
@@ -254,6 +323,7 @@ export async function reserveStockQuantForPurchaseOrderLine(params: {
       take,
       tx,
     );
+    portions.push({ stockQuantId: row.id, qty: take });
     remaining = roundQtyPutaway(remaining - take);
   }
 
@@ -263,6 +333,7 @@ export async function reserveStockQuantForPurchaseOrderLine(params: {
       `Insufficient stock quant for SKU "${label}": could not allocate ${remaining} more unit(s).`,
     );
   }
+  return portions;
 }
 
 export async function releaseStockQuantForPurchaseOrder(params: {
