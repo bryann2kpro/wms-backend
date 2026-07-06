@@ -87,6 +87,10 @@ export const typeDefs = `#graphql
         stockQuantRacks: [StockQuantRack!]!
         "Rack label of the stock_quant batch selected when creating the PO"
         selectedRackLabel: String
+        "Available quantity in the selected rack at the time of query"
+        selectedRackQty: String
+        "Expiry date of the selected rack batch"
+        selectedRackExpiryDate: String
     }
 
     type StockQuantRack {

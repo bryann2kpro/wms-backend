@@ -256,6 +256,8 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
       expiryDate: r.expiryDate ?? null,
     })),
     selectedRackLabel: item.selectedRackLabel ?? null,
+    selectedRackQty: item.selectedRackQty != null ? String(item.selectedRackQty) : null,
+    selectedRackExpiryDate: item.selectedRackExpiryDate ? item.selectedRackExpiryDate.toISOString() : null,
   };
 }
 
