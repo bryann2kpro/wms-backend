@@ -85,6 +85,12 @@ export const typeDefs = `#graphql
         allocations: [DoItemAllocation!]!
         "Current rack locations from stock_quant — available immediately without allocatePickList"
         stockQuantRacks: [StockQuantRack!]!
+        "Rack label of the stock_quant batch selected when creating the PO"
+        selectedRackLabel: String
+        "Available quantity in the selected rack at the time of query"
+        selectedRackQty: String
+        "Expiry date of the selected rack batch"
+        selectedRackExpiryDate: String
     }
 
     type StockQuantRack {
@@ -292,8 +298,10 @@ export const typeDefs = `#graphql
         skuCode: String!
         skuId: ID
         qtyRequired: Float!
-        """Specific stock_quant row to reserve from (required from UI)."""
+        """Specific stock_quant row to reserve from (single-batch, legacy)."""
         stockQuantId: ID
+        """Multiple stock_quant batches — qty is split across them in order (FIFO)."""
+        stockQuantIds: [ID!]
     }
 
     """

@@ -5,6 +5,10 @@ import {
   StockQuantFilter,
   StockQuantRepositoryClass,
 } from "./stock-quant.repository";
+import {
+  syncStockBalance,
+  type StockBalanceSyncRowInput,
+} from "./stock-balance-sync.service";
 
 const stockQuantRepository = new StockQuantRepositoryClass();
 
@@ -198,6 +202,27 @@ export const resolvers = {
         );
       } catch (error) {
         logger.error("[deleteStockQuant resolver]", error);
+        throw error;
+      }
+    },
+
+    syncStockBalance: async (
+      _: unknown,
+      args: { rows: StockBalanceSyncRowInput[] },
+      context: GraphQLContext,
+    ) => {
+      try {
+        const organizationId = context.organizationId;
+        const userId = context.user?.id;
+        if (!organizationId || !userId) throw new GraphQLError("Not authenticated");
+
+        if (!args.rows || args.rows.length === 0) {
+          throw new GraphQLError("No rows provided for stock balance sync");
+        }
+
+        return await syncStockBalance(organizationId, userId, args.rows);
+      } catch (error) {
+        logger.error("[syncStockBalance resolver]", error);
         throw error;
       }
     },

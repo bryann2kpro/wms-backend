@@ -46,6 +46,8 @@ export type CreatePurchaseOrderItemInput = {
   skuId?: string;
   qtyRequired: number;
   stockQuantId?: string;
+  /** Multiple batches selected in the UI — qty is split across them in order. */
+  stockQuantIds?: string[];
 };
 
 export type CreatePurchaseOrderData = {
@@ -229,8 +231,11 @@ export class OutboundServices {
 
                 await this.inventoryMovementRepository.createInventoryMovement(inventoryMovements, data.userId, organizationId, tx);
 
+                // Reserve per line; a line may span multiple batches, in which case
+                // it is split into one DO item per batch portion (rack-level picking rows).
+                const linePortions: { line: (typeof resolvedLines)[number]; portions: { stockQuantId: string; qty: number }[] }[] = [];
                 for (const line of resolvedLines) {
-                    await reserveStockQuantForPurchaseOrderLine({
+                    const portions = await reserveStockQuantForPurchaseOrderLine({
                         organizationId,
                         userId: data.userId,
                         referenceNo: data.purchaseOrderNo,
@@ -238,8 +243,10 @@ export class OutboundServices {
                         skuCode: line.skuCode,
                         qtyRequired: line.qtyRequired,
                         stockQuantId: line.stockQuantId,
+                        stockQuantIds: line.stockQuantIds,
                         tx,
                     });
+                    linePortions.push({ line, portions });
                 }
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 6: Automatically Create Delivery Order...');
@@ -259,14 +266,30 @@ export class OutboundServices {
                 }, tx);
 
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 7: Create Delivery Order Items...');
-                const doItemsToInsert: DeliveryOrderItemInsertType[] = resolvedLines.map((line) => ({
-                    purchaseOrderId: created!.id,
-                    purchaseOrderNo: data.purchaseOrderNo,
-                    skuId: line.skuId,
-                    qtyRequired: line.qtyRequired,
-                    createdBy: data.userId,
-                    updatedBy: data.userId,
-                }));
+                // One DO item per reserved batch portion so the work queue shows a
+                // picking row per rack. Falls back to a single unallocated row if
+                // reservation produced no portions (should not happen in practice).
+                const doItemsToInsert: DeliveryOrderItemInsertType[] = linePortions.flatMap(({ line, portions }) =>
+                    portions.length > 0
+                        ? portions.map((portion) => ({
+                            purchaseOrderId: created!.id,
+                            purchaseOrderNo: data.purchaseOrderNo,
+                            skuId: line.skuId,
+                            qtyRequired: String(portion.qty),
+                            stockQuantId: portion.stockQuantId,
+                            createdBy: data.userId,
+                            updatedBy: data.userId,
+                        }))
+                        : [{
+                            purchaseOrderId: created!.id,
+                            purchaseOrderNo: data.purchaseOrderNo,
+                            skuId: line.skuId,
+                            qtyRequired: line.qtyRequired,
+                            stockQuantId: line.stockQuantId ?? null,
+                            createdBy: data.userId,
+                            updatedBy: data.userId,
+                        }],
+                );
                 await this.deliveryOrderRepository.createDeliveryOrderItems(doItemsToInsert, tx);
             });
             if (!created) throw new Error("Purchase order was not created.");
@@ -1298,14 +1321,18 @@ export class OutboundServices {
     private async resolveAndValidateLineItems(
         items: (DeliveryOrderItemInsertType | CreateDeliveryOrderItemInput | CreatePurchaseOrderItemInput)[],
         tx?: DbTransaction
-    ): Promise<{ skuId: string; qtyRequired: string; skuCode?: string; stockQuantId?: string }[]> {
-        const resolved: { skuId: string; qtyRequired: string; skuCode?: string; stockQuantId?: string }[] = [];
+    ): Promise<{ skuId: string; qtyRequired: string; skuCode?: string; stockQuantId?: string; stockQuantIds?: string[] }[]> {
+        const resolved: { skuId: string; qtyRequired: string; skuCode?: string; stockQuantId?: string; stockQuantIds?: string[] }[] = [];
         for (const item of items) {
             const qtyRequired = String(item.qtyRequired ?? "0");
             let skuId: string | null = "skuId" in item && item.skuId ? item.skuId : null;
             const skuCode = "skuCode" in item ? item.skuCode : undefined;
             const stockQuantId =
                 "stockQuantId" in item && item.stockQuantId ? item.stockQuantId : undefined;
+            const stockQuantIds =
+                "stockQuantIds" in item && item.stockQuantIds?.length
+                    ? item.stockQuantIds
+                    : undefined;
 
             if (!skuId && skuCode) {
                 const skuResult = await this.skuRepository.getSku(
@@ -1322,7 +1349,7 @@ export class OutboundServices {
                     `Line item missing or invalid SKU: provide either skuId or skuCode. ${skuCode ? `skuCode="${skuCode}" not found.` : ""}`
                 );
             }
-            resolved.push({ skuId, qtyRequired, skuCode, stockQuantId });
+            resolved.push({ skuId, qtyRequired, skuCode, stockQuantId, stockQuantIds });
         }
         return resolved;
     }

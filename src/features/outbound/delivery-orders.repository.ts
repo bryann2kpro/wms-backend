@@ -29,7 +29,8 @@ import { OutletsTable } from "@/features/master-data/outlets.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
-import { eq, and, like, inArray, gte, lte, or, sum, notInArray, asc } from "drizzle-orm";
+import { eq, and, like, inArray, gte, lte, or, sum, notInArray, asc, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { StockQuantTable } from "@/features/stock-quant/stock-quant.model";
 
 export type DoItemAllocationWithDetails = {
@@ -55,6 +56,9 @@ export type DeliveryOrderItemWithDetails = DeliveryOrderItemType & {
   onHandQty: string | null;
   lossQty: string | null;
   reservedQty: string | null;
+  selectedRackLabel: string | null;
+  selectedRackQty: string | null;
+  selectedRackExpiryDate: Date | null;
   allocations?: DoItemAllocationWithDetails[];
 };
 
@@ -434,6 +438,8 @@ export class DeliveryOrdersRepositoryClass {
         whereConditions.push(lte(PurchaseOrdersTable.scheduledDeliveryDate, toDate));
       }
 
+      const SelectedRackTable = alias(RacksTable, 'selected_rack');
+
       const baseQuery = db
         .select({
           id: DeliveryOrderItemsTable.id,
@@ -457,6 +463,20 @@ export class DeliveryOrdersRepositoryClass {
           onHandQty: InventoryBalancesTable.onHandQty,
           lossQty: InventoryBalancesTable.lossQty,
           reservedQty: InventoryBalancesTable.reservedQty,
+          selectedRackLabel: sql<string | null>`
+            CASE
+              WHEN ${SelectedRackTable.rackRow} IS NOT NULL
+              THEN CONCAT(
+                ${SelectedRackTable.rackRow},
+                CASE WHEN ${SelectedRackTable.rackLevel} IS NOT NULL THEN CONCAT('-', ${SelectedRackTable.rackLevel}) ELSE '' END,
+                '-',
+                ${SelectedRackTable.rackColumn}
+              )
+              ELSE NULL
+            END
+          `.as('selected_rack_label'),
+          selectedRackQty: StockQuantTable.quantity,
+          selectedRackExpiryDate: StockQuantTable.expiryDate,
         })
         .from(DeliveryOrderItemsTable)
         .leftJoin(SkuTable, eq(DeliveryOrderItemsTable.skuId, SkuTable.skuId))
@@ -464,6 +484,8 @@ export class DeliveryOrdersRepositoryClass {
         .leftJoin(InventoryBalancesTable, eq(DeliveryOrderItemsTable.skuId, InventoryBalancesTable.skuId))
         .leftJoin(PurchaseOrdersTable, eq(DeliveryOrderItemsTable.purchaseOrderId, PurchaseOrdersTable.id))
         .leftJoin(OutletsTable, eq(PurchaseOrdersTable.outletId, OutletsTable.outletId))
+        .leftJoin(StockQuantTable, eq(DeliveryOrderItemsTable.stockQuantId, StockQuantTable.id))
+        .leftJoin(SelectedRackTable, eq(StockQuantTable.rackId, SelectedRackTable.rackId))
         .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
 
       const pageSize = paginationParams.pageSize ?? 10;

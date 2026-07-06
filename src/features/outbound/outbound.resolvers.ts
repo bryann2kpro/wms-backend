@@ -53,6 +53,7 @@ const createPurchaseOrderLineItemSchema = z.object({
   skuId: z.string().uuid().optional(),
   qtyRequired: z.union([z.number().positive(), z.string()]).transform((v) => Number(v)),
   stockQuantId: z.string().uuid().optional(),
+  stockQuantIds: z.array(z.string().uuid()).optional(),
 });
 
 const createPurchaseOrderInputSchema = z.object({
@@ -255,6 +256,9 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
       qty: r.qty,
       expiryDate: r.expiryDate ?? null,
     })),
+    selectedRackLabel: item.selectedRackLabel ?? null,
+    selectedRackQty: item.selectedRackQty != null ? String(item.selectedRackQty) : null,
+    selectedRackExpiryDate: item.selectedRackExpiryDate ? item.selectedRackExpiryDate.toISOString() : null,
   };
 }
 
@@ -544,6 +548,7 @@ export const resolvers = {
             skuId: item.skuId,
             qtyRequired: item.qtyRequired,
             stockQuantId: item.stockQuantId,
+            stockQuantIds: item.stockQuantIds,
           })),
           isEmergency: data.isEmergency,
         });

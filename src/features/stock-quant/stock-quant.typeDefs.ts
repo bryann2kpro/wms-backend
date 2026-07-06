@@ -93,11 +93,56 @@ export const typeDefs = `#graphql
     stockQuant(id: ID!): StockQuant
   }
 
+  """
+  One row from the warehouse stock balance Excel file.
+  """
+  input StockBalanceSyncRowInput {
+    "Storage bin code, e.g. I1-L2-04 (must match a rack row-level-column label)"
+    binCode: String!
+    "Item code, e.g. RAW-E0013"
+    skuCode: String!
+    "Expiry date (ISO string) or null when the file has no expiry"
+    expiryDate: String
+    "Unit quantity in this bin"
+    qty: Float!
+    description: String
+  }
+
+  type StockBalanceSyncSkippedRow {
+    binCode: String!
+    skuCode: String!
+    reason: String!
+  }
+
+  type StockBalanceSyncResult {
+    "stock_quant rows whose quantity was updated"
+    updated: Int!
+    "New stock_quant rows created"
+    inserted: Int!
+    "Existing stock_quant rows zeroed because they are not in the file"
+    zeroed: Int!
+    "inventory_balances rows updated"
+    balancesUpdated: Int!
+    "Open DO picklist items reassigned to a batch that still covers them"
+    reassignedDoItems: Int!
+    skipped: [StockBalanceSyncSkippedRow!]!
+  }
+
   extend type Mutation {
     """
     Create a stock quant row.
     """
     createStockQuant(input: CreateStockQuantInput!): StockQuant!
+
+    """
+    Sync warehouse stock balance from the daily Excel file. FULL REPLACE:
+    the file is the source of truth. Upserts stock_quant (qty per rack per
+    expiry batch), zeroes all batches and balances missing from the file
+    (including SKUs the file does not mention), sets inventory_balances
+    on-hand totals, logs ADJUSTMENT movements, and re-validates open DO
+    picklist batch assignments.
+    """
+    syncStockBalance(rows: [StockBalanceSyncRowInput!]!): StockBalanceSyncResult!
 
     """
     Update a stock quant row.
