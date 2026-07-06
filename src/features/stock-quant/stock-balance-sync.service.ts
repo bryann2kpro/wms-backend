@@ -212,14 +212,35 @@ export async function syncStockBalance(
       }
     }
 
-    // Zero out rows the file no longer lists (keep the row: open DO items may reference it)
-    for (const quant of existingQuants) {
-      if (!matchedQuantIds.has(quant.id) && Number(quant.quantity) !== 0) {
-        await tx
-          .update(StockQuantTable)
-          .set({ quantity: "0", updatedAt: new Date(), updatedBy: userId })
-          .where(eq(StockQuantTable.id, quant.id));
-        result.zeroed++;
+    // Rows the file no longer lists: delete when nothing references them;
+    // zero (keep) when a DO picklist item — open or historical — points at them,
+    // so picklist rack/qty/expiry displays never break.
+    const staleQuants = existingQuants.filter((q) => !matchedQuantIds.has(q.id));
+    if (staleQuants.length > 0) {
+      const staleIds = staleQuants.map((q) => q.id);
+      const referencedRows = await tx
+        .selectDistinct({ stockQuantId: DeliveryOrderItemsTable.stockQuantId })
+        .from(DeliveryOrderItemsTable)
+        .where(inArray(DeliveryOrderItemsTable.stockQuantId, staleIds));
+      const referencedIds = new Set(
+        referencedRows.map((r) => r.stockQuantId).filter(Boolean),
+      );
+
+      for (const quant of staleQuants) {
+        if (referencedIds.has(quant.id)) {
+          if (Number(quant.quantity) !== 0) {
+            await tx
+              .update(StockQuantTable)
+              .set({ quantity: "0", updatedAt: new Date(), updatedBy: userId })
+              .where(eq(StockQuantTable.id, quant.id));
+            result.zeroed++;
+          }
+        } else {
+          await tx
+            .delete(StockQuantTable)
+            .where(eq(StockQuantTable.id, quant.id));
+          result.zeroed++;
+        }
       }
     }
 
