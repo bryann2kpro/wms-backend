@@ -255,6 +255,7 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
       qty: r.qty,
       expiryDate: r.expiryDate ?? null,
     })),
+    selectedRackLabel: item.selectedRackLabel ?? null,
   };
 }
 

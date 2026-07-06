@@ -264,6 +264,7 @@ export class OutboundServices {
                     purchaseOrderNo: data.purchaseOrderNo,
                     skuId: line.skuId,
                     qtyRequired: line.qtyRequired,
+                    stockQuantId: line.stockQuantId ?? null,
                     createdBy: data.userId,
                     updatedBy: data.userId,
                 }));

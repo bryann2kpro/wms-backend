@@ -85,6 +85,8 @@ export const typeDefs = `#graphql
         allocations: [DoItemAllocation!]!
         "Current rack locations from stock_quant — available immediately without allocatePickList"
         stockQuantRacks: [StockQuantRack!]!
+        "Rack label of the stock_quant batch selected when creating the PO"
+        selectedRackLabel: String
     }
 
     type StockQuantRack {

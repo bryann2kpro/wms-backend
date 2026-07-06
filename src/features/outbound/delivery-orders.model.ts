@@ -58,6 +58,7 @@ export const DeliveryOrderItemsTable = MainSchema.table('delivery_order_items', 
   qtyPacked: numeric('qty_packed', { precision: 10, scale: 2 }).default('0'),
   expiryDate: timestamp('expiry_date'),
   lotNo: text('lot_no'),
+  stockQuantId: uuid('stock_quant_id'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
