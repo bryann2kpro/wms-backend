@@ -56,6 +56,7 @@ export type DeliveryOrderItemWithDetails = DeliveryOrderItemType & {
   onHandQty: string | null;
   lossQty: string | null;
   reservedQty: string | null;
+  stockQuantId: string | null;
   selectedRackLabel: string | null;
   selectedRackQty: string | null;
   selectedRackExpiryDate: Date | null;
@@ -463,6 +464,7 @@ export class DeliveryOrdersRepositoryClass {
           onHandQty: InventoryBalancesTable.onHandQty,
           lossQty: InventoryBalancesTable.lossQty,
           reservedQty: InventoryBalancesTable.reservedQty,
+          stockQuantId: DeliveryOrderItemsTable.stockQuantId,
           selectedRackLabel: sql<string | null>`
             CASE
               WHEN ${SelectedRackTable.rackRow} IS NOT NULL
