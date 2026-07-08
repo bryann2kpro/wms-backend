@@ -475,7 +475,7 @@ export class DeliveryOrdersRepositoryClass {
               ELSE NULL
             END
           `.as('selected_rack_label'),
-          selectedRackQty: StockQuantTable.quantity,
+          selectedRackQty: sql<string | null>`(${StockQuantTable.quantity} - ${StockQuantTable.reservedQty})`,
           selectedRackExpiryDate: StockQuantTable.expiryDate,
         })
         .from(DeliveryOrderItemsTable)
