@@ -52,11 +52,26 @@ export async function renderDeliveryOrderPreviewHtml(doId: string): Promise<stri
     { pageSize: 1000, pageNumber: 1 },
   );
 
-  const itemRows: DeliveryOrderPdfItemRow[] = itemsResult.query.map((it, idx) => ({
+  // Group by SKU so split-rack DO items appear as one line in the PDF
+  const skuMap = new Map<string, { skuCode: string; description: string; qty: number }>();
+  for (const it of itemsResult.query) {
+    const code = it.skuCode ?? it.skuId ?? '—';
+    const existing = skuMap.get(code);
+    if (existing) {
+      existing.qty += parseFloat(String(it.qtyRequired ?? '0'));
+    } else {
+      skuMap.set(code, {
+        skuCode: code,
+        description: it.skuDescription ?? '—',
+        qty: parseFloat(String(it.qtyRequired ?? '0')),
+      });
+    }
+  }
+  const itemRows: DeliveryOrderPdfItemRow[] = Array.from(skuMap.values()).map((it, idx) => ({
     index: idx + 1,
-    skuCode: it.skuCode ?? it.skuId ?? '—',
-    description: it.skuDescription ?? '—',
-    qty: String(it.qtyRequired ?? '0'),
+    skuCode: it.skuCode,
+    description: it.description,
+    qty: String(it.qty),
   }));
 
   return await buildDeliveryOrderHtml({
