@@ -463,7 +463,7 @@ export class InvoicesRepositoryClass {
         throw new Error("[InvoicesRepository.createInvoiceFromDeliveryOrder] Invoice already exists for this delivery order");
       }
 
-      const doItems = await dbClient
+      const rawDoItems = await dbClient
         .select({
           skuId: DeliveryOrderItemsTable.skuId,
           qtyRequired: DeliveryOrderItemsTable.qtyRequired,
@@ -472,6 +472,18 @@ export class InvoicesRepositoryClass {
         .from(DeliveryOrderItemsTable)
         .leftJoin(SkuTable, eq(DeliveryOrderItemsTable.skuId, SkuTable.skuId))
         .where(eq(DeliveryOrderItemsTable.purchaseOrderId, doRow.purchaseOrderId));
+
+      // Group by SKU to merge split-rack rows into one line per SKU
+      const skuMap = new Map<string, { skuId: string; qtyRequired: string; skuDescription: string | null }>();
+      for (const item of rawDoItems) {
+        const existing = skuMap.get(item.skuId);
+        if (existing) {
+          existing.qtyRequired = String(parseFloat(existing.qtyRequired) + parseFloat(item.qtyRequired));
+        } else {
+          skuMap.set(item.skuId, { ...item });
+        }
+      }
+      const doItems = Array.from(skuMap.values());
 
       // Resolve region pricing via PO → Outlet → Region → RegionPricing
       // Also fetch outletId, scheduledDeliveryDate, organizationId for group QOM lookup
