@@ -256,6 +256,7 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
       qty: r.qty,
       expiryDate: r.expiryDate ?? null,
     })),
+    stockQuantId: item.stockQuantId ?? null,
     selectedRackLabel: item.selectedRackLabel ?? null,
     selectedRackQty: item.selectedRackQty != null ? String(item.selectedRackQty) : null,
     selectedRackExpiryDate: item.selectedRackExpiryDate ? item.selectedRackExpiryDate.toISOString() : null,
