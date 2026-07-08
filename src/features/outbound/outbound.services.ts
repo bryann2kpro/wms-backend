@@ -591,8 +591,11 @@ export class OutboundServices {
                         : [];
 
                     const movementsToCreate: InventoryMovementsInsertType[] = [];
+                    // Track skuIds whose stock reservation was already fully re-done
+                    // so the movements loop below skips them.
+                    const stockAlreadyHandledSkuIds = new Set<string>();
 
-                    // Update existing item quantities
+                    // Update existing item quantities — full release + re-reserve for consolidation
                     for (const itemUpdate of data.items ?? []) {
                         const currentPoItem = currentPoItems.find(i => i.id === itemUpdate.id);
                         if (!currentPoItem) throw new Error(`PO item ${itemUpdate.id} not found`);
@@ -603,17 +606,70 @@ export class OutboundServices {
                             tx
                         );
 
-                        const doItem = doItems.find(d => d.skuCode === currentPoItem.skuCode);
-                        if (doItem) {
-                            await this.deliveryOrderRepository.updateDeliveryOrderItem(
-                                doItem.id,
-                                { qtyRequired: String(itemUpdate.qtyRequired), updatedBy: data.userId },
-                                tx
+                        // All DO items for this SKU (may be >1 if previously split across racks)
+                        const doItemsForSku = doItems.filter(d => d.skuCode === currentPoItem.skuCode);
+                        if (doRow && doItemsForSku.length > 0) {
+                            const skuId = doItemsForSku[0].skuId;
+                            const oldQtyTotal = doItemsForSku.reduce(
+                                (sum, d) => sum + parseFloat(d.qtyRequired), 0
                             );
-                            const delta = itemUpdate.qtyRequired - parseFloat(currentPoItem.qtyRequired);
+                            const newQty = itemUpdate.qtyRequired;
+                            const delta = newQty - oldQtyTotal;
+
+                            // Release the full old reservation for this SKU
+                            await releaseStockQuantPartialForSku({
+                                organizationId: data.organizationId,
+                                userId: data.userId,
+                                referenceNo: po.purchaseOrderNo,
+                                skuId,
+                                qtyToRelease: String(oldQtyTotal),
+                                tx,
+                            });
+
+                            // Delete all old DO items for this SKU
+                            for (const doItem of doItemsForSku) {
+                                await this.deliveryOrderRepository.deleteDeliveryOrderItem(doItem.id, tx);
+                            }
+
+                            // Re-reserve full new qty — consolidation picks the best single rack
+                            if (newQty > 0) {
+                                const portions = await reserveStockQuantForPurchaseOrderLine({
+                                    organizationId: data.organizationId,
+                                    userId: data.userId,
+                                    referenceNo: po.purchaseOrderNo,
+                                    skuId,
+                                    qtyRequired: String(newQty),
+                                    tx,
+                                });
+
+                                const newDoItems = portions.length > 0
+                                    ? portions.map(portion => ({
+                                        purchaseOrderId: po.id,
+                                        purchaseOrderNo: po.purchaseOrderNo,
+                                        skuId,
+                                        qtyRequired: String(portion.qty),
+                                        stockQuantId: portion.stockQuantId,
+                                        createdBy: data.userId,
+                                        updatedBy: data.userId,
+                                    }))
+                                    : [{
+                                        purchaseOrderId: po.id,
+                                        purchaseOrderNo: po.purchaseOrderNo,
+                                        skuId,
+                                        qtyRequired: String(newQty),
+                                        stockQuantId: null as string | null,
+                                        createdBy: data.userId,
+                                        updatedBy: data.userId,
+                                    }];
+                                await this.deliveryOrderRepository.createDeliveryOrderItems(newDoItems, tx);
+                            }
+
+                            // Mark as handled so the movements loop below skips stock actions
+                            stockAlreadyHandledSkuIds.add(skuId);
+
                             if (delta !== 0) {
                                 movementsToCreate.push({
-                                    skuId: doItem.skuId,
+                                    skuId,
                                     regionId: outlet.regionId,
                                     quantity: String(delta),
                                     movementType: InventoryMovementType.RESERVED,
@@ -696,6 +752,8 @@ export class OutboundServices {
                         );
 
                         for (const movement of movementsToCreate) {
+                            // Qty-updated items already had full release+re-reserve above
+                            if (stockAlreadyHandledSkuIds.has(movement.skuId)) continue;
                             const qty = parseFloat(String(movement.quantity));
                             if (!Number.isFinite(qty) || qty === 0) continue;
                             if (qty > 0) {
