@@ -308,6 +308,14 @@ export async function reserveStockQuantForPurchaseOrderLine(params: {
     strategy,
   );
 
+  // If any single rack can cover the entire requirement, use only that rack.
+  const sufficientRow = rows.find((r) => availableOnRow(r) >= remaining);
+  if (sufficientRow) {
+    const take = roundQtyPutaway(remaining);
+    await applyStockQuantReservation(organizationId, userId, referenceNo, sufficientRow, take, tx);
+    return [{ stockQuantId: sufficientRow.id, qty: take }];
+  }
+
   for (const row of rows) {
     if (remaining <= 0) break;
 
