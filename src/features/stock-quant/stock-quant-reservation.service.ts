@@ -54,34 +54,10 @@ function availableOnRow(row: Pick<StockQuantType, "quantity" | "reservedQty">): 
 
 export function sortStockQuantsForPickingStrategy(
   rows: StockQuantListType[],
-  strategy: string,
+  _strategy: string,
 ): StockQuantListType[] {
   const sorted = [...rows];
-  const byUpdatedAt = (a: StockQuantListType, b: StockQuantListType, ascending: boolean) => {
-    const diff =
-      new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
-    return ascending ? diff : -diff;
-  };
-
-  switch (strategy) {
-    case "LIFO":
-      sorted.sort((a, b) => byUpdatedAt(a, b, false));
-      break;
-    case "FEFO":
-      sorted.sort((a, b) => {
-        const aExp = a.expiryDate
-          ? new Date(a.expiryDate).getTime()
-          : Number.MAX_SAFE_INTEGER;
-        const bExp = b.expiryDate
-          ? new Date(b.expiryDate).getTime()
-          : Number.MAX_SAFE_INTEGER;
-        return aExp - bExp;
-      });
-      break;
-    default:
-      sorted.sort((a, b) => byUpdatedAt(a, b, true));
-      break;
-  }
+  sorted.sort((a, b) => (a.rackLabel ?? "").localeCompare(b.rackLabel ?? ""));
   return sorted;
 }
 
