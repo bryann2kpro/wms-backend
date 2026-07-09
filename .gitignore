@@ -139,6 +139,6 @@ pnpm-lock.yaml
 bun.lockb
 
 .wwebjs*
-.claude
-sme-ederan-api/.DS_Store
+.claude.DS_Store
+.DS_Store
 .gitignore
