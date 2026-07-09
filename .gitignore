@@ -140,3 +140,5 @@ bun.lockb
 
 .wwebjs*
 .claude
+sme-ederan-api/.DS_Store
+.gitignore
