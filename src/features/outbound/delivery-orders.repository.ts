@@ -59,6 +59,7 @@ export type DeliveryOrderItemWithDetails = DeliveryOrderItemType & {
   stockQuantId: string | null;
   selectedRackLabel: string | null;
   selectedRackQty: string | null;
+  selectedRackReservedQty: string | null;
   selectedRackExpiryDate: Date | null;
   allocations?: DoItemAllocationWithDetails[];
 };
@@ -478,6 +479,7 @@ export class DeliveryOrdersRepositoryClass {
             END
           `.as('selected_rack_label'),
           selectedRackQty: StockQuantTable.quantity,
+          selectedRackReservedQty: StockQuantTable.reservedQty,
           selectedRackExpiryDate: StockQuantTable.expiryDate,
         })
         .from(DeliveryOrderItemsTable)

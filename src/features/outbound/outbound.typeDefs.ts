@@ -91,6 +91,8 @@ export const typeDefs = `#graphql
         selectedRackLabel: String
         "Available quantity in the selected rack at the time of query"
         selectedRackQty: String
+        "Reserved quantity in the selected rack"
+        selectedRackReservedQty: String
         "Expiry date of the selected rack batch"
         selectedRackExpiryDate: String
     }
