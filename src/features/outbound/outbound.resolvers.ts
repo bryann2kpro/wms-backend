@@ -259,6 +259,7 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
     stockQuantId: item.stockQuantId ?? null,
     selectedRackLabel: item.selectedRackLabel ?? null,
     selectedRackQty: item.selectedRackQty != null ? String(item.selectedRackQty) : null,
+    selectedRackReservedQty: item.selectedRackReservedQty != null ? String(item.selectedRackReservedQty) : null,
     selectedRackExpiryDate: item.selectedRackExpiryDate ? item.selectedRackExpiryDate.toISOString() : null,
   };
 }
