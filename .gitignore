@@ -139,4 +139,4 @@ pnpm-lock.yaml
 bun.lockb
 
 .wwebjs*
-.claude
+.claude.DS_Store
