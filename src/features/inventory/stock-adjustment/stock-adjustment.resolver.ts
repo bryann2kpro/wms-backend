@@ -20,6 +20,8 @@ import { InventoryMovementType } from '@/features/inventory/inventory-movement/i
 import type { StockAdjustmentType } from './stock-adjustment.model';
 import type { StockAdjustmentFilter } from './stock-adjustment.repository';
 import type { RackType } from '@/features/master-data/racks.model';
+import { StockQuantTable } from '@/features/stock-quant/stock-quant.model';
+import { eq, and, isNull } from 'drizzle-orm';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -313,6 +315,58 @@ export const resolvers = {
           organizationId,
           tx,
         );
+
+        // 5. Update stock_quant to reflect the adjustment at rack level
+        for (let i = 0; i < input.items.length; i++) {
+          const item = input.items[i];
+          const qty = Number(item.quantity);
+          const expiry = parsedExpiries[i];
+          const rackId = item.rackId!.trim();
+          const lotNo = item.lotNo?.trim() || null;
+
+          const [existingQuant] = await tx
+            .select()
+            .from(StockQuantTable)
+            .where(
+              and(
+                eq(StockQuantTable.organizationId, organizationId),
+                eq(StockQuantTable.skuId, item.skuId),
+                eq(StockQuantTable.rackId, rackId),
+                lotNo ? eq(StockQuantTable.lotNo, lotNo) : isNull(StockQuantTable.lotNo),
+                expiry ? eq(StockQuantTable.expiryDate, expiry) : isNull(StockQuantTable.expiryDate),
+              ),
+            )
+            .limit(1);
+
+          if (existingQuant) {
+            const newQty = item.movementType === 'DAMAGED'
+              ? Number(existingQuant.quantity) - qty
+              : Number(existingQuant.quantity) + qty;
+            const newLossQty = item.movementType === 'DAMAGED'
+              ? Number(existingQuant.lossQty) + qty
+              : Number(existingQuant.lossQty);
+
+            await tx
+              .update(StockQuantTable)
+              .set({ quantity: newQty.toFixed(2), lossQty: newLossQty.toFixed(2), updatedAt: new Date(), updatedBy: userId })
+              .where(eq(StockQuantTable.id, existingQuant.id));
+          } else {
+            const newQty = item.movementType === 'DAMAGED' ? -qty : qty;
+            const newLossQty = item.movementType === 'DAMAGED' ? qty : 0;
+            await tx.insert(StockQuantTable).values({
+              skuId: item.skuId,
+              rackId,
+              lotNo,
+              expiryDate: expiry,
+              quantity: newQty.toFixed(2),
+              lossQty: newLossQty.toFixed(2),
+              reservedQty: '0',
+              organizationId,
+              createdBy: userId,
+              updatedBy: userId,
+            });
+          }
+        }
 
         return transformStockAdjustment(header);
       },
