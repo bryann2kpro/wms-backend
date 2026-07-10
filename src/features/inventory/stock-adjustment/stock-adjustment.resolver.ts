@@ -324,7 +324,8 @@ export const resolvers = {
           const rackId = item.rackId!.trim();
           const lotNo = item.lotNo?.trim() || null;
 
-          const [existingQuant] = await tx
+          // Exact match first (org + SKU + rack + lot + expiry)
+          let [existingQuant] = await tx
             .select()
             .from(StockQuantTable)
             .where(
@@ -337,6 +338,27 @@ export const resolvers = {
               ),
             )
             .limit(1);
+
+          // If no exact match and user didn't specify expiry, fall back to any row
+          // for this (org, SKU, rack, lot) — pick the one with highest quantity
+          if (!existingQuant && !expiry) {
+            const candidates = await tx
+              .select()
+              .from(StockQuantTable)
+              .where(
+                and(
+                  eq(StockQuantTable.organizationId, organizationId),
+                  eq(StockQuantTable.skuId, item.skuId),
+                  eq(StockQuantTable.rackId, rackId),
+                  lotNo ? eq(StockQuantTable.lotNo, lotNo) : isNull(StockQuantTable.lotNo),
+                ),
+              );
+            if (candidates.length > 0) {
+              existingQuant = candidates.reduce((best, c) =>
+                Number(c.quantity) > Number(best.quantity) ? c : best
+              );
+            }
+          }
 
           if (existingQuant) {
             const newQty = item.movementType === 'DAMAGED'
