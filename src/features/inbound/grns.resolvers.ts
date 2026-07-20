@@ -752,6 +752,7 @@ export const resolvers = {
                     .select({
                         grnItemId: GrnItemRacksTable.grnItemId,
                         rackId: GrnItemRacksTable.rackId,
+                        quantity: GrnItemRacksTable.quantity,
                         rackRow: RacksTable.rackRow,
                         rackLevel: RacksTable.rackLevel,
                         rackColumn: RacksTable.rackColumn,
@@ -766,7 +767,7 @@ export const resolvers = {
                     const current = rackMap.get(link.grnItemId) ?? [];
                     current.push({
                         rackId: link.rackId,
-                        quantity: null,
+                        quantity: link.quantity != null ? Number(link.quantity) : null,
                         rackLabel,
                     });
                     rackMap.set(link.grnItemId, current);

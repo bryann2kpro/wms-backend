@@ -40,25 +40,30 @@ async function loadGrnItemRackAllocations(
     .select({
       grnItemId: GrnItemRacksTable.grnItemId,
       rackId: GrnItemRacksTable.rackId,
+      quantity: GrnItemRacksTable.quantity,
     })
     .from(GrnItemRacksTable)
     .where(inArray(GrnItemRacksTable.grnItemId, grnItemIds));
 
-  const rackIdsByItemId = new Map<string, string[]>();
+  const rowsByItemId = new Map<string, Array<{ rackId: string; quantity: string }>>();
   for (const row of rows) {
     if (!row.rackId) continue;
-    const current = rackIdsByItemId.get(row.grnItemId) ?? [];
-    current.push(row.rackId);
-    rackIdsByItemId.set(row.grnItemId, current);
+    const current = rowsByItemId.get(row.grnItemId) ?? [];
+    current.push({ rackId: row.rackId, quantity: row.quantity });
+    rowsByItemId.set(row.grnItemId, current);
   }
 
   for (const item of items) {
-    const rackIds = rackIdsByItemId.get(item.id) ?? [];
-    if (rackIds.length === 0) continue;
+    const links = rowsByItemId.get(item.id) ?? [];
+    if (links.length === 0) continue;
+    const rackAllocations = links.map((link) => ({
+      rackId: link.rackId,
+      quantity: link.quantity,
+    }));
     const allocations = resolveGrnItemRackAllocations({
       qty: item.qty,
       lossQty: item.lossQty,
-      rackIds,
+      rackAllocations,
     });
     if (allocations.length > 0) {
       map.set(item.id, allocations);
