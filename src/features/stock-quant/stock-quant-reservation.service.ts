@@ -5,6 +5,7 @@
  * description = purchase order number; allocations follow the lot selected at PO creation.
  */
 
+import { and, eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "@/types/db-transaction";
 import { logger } from "@/util/logger";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
@@ -15,6 +16,7 @@ import {
 } from "./stock-quant.repository";
 import { StockQuantTransactionRepositoryClass } from "./stock-quant-transaction/stock-quant-transaction.repository";
 import { InventoryBalanceRepositoryClass } from "../inventory/inventory-balance/inventory.repository";
+import { DeliveryOrderItemsTable } from "../outbound/delivery-orders.model";
 import {
   qtyPutawayToDbString,
   roundQtyPutaway,
@@ -503,16 +505,31 @@ export async function shipStockQuantForPurchaseOrder(params: {
     const onHand = parseQty(stockRow.quantity);
     const reserved = parseQty(stockRow.reservedQty);
 
-    // Some or all of this allocation may already have been decremented at pick
-    // time (pickStockQuantForDeliveryOrderItem, run when the DO reached PACKING
-    // or via per-item picking). Only deduct what's actually still on-hand/reserved
-    // so SHIPPED never double-counts a pick that already happened. If nothing is
-    // left to deduct, this allocation was already fully accounted for at pick.
-    const qty = roundQtyPutaway(Math.min(originalQty, onHand, reserved));
-    if (qty < originalQty) {
+    // Some or all of THIS PO's own allocation may already have been decremented
+    // at pick time (pickStockQuantForDeliveryOrderItem). Look up how much of this
+    // specific PO+SKU+batch was already picked (via the matching delivery_order_items
+    // row(s)) rather than clamping against the rack's current pooled on-hand/reserved
+    // — that pool can include a completely different PO's still-outstanding, untouched
+    // reservation on the same shared rack, which must NOT be swept away by this PO's
+    // shipment. Only deduct what THIS allocation still has left un-picked.
+    const [pickedRow] = await tx
+      .select({ picked: sql<string>`coalesce(sum(${DeliveryOrderItemsTable.qtyPicked}), 0)::text` })
+      .from(DeliveryOrderItemsTable)
+      .where(
+        and(
+          eq(DeliveryOrderItemsTable.purchaseOrderNo, referenceNo),
+          eq(DeliveryOrderItemsTable.skuId, allocation.skuId),
+          eq(DeliveryOrderItemsTable.stockQuantId, stockRow.id),
+        ),
+      );
+    const alreadyPicked = parseQty(pickedRow?.picked);
+    const remaining = roundQtyPutaway(Math.max(0, originalQty - alreadyPicked));
+
+    const qty = roundQtyPutaway(Math.min(remaining, onHand, reserved));
+    if (qty < remaining) {
       logger.warn(
-        "[shipStockQuantForPurchaseOrder] Allocation partially/fully already decremented at pick time — deducting remaining only",
-        { referenceNo, skuId: allocation.skuId, originalQty, onHand, reserved, deducted: qty },
+        "[shipStockQuantForPurchaseOrder] Rack has less on-hand/reserved than this PO's remaining allocation — clamping",
+        { referenceNo, skuId: allocation.skuId, originalQty, alreadyPicked, remaining, onHand, reserved, deducted: qty },
       );
     }
     if (qty <= 0) {
