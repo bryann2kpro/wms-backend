@@ -141,6 +141,9 @@ export class InventoryBalanceRepositoryClass {
           onHandQty: sql<string>`SUM(${StockQuantTable.quantity})::text`.as(
             "sq_on_hand_qty",
           ),
+          reservedQty: sql<string>`SUM(${StockQuantTable.reservedQty})::text`.as(
+            "sq_reserved_qty",
+          ),
           updatedAt: sql<Date>`MAX(${StockQuantTable.updatedAt})`.as("sq_updated_at"),
         })
         .from(StockQuantTable)
@@ -178,7 +181,7 @@ export class InventoryBalanceRepositoryClass {
           onHandQty: lotBalancesSubquery.onHandQty,
           updatedAt: lotBalancesSubquery.updatedAt,
           lossQty: InventoryBalancesTable.lossQty,
-          reservedQty: InventoryBalancesTable.reservedQty,
+          reservedQty: lotBalancesSubquery.reservedQty,
           skuCode: SkuTable.skuCode,
           skuDescription: SkuTable.skuDescription,
           pickingStrategy: SkuTable.pickingStrategy,
