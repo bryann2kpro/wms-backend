@@ -447,14 +447,24 @@ export class OutboundServices {
                     { pageSize: 1000, pageNumber: 1 },
                 );
 
-                shipmentMovements = doItemsResult.query.map((item) => ({
-                    skuId: item.skuId as string,
-                    regionId: outlet?.regionId ?? undefined,
-                    quantity: item.qtyRequired ?? item.qtyPicked,
-                    movementType: InventoryMovementType.SHIPMENT,
-                    referenceNo: existing.poNo,
-                    createdBy: data.userId,
-                }));
+                // Only ship the remaining un-picked qty — items already picked (at PACKING
+                // or via per-item picking) already had their inventory_balances decremented
+                // by pickStockQuantForDeliveryOrderItem; shipping the full required qty again
+                // here would double-count on-hand/reserved for those items.
+                shipmentMovements = doItemsResult.query.flatMap((item): InventoryMovementsInsertType[] => {
+                    const required = roundQtyPutaway(parseFloat(String(item.qtyRequired ?? '0')) || 0);
+                    const picked = roundQtyPutaway(parseFloat(String(item.qtyPicked ?? '0')) || 0);
+                    const remaining = roundQtyPutaway(Math.max(0, required - picked));
+                    if (remaining <= 0) return [];
+                    return [{
+                        skuId: item.skuId as string,
+                        regionId: outlet?.regionId ?? undefined,
+                        quantity: String(remaining),
+                        movementType: InventoryMovementType.SHIPMENT,
+                        referenceNo: existing.poNo,
+                        createdBy: data.userId,
+                    }];
+                });
             }
 
             let updateTime: Date;

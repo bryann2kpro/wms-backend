@@ -14,6 +14,7 @@ import {
   type StockQuantType,
 } from "./stock-quant.repository";
 import { StockQuantTransactionRepositoryClass } from "./stock-quant-transaction/stock-quant-transaction.repository";
+import { InventoryBalanceRepositoryClass } from "../inventory/inventory-balance/inventory.repository";
 import {
   qtyPutawayToDbString,
   roundQtyPutaway,
@@ -27,6 +28,7 @@ const POSHIPMENT_TYPE = "POSHIPMENT";
 const stockQuantRepository = new StockQuantRepositoryClass();
 const stockQuantTransactionRepository = new StockQuantTransactionRepositoryClass();
 const skuRepository = new SkuRepositoryClass();
+const inventoryBalanceRepository = new InventoryBalanceRepositoryClass();
 
 export type StockQuantReservationLine = {
   skuId: string;
@@ -480,8 +482,8 @@ export async function shipStockQuantForPurchaseOrder(params: {
   );
 
   for (const allocation of allocations) {
-    const qty = parseQty(allocation.quantity);
-    if (qty <= 0) continue;
+    const originalQty = parseQty(allocation.quantity);
+    if (originalQty <= 0) continue;
 
     const stockRow = await stockQuantRepository.getStockQuantByRackSkuLotAndExpiry(
       organizationId,
@@ -500,15 +502,26 @@ export async function shipStockQuantForPurchaseOrder(params: {
 
     const onHand = parseQty(stockRow.quantity);
     const reserved = parseQty(stockRow.reservedQty);
-    if (onHand < qty) {
-      throw new Error(
-        `Insufficient on-hand stock quant for PO "${referenceNo}" shipment: required ${qty}, on hand ${onHand}.`,
+
+    // Some or all of this allocation may already have been decremented at pick
+    // time (pickStockQuantForDeliveryOrderItem, run when the DO reached PACKING
+    // or via per-item picking). Only deduct what's actually still on-hand/reserved
+    // so SHIPPED never double-counts a pick that already happened. If nothing is
+    // left to deduct, this allocation was already fully accounted for at pick.
+    const qty = roundQtyPutaway(Math.min(originalQty, onHand, reserved));
+    if (qty < originalQty) {
+      logger.warn(
+        "[shipStockQuantForPurchaseOrder] Allocation partially/fully already decremented at pick time — deducting remaining only",
+        { referenceNo, skuId: allocation.skuId, originalQty, onHand, reserved, deducted: qty },
       );
     }
-    if (reserved < qty) {
-      throw new Error(
-        `Insufficient reserved stock quant for PO "${referenceNo}" shipment: required ${qty}, reserved ${reserved}.`,
+    if (qty <= 0) {
+      await stockQuantTransactionRepository.deleteStockQuantTransaction(
+        organizationId,
+        allocation.id,
+        tx,
       );
+      continue;
     }
 
     const newOnHand = roundQtyPutaway(onHand - qty);
@@ -587,4 +600,27 @@ export async function pickStockQuantForDeliveryOrderItem(params: {
     },
     tx,
   );
+
+  // inventory_balances is a separate SKU-level rollup (on-hand here isn't read by the
+  // Inventory page, which sums stock_quant live, but reservedQty IS read from here) —
+  // keep it in sync or the Reserved column shows stale numbers after a pick.
+  const [balance] = (await inventoryBalanceRepository.getInventoryBalanceBySkuIds(
+    [stockRow.skuId],
+    organizationId,
+    tx,
+  )) ?? [];
+  if (balance) {
+    const balOnHand = Math.max(0, roundQtyPutaway(parseQty(balance.onHandQty) - qtyDelta));
+    const balReserved = Math.max(0, roundQtyPutaway(parseQty(balance.reservedQty) - qtyDelta));
+    await inventoryBalanceRepository.upsertInventoryBalance(
+      {
+        skuId: stockRow.skuId,
+        organizationId,
+        onHandQty: qtyPutawayToDbString(balOnHand),
+        lossQty: balance.lossQty ?? "0",
+        reservedQty: qtyPutawayToDbString(balReserved),
+      },
+      tx,
+    );
+  }
 }

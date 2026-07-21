@@ -236,6 +236,7 @@ export class InventoryBalanceRepositoryClass {
   async getInventoryBalanceBySkuIds(
     skuIds: string[],
     organizationId?: string,
+    tx?: DbTransaction,
   ): Promise<InventoryBalancesType[] | null> {
     try {
       logger.info("ℹ️ [InventoryBalancesRepository.getInventoryBalanceBySkuIds] Getting inventory balances by SKU IDs for latest recorded date...");
@@ -245,12 +246,13 @@ export class InventoryBalanceRepositoryClass {
           return [];
       }
 
+      const client = tx ?? db;
       const where = [inArray(InventoryBalancesTable.skuId, skuIds)];
       if (organizationId) {
         where.push(eq(InventoryBalancesTable.organizationId, organizationId));
       }
 
-      const balances = await db.select().from(InventoryBalancesTable).where(and(...where));
+      const balances = await client.select().from(InventoryBalancesTable).where(and(...where));
 
       logger.info("✅ [InventoryBalancesRepository.getInventoryBalanceBySkuIds] Inventory balances fetched successfully");
       return balances;
