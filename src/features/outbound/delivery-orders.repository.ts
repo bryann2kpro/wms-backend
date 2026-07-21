@@ -366,6 +366,33 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
+  /**
+   * Fetch all delivery order items for a purchase order with picking-relevant fields
+   * (qtyPicked, stockQuantId) — used when bulk-advancing a DO's status to PACKING so
+   * the pick-time stock decrement can run for every item at once.
+   */
+  async getDeliveryOrderItemsPickStateForPo(
+    purchaseOrderId: string,
+    tx?: DbTransaction
+  ): Promise<Array<{ id: string; qtyRequired: string; qtyPicked: string | null; stockQuantId: string | null }>> {
+    try {
+      const dbClient = tx ?? db;
+      const rows = await dbClient
+        .select({
+          id: DeliveryOrderItemsTable.id,
+          qtyRequired: DeliveryOrderItemsTable.qtyRequired,
+          qtyPicked: DeliveryOrderItemsTable.qtyPicked,
+          stockQuantId: DeliveryOrderItemsTable.stockQuantId,
+        })
+        .from(DeliveryOrderItemsTable)
+        .where(eq(DeliveryOrderItemsTable.purchaseOrderId, purchaseOrderId));
+      return rows;
+    } catch (error) {
+      logger.error("❌ [DeliveryOrdersRepository.getDeliveryOrderItemsPickStateForPo] Error:", error);
+      throw error;
+    }
+  }
+
   async deleteDeliveryOrderItem(id: string, tx?: DbTransaction): Promise<boolean> {
     try {
       const dbClient = tx ?? db;

@@ -116,6 +116,8 @@ function makeMockDeliveryOrderRepo() {
         createDoItemAllocations: vi.fn().mockResolvedValue([]),
         deleteDoItemAllocations: vi.fn().mockResolvedValue(undefined),
         getDoItemAllocationsWithDetails: vi.fn().mockResolvedValue([]),
+        getDeliveryOrderItemsPickStateForPo: vi.fn().mockResolvedValue([]),
+        markItemAsPicked: vi.fn().mockResolvedValue(undefined),
     };
 }
 

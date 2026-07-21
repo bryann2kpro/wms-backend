@@ -476,6 +476,41 @@ export class OutboundServices {
                     tx,
                 );
 
+                if (nextStatus === 'PACKING') {
+                    // Picking is considered complete once the DO reaches PACKING via the
+                    // admin "Next Step" bulk advance (as opposed to per-item picking in the
+                    // ES DO Work Queue). Decrement on-hand + reserved for every item's
+                    // remaining unpicked qty, and mark each item fully picked, so both entry
+                    // points into "picked" end up with the same stock effect.
+                    const items = await this.deliveryOrderRepository.getDeliveryOrderItemsPickStateForPo(
+                        existing.purchaseOrderId,
+                        tx,
+                    );
+                    for (const item of items) {
+                        const required = roundQtyPutaway(parseFloat(item.qtyRequired) || 0);
+                        const alreadyPicked = roundQtyPutaway(parseFloat(item.qtyPicked ?? '0') || 0);
+                        const delta = roundQtyPutaway(required - alreadyPicked);
+                        if (delta !== 0 && item.stockQuantId) {
+                            await pickStockQuantForDeliveryOrderItem({
+                                organizationId: existing.organizationId,
+                                userId: data.userId,
+                                stockQuantId: item.stockQuantId,
+                                qtyDelta: delta,
+                                tx,
+                            });
+                        }
+                        if (delta !== 0) {
+                            await this.deliveryOrderRepository.markItemAsPicked(
+                                item.id,
+                                String(required),
+                                data.userId,
+                                tx,
+                            );
+                        }
+                    }
+                    logger.info('✅ [OutboundServices.advanceDeliveryOrderStatus] Items picked and stock decremented for PACKING');
+                }
+
                 if (nextStatus === 'SHIPPED') {
                     await this.purchaseOrdersRepository.updatePurchaseOrder(
                         existing.purchaseOrderId,
