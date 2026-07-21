@@ -548,3 +548,43 @@ export async function shipStockQuantForPurchaseOrder(params: {
     );
   }
 }
+
+/**
+ * Decrements both on-hand quantity and reserved_qty on the stock_quant row a DO item
+ * was allocated from, by the delta between old and new picked quantity. Keeps
+ * Available (On Hand - Reserved) unchanged while reflecting that picked stock has
+ * physically left the rack, instead of only releasing at SHIPPED.
+ */
+export async function pickStockQuantForDeliveryOrderItem(params: {
+  organizationId: string;
+  userId: string;
+  stockQuantId: string;
+  qtyDelta: number;
+  tx: DbTransaction;
+}): Promise<void> {
+  const { organizationId, userId, stockQuantId, qtyDelta, tx } = params;
+  if (qtyDelta === 0) return;
+
+  const stockRow = await stockQuantRepository.getStockQuantById(organizationId, stockQuantId, tx);
+  if (!stockRow) {
+    logger.warn(
+      "[pickStockQuantForDeliveryOrderItem] stock_quant row not found for picked item",
+      { stockQuantId },
+    );
+    return;
+  }
+
+  const newOnHand = Math.max(0, roundQtyPutaway(parseQty(stockRow.quantity) - qtyDelta));
+  const newReserved = Math.max(0, roundQtyPutaway(parseQty(stockRow.reservedQty) - qtyDelta));
+
+  await stockQuantRepository.updateStockQuant(
+    organizationId,
+    stockRow.id,
+    {
+      quantity: qtyPutawayToDbString(newOnHand),
+      reservedQty: qtyPutawayToDbString(newReserved),
+      updatedBy: userId,
+    },
+    tx,
+  );
+}

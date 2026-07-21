@@ -4,7 +4,7 @@ import { DbTransaction } from "@/types/db-transaction";
 import { invoicesRepository } from "@/composition-root";
 import { isWithinMonthEndWindow } from "@/util/date";
 import { DeliveryOrdersRepositoryClass, DoItemAllocationWithDetails } from "./delivery-orders.repository";
-import { DeliveryOrderItemInsertType, DoItemAllocationInsertType } from "./delivery-orders.model";
+import { DeliveryOrderItemInsertType, DeliveryOrderItemType, DoItemAllocationInsertType } from "./delivery-orders.model";
 import { SkuRepositoryClass } from "../master-data/sku.repository";
 import { InventoryBalanceRepositoryClass } from "../inventory/inventory-balance/inventory.repository";
 import { DeliveryScheduleRepositoryClass, DeliveryScheduleWithRegion } from "../master-data/delivery-schedule.repository";
@@ -20,11 +20,13 @@ import { InventoryMovementRepositoryClass, InventoryMovementsInsertType } from "
 import { InventoryMovementType } from "../inventory/inventory-movement/inventory.model";
 import {
     assertSufficientStockQuantForLines,
+    pickStockQuantForDeliveryOrderItem,
     releaseStockQuantForPurchaseOrder,
     releaseStockQuantPartialForSku,
     reserveStockQuantForPurchaseOrderLine,
     shipStockQuantForPurchaseOrder,
 } from "../stock-quant/stock-quant-reservation.service";
+import { roundQtyPutaway } from "../stock-quant/putaway/putaway-stock-move.service";
 import { RegionPricingTable } from "../master-data/region.model";
 import { and, eq } from "drizzle-orm";
 import { env } from "@/env";
@@ -519,6 +521,53 @@ export class OutboundServices {
             return updated;
         } catch (error) {
             logger.error('❌ [OutboundServices.advanceDeliveryOrderStatus] Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Marks a DO item as picked, and decrements both on-hand quantity and reserved_qty
+     * on the stock_quant row it was allocated from by the picked delta. Keeps Available
+     * unchanged while reflecting that the picked stock has physically left the rack,
+     * rather than waiting for SHIPPED to release the reservation.
+     */
+    async markDeliveryOrderItemPicked(data: {
+        id: string;
+        qtyPicked: string;
+        organizationId: string;
+        userId: string;
+    }): Promise<DeliveryOrderItemType> {
+        logger.info('ℹ️ [OutboundServices.markDeliveryOrderItemPicked] Marking item as picked...');
+        try {
+            return await db.transaction(async (tx) => {
+                const existing = await this.deliveryOrderRepository.getDeliveryOrderItemById(data.id, tx);
+                if (!existing) throw new Error('Delivery order item not found');
+
+                const oldQty = roundQtyPutaway(parseFloat(existing.qtyPicked ?? '0') || 0);
+                const newQty = roundQtyPutaway(parseFloat(data.qtyPicked) || 0);
+                const delta = roundQtyPutaway(newQty - oldQty);
+
+                if (delta !== 0 && existing.stockQuantId) {
+                    await pickStockQuantForDeliveryOrderItem({
+                        organizationId: data.organizationId,
+                        userId: data.userId,
+                        stockQuantId: existing.stockQuantId,
+                        qtyDelta: delta,
+                        tx,
+                    });
+                }
+
+                const updated = await this.deliveryOrderRepository.markItemAsPicked(
+                    data.id,
+                    data.qtyPicked,
+                    data.userId,
+                    tx,
+                );
+                logger.info('✅ [OutboundServices.markDeliveryOrderItemPicked] Item marked as picked');
+                return updated;
+            });
+        } catch (error) {
+            logger.error('❌ [OutboundServices.markDeliveryOrderItemPicked] Error:', error);
             throw error;
         }
     }

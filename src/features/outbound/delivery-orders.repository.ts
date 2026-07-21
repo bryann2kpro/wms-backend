@@ -154,6 +154,21 @@ export class DeliveryOrdersRepositoryClass {
     }
   }
 
+  async getDeliveryOrderItemById(id: string, tx?: DbTransaction): Promise<DeliveryOrderItemType | null> {
+    try {
+      const client = tx ?? db;
+      const [row] = await client
+        .select()
+        .from(DeliveryOrderItemsTable)
+        .where(eq(DeliveryOrderItemsTable.id, id))
+        .limit(1);
+      return row ?? null;
+    } catch (error) {
+      logger.error("❌ [DeliveryOrdersRepository.getDeliveryOrderItemById] Error:", error);
+      throw error;
+    }
+  }
+
   async getDeliveryOrderByPurchaseOrderId(purchaseOrderId: string, organizationId?: string): Promise<DeliveryOrderType | null> {
     try {
       const whereConditions = [eq(DeliveryOrdersTable.purchaseOrderId, purchaseOrderId)];

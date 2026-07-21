@@ -760,7 +760,12 @@ export const resolvers = {
         }
 
         logger.info("ℹ️ [outbound.resolvers.markDeliveryOrderItemPicked] Marking item as picked...");
-        await deliveryOrdersRepository.markItemAsPicked(id, qtyPicked, userId);
+        await outboundServices.markDeliveryOrderItemPicked({
+          id,
+          qtyPicked,
+          organizationId: context.organizationId ?? "",
+          userId,
+        });
 
         const result = await deliveryOrdersRepository.getDeliveryOrderItemsWithDetails(
           { id },
