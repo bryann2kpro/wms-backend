@@ -111,15 +111,23 @@ export const typeDefs = `#graphql
   }
 
   """
+  A single rack allocation for a SKU in the Stock Balance (With Rack) report.
+  """
+  type InventoryBalanceReportRackBreakdown {
+    rackLabel: String!
+    qty: Float!
+  }
+
+  """
   A single row in the Stock Balance report.
-  rackLocations is empty for WITHOUT_RACK variant.
+  rackBreakdown is empty for WITHOUT_RACK variant.
   """
   type InventoryBalanceReportRow {
     skuCode: String!
     skuDescription: String!
     unitCode: String!
     onHandQty: Float!
-    rackLocations: [String!]!
+    rackBreakdown: [InventoryBalanceReportRackBreakdown!]!
   }
 
   extend type Query {

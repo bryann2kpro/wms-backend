@@ -946,12 +946,17 @@ export async function generateGrnRemainingReportPdf(
 
 export type InventoryBalanceReportType = 'WITHOUT_RACK' | 'WITH_RACK';
 
+export interface InventoryBalanceReportRackBreakdown {
+  rackLabel: string;
+  qty: number;
+}
+
 export interface InventoryBalanceReportRow {
   skuCode: string;
   skuDescription: string;
   unitCode: string;
   onHandQty: number;
-  rackLocations: string[];
+  rackBreakdown: InventoryBalanceReportRackBreakdown[];
 }
 
 export async function getInventoryBalanceReportData(
@@ -978,13 +983,13 @@ export async function getInventoryBalanceReportData(
       skuDescription,
       unitCode,
       onHandQty,
-      rackLocations: [],
+      rackBreakdown: [],
     }));
   }
 
-  // WITH_RACK: query stock_quant joined with m_racks for bin locations
+  // WITH_RACK: query stock_quant joined with m_racks for bin locations + qty per rack
   const skuIds = rows.map((r) => r.skuId).filter((id): id is string => id !== null);
-  const racksBySkuId = new Map<string, string[]>();
+  const racksBySkuId = new Map<string, Map<string, number>>();
 
   if (skuIds.length > 0) {
     const quantRows = await db
@@ -993,6 +998,7 @@ export async function getInventoryBalanceReportData(
         rackRow: RacksTable.rackRow,
         rackLevel: RacksTable.rackLevel,
         rackColumn: RacksTable.rackColumn,
+        quantity: sql<number>`${StockQuantTable.quantity}::float8`,
       })
       .from(StockQuantTable)
       .innerJoin(RacksTable, eq(StockQuantTable.rackId, RacksTable.rackId))
@@ -1000,15 +1006,18 @@ export async function getInventoryBalanceReportData(
 
     for (const qr of quantRows) {
       const label = `${qr.rackRow}-${qr.rackLevel}-${qr.rackColumn}`;
-      const existing = racksBySkuId.get(qr.skuId) ?? [];
-      existing.push(label);
-      racksBySkuId.set(qr.skuId, existing);
+      const bySkuRack = racksBySkuId.get(qr.skuId) ?? new Map<string, number>();
+      bySkuRack.set(label, (bySkuRack.get(label) ?? 0) + qr.quantity);
+      racksBySkuId.set(qr.skuId, bySkuRack);
     }
   }
 
   return rows.map(({ skuCode, skuDescription, unitCode, onHandQty, skuId }) => {
-    const rackLocations = Array.from(new Set(racksBySkuId.get(skuId ?? '') ?? [])).sort();
-    return { skuCode, skuDescription, unitCode, onHandQty, rackLocations };
+    const rackMap = racksBySkuId.get(skuId ?? '') ?? new Map<string, number>();
+    const rackBreakdown = Array.from(rackMap.entries())
+      .map(([rackLabel, qty]) => ({ rackLabel, qty }))
+      .sort((a, b) => a.rackLabel.localeCompare(b.rackLabel));
+    return { skuCode, skuDescription, unitCode, onHandQty, rackBreakdown };
   });
 }
 
@@ -1021,30 +1030,48 @@ export async function renderStockBalanceHtml(
 
   const withRack = type === 'WITH_RACK';
 
-  const tableRows = rows
+  // WITH_RACK: one table row per rack the SKU is stocked in, showing that rack's own qty.
+  type FlatRow = { skuCode: string; skuDescription: string; unitCode: string; qty: number; rackLabel: string | null };
+  const flatRows: FlatRow[] = withRack
+    ? rows.flatMap((r): FlatRow[] =>
+        r.rackBreakdown.length > 0
+          ? r.rackBreakdown.map((rb) => ({
+              skuCode: r.skuCode,
+              skuDescription: r.skuDescription,
+              unitCode: r.unitCode,
+              qty: rb.qty,
+              rackLabel: rb.rackLabel as string | null,
+            }))
+          : [{ skuCode: r.skuCode, skuDescription: r.skuDescription, unitCode: r.unitCode, qty: r.onHandQty, rackLabel: null }],
+      )
+    : rows.map((r) => ({ skuCode: r.skuCode, skuDescription: r.skuDescription, unitCode: r.unitCode, qty: r.onHandQty, rackLabel: null }));
+
+  const tableRows = flatRows
     .map((r, i) => {
       const rowAlt = i % 2 === 0 ? 'tr-alt' : '';
       const rackCell = withRack
-        ? `<td class="px-4 py-3 col-rack">${escapeHtml(r.rackLocations.join(', ') || '—')}</td>`
+        ? `<td class="px-4 py-3 col-rack">${escapeHtml(r.rackLabel ?? '—')}</td>`
         : '';
       return `<tr class="tr-data ${rowAlt}">
         <td class="px-4 py-3 col-num">${i + 1}</td>
         <td class="px-4 py-3 col-code">${escapeHtml(r.skuCode)}</td>
         <td class="px-4 py-3 col-desc">${escapeHtml(r.skuDescription)}</td>
         <td class="px-4 py-3 col-uom">${escapeHtml(r.unitCode)}</td>
-        <td class="px-4 py-3 text-right tabular-nums col-num">${r.onHandQty.toFixed(2)}</td>
+        <td class="px-4 py-3 text-right tabular-nums col-num">${r.qty.toFixed(2)}</td>
         ${rackCell}
       </tr>`;
     })
     .join('\n');
 
-  const rackHeader = withRack ? '<th style="text-align:left">Rack Location(s)</th>' : '';
+  const rackHeader = withRack ? '<th style="text-align:left">Rack Location</th>' : '';
+  const qtyHeader = withRack ? 'Qty in Rack' : 'On-Hand Qty';
   const generatedDate = new Date().toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' });
 
   return template
     .replace(/\{\{logoImgHtml\}\}/, logoImgHtml)
     .replace(/\{\{reportVariant\}\}/, withRack ? 'With Rack' : 'Without Rack')
     .replace(/\{\{rackHeader\}\}/, rackHeader)
+    .replace(/\{\{qtyHeader\}\}/, qtyHeader)
     .replace(/\{\{tableRows\}\}/, tableRows)
     .replace(/\{\{generatedDate\}\}/g, generatedDate);
 }
