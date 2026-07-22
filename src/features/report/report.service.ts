@@ -1015,6 +1015,7 @@ export async function getInventoryBalanceReportData(
   return rows.map(({ skuCode, skuDescription, unitCode, onHandQty, skuId }) => {
     const rackMap = racksBySkuId.get(skuId ?? '') ?? new Map<string, number>();
     const rackBreakdown = Array.from(rackMap.entries())
+      .filter(([, qty]) => qty > 0)
       .map(([rackLabel, qty]) => ({ rackLabel, qty }))
       .sort((a, b) => a.rackLabel.localeCompare(b.rackLabel));
     return { skuCode, skuDescription, unitCode, onHandQty, rackBreakdown };
