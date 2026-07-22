@@ -111,16 +111,26 @@ export const typeDefs = `#graphql
   }
 
   """
-  A single rack allocation for a SKU in the Stock Balance (With Rack) report.
+  Variant for Stock Balance report — with or without a per-batch expiry date breakdown.
+  """
+  enum InventoryBalanceExpiryType {
+    WITHOUT_EXPIRY
+    WITH_EXPIRY
+  }
+
+  """
+  A single rack/expiry allocation for a SKU in the Stock Balance report.
+  rackLabel is null unless WITH_RACK; expiryDate is null unless WITH_EXPIRY.
   """
   type InventoryBalanceReportRackBreakdown {
-    rackLabel: String!
+    rackLabel: String
+    expiryDate: String
     qty: Float!
   }
 
   """
   A single row in the Stock Balance report.
-  rackBreakdown is empty for WITHOUT_RACK variant.
+  rackBreakdown is empty unless WITH_RACK and/or WITH_EXPIRY is requested.
   """
   type InventoryBalanceReportRow {
     skuCode: String!
@@ -145,8 +155,9 @@ export const typeDefs = `#graphql
     Fetch Stock Balance rows for Excel export.
     WITHOUT_RACK: SKU Code, Description, UOM, On-Hand Qty.
     WITH_RACK: same plus rack location labels.
+    WITH_EXPIRY: adds a per-batch expiry date breakdown.
     """
-    inventoryBalanceReportData(type: InventoryBalanceReportType!): [InventoryBalanceReportRow!]! @auth
+    inventoryBalanceReportData(type: InventoryBalanceReportType!, expiryType: InventoryBalanceExpiryType): [InventoryBalanceReportRow!]! @auth
   }
 
   extend type Mutation {
@@ -179,7 +190,7 @@ export const typeDefs = `#graphql
     Generate a Stock Balance PDF. Returns base64-encoded PDF and suggested filename.
     WITHOUT_RACK: principal-facing summary. WITH_RACK: includes rack location labels.
     """
-    generateStockBalanceReport(type: InventoryBalanceReportType!): GenerateReportPayload! @auth
+    generateStockBalanceReport(type: InventoryBalanceReportType!, expiryType: InventoryBalanceExpiryType): GenerateReportPayload! @auth
 
     """
     Generate the GRN Remaining Quantity Report PDF — every GRN line still owed

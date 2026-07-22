@@ -58,7 +58,11 @@ export class StockQuantRepositoryClass {
     try {
       logger.info("ℹ️ [StockQuantRepository.getStockQuants] Listing stock quants...");
 
-      const conditions = [eq(StockQuantTable.organizationId, organizationId)];
+      // Rows with quantity 0 are emptied racks (fully picked/shipped) — not useful in the on-hand list.
+      const conditions = [
+        eq(StockQuantTable.organizationId, organizationId),
+        sql`${StockQuantTable.quantity} > 0`,
+      ];
 
       if (filter.id) {
         conditions.push(eq(StockQuantTable.id, filter.id));

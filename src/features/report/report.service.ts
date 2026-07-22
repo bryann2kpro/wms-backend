@@ -945,9 +945,11 @@ export async function generateGrnRemainingReportPdf(
 // ── Stock Balance Report ──────────────────────────────────────────────────────
 
 export type InventoryBalanceReportType = 'WITHOUT_RACK' | 'WITH_RACK';
+export type InventoryBalanceExpiryType = 'WITHOUT_EXPIRY' | 'WITH_EXPIRY';
 
 export interface InventoryBalanceReportRackBreakdown {
-  rackLabel: string;
+  rackLabel: string | null;
+  expiryDate: string | null;
   qty: number;
 }
 
@@ -962,6 +964,7 @@ export interface InventoryBalanceReportRow {
 export async function getInventoryBalanceReportData(
   type: InventoryBalanceReportType,
   organizationId: string,
+  expiryType: InventoryBalanceExpiryType = 'WITHOUT_EXPIRY',
 ): Promise<InventoryBalanceReportRow[]> {
   const rows = await db
     .select({
@@ -977,7 +980,10 @@ export async function getInventoryBalanceReportData(
     .where(eq(InventoryBalancesTable.organizationId, organizationId))
     .orderBy(asc(SkuTable.skuCode));
 
-  if (type === 'WITHOUT_RACK') {
+  const withRack = type === 'WITH_RACK';
+  const withExpiry = expiryType === 'WITH_EXPIRY';
+
+  if (!withRack && !withExpiry) {
     return rows.map(({ skuCode, skuDescription, unitCode, onHandQty }) => ({
       skuCode,
       skuDescription,
@@ -987,37 +993,46 @@ export async function getInventoryBalanceReportData(
     }));
   }
 
-  // WITH_RACK: query stock_quant joined with m_racks for bin locations + qty per rack
+  // Rack and/or expiry breakdown requested — query stock_quant, optionally joined with m_racks.
   const skuIds = rows.map((r) => r.skuId).filter((id): id is string => id !== null);
-  const racksBySkuId = new Map<string, Map<string, number>>();
+  const breakdownBySkuId = new Map<string, Map<string, InventoryBalanceReportRackBreakdown>>();
 
   if (skuIds.length > 0) {
-    const quantRows = await db
+    const quantRowsQuery = db
       .select({
         skuId: StockQuantTable.skuId,
         rackRow: RacksTable.rackRow,
         rackLevel: RacksTable.rackLevel,
         rackColumn: RacksTable.rackColumn,
+        expiryDate: StockQuantTable.expiryDate,
         quantity: sql<number>`${StockQuantTable.quantity}::float8`,
       })
       .from(StockQuantTable)
       .innerJoin(RacksTable, eq(StockQuantTable.rackId, RacksTable.rackId))
       .where(inArray(StockQuantTable.skuId, skuIds));
 
+    const quantRows = await quantRowsQuery;
+
     for (const qr of quantRows) {
-      const label = `${qr.rackRow}-${qr.rackLevel}-${qr.rackColumn}`;
-      const bySkuRack = racksBySkuId.get(qr.skuId) ?? new Map<string, number>();
-      bySkuRack.set(label, (bySkuRack.get(label) ?? 0) + qr.quantity);
-      racksBySkuId.set(qr.skuId, bySkuRack);
+      const rackLabel = withRack ? `${qr.rackRow}-${qr.rackLevel}-${qr.rackColumn}` : null;
+      const expiryDate = withExpiry ? (qr.expiryDate ? qr.expiryDate.toISOString() : null) : null;
+      const key = `${rackLabel ?? ''}|${expiryDate ?? ''}`;
+      const bySku = breakdownBySkuId.get(qr.skuId) ?? new Map<string, InventoryBalanceReportRackBreakdown>();
+      const existing = bySku.get(key);
+      if (existing) {
+        existing.qty += qr.quantity;
+      } else {
+        bySku.set(key, { rackLabel, expiryDate, qty: qr.quantity });
+      }
+      breakdownBySkuId.set(qr.skuId, bySku);
     }
   }
 
   return rows.map(({ skuCode, skuDescription, unitCode, onHandQty, skuId }) => {
-    const rackMap = racksBySkuId.get(skuId ?? '') ?? new Map<string, number>();
-    const rackBreakdown = Array.from(rackMap.entries())
-      .filter(([, qty]) => qty > 0)
-      .map(([rackLabel, qty]) => ({ rackLabel, qty }))
-      .sort((a, b) => a.rackLabel.localeCompare(b.rackLabel));
+    const bySku = breakdownBySkuId.get(skuId ?? '') ?? new Map<string, InventoryBalanceReportRackBreakdown>();
+    const rackBreakdown = Array.from(bySku.values())
+      .filter((b) => b.qty > 0)
+      .sort((a, b) => (a.rackLabel ?? '').localeCompare(b.rackLabel ?? '') || (a.expiryDate ?? '').localeCompare(b.expiryDate ?? ''));
     return { skuCode, skuDescription, unitCode, onHandQty, rackBreakdown };
   });
 }
@@ -1025,15 +1040,17 @@ export async function getInventoryBalanceReportData(
 export async function renderStockBalanceHtml(
   rows: InventoryBalanceReportRow[],
   type: InventoryBalanceReportType,
+  expiryType: InventoryBalanceExpiryType = 'WITHOUT_EXPIRY',
 ): Promise<string> {
   const template = await readFile(STOCK_BALANCE_HTML_PATH, 'utf-8');
   const logoImgHtml = await getSmeLogoImgHtml('SME Edaran');
 
   const withRack = type === 'WITH_RACK';
+  const withExpiry = expiryType === 'WITH_EXPIRY';
+  const withBreakdown = withRack || withExpiry;
 
-  // WITH_RACK: one table row per rack the SKU is stocked in, showing that rack's own qty.
-  type FlatRow = { skuCode: string; skuDescription: string; unitCode: string; qty: number; rackLabel: string | null };
-  const flatRows: FlatRow[] = withRack
+  type FlatRow = { skuCode: string; skuDescription: string; unitCode: string; qty: number; rackLabel: string | null; expiryDate: string | null };
+  const flatRows: FlatRow[] = withBreakdown
     ? rows.flatMap((r): FlatRow[] =>
         r.rackBreakdown.length > 0
           ? r.rackBreakdown.map((rb) => ({
@@ -1041,17 +1058,23 @@ export async function renderStockBalanceHtml(
               skuDescription: r.skuDescription,
               unitCode: r.unitCode,
               qty: rb.qty,
-              rackLabel: rb.rackLabel as string | null,
+              rackLabel: rb.rackLabel,
+              expiryDate: rb.expiryDate,
             }))
-          : [{ skuCode: r.skuCode, skuDescription: r.skuDescription, unitCode: r.unitCode, qty: r.onHandQty, rackLabel: null }],
+          : [{ skuCode: r.skuCode, skuDescription: r.skuDescription, unitCode: r.unitCode, qty: r.onHandQty, rackLabel: null, expiryDate: null }],
       )
-    : rows.map((r) => ({ skuCode: r.skuCode, skuDescription: r.skuDescription, unitCode: r.unitCode, qty: r.onHandQty, rackLabel: null }));
+    : rows.map((r) => ({ skuCode: r.skuCode, skuDescription: r.skuDescription, unitCode: r.unitCode, qty: r.onHandQty, rackLabel: null, expiryDate: null }));
+
+  const formatExpiry = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-MY') : '—');
 
   const tableRows = flatRows
     .map((r, i) => {
       const rowAlt = i % 2 === 0 ? 'tr-alt' : '';
       const rackCell = withRack
         ? `<td class="px-4 py-3 col-rack">${escapeHtml(r.rackLabel ?? '—')}</td>`
+        : '';
+      const expiryCell = withExpiry
+        ? `<td class="px-4 py-3 col-rack">${escapeHtml(formatExpiry(r.expiryDate))}</td>`
         : '';
       return `<tr class="tr-data ${rowAlt}">
         <td class="px-4 py-3 col-num">${i + 1}</td>
@@ -1060,18 +1083,22 @@ export async function renderStockBalanceHtml(
         <td class="px-4 py-3 col-uom">${escapeHtml(r.unitCode)}</td>
         <td class="px-4 py-3 text-right tabular-nums col-num">${r.qty.toFixed(2)}</td>
         ${rackCell}
+        ${expiryCell}
       </tr>`;
     })
     .join('\n');
 
   const rackHeader = withRack ? '<th style="text-align:left">Rack Location</th>' : '';
-  const qtyHeader = withRack ? 'Qty in Rack' : 'On-Hand Qty';
+  const expiryHeader = withExpiry ? '<th style="text-align:left">Expiry Date</th>' : '';
+  const qtyHeader = withBreakdown ? 'Qty in Rack' : 'On-Hand Qty';
+  const reportVariantParts = [withRack ? 'With Rack' : 'Without Rack', withExpiry ? 'With Expiry' : null].filter(Boolean);
   const generatedDate = new Date().toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' });
 
   return template
     .replace(/\{\{logoImgHtml\}\}/, logoImgHtml)
-    .replace(/\{\{reportVariant\}\}/, withRack ? 'With Rack' : 'Without Rack')
+    .replace(/\{\{reportVariant\}\}/, reportVariantParts.join(' · '))
     .replace(/\{\{rackHeader\}\}/, rackHeader)
+    .replace(/\{\{expiryHeader\}\}/, expiryHeader)
     .replace(/\{\{qtyHeader\}\}/, qtyHeader)
     .replace(/\{\{tableRows\}\}/, tableRows)
     .replace(/\{\{generatedDate\}\}/g, generatedDate);
@@ -1080,8 +1107,9 @@ export async function renderStockBalanceHtml(
 export async function generateStockBalancePdf(
   rows: InventoryBalanceReportRow[],
   type: InventoryBalanceReportType,
+  expiryType: InventoryBalanceExpiryType = 'WITHOUT_EXPIRY',
 ): Promise<{ pdfBase64: string; filename: string }> {
-  const html = await renderStockBalanceHtml(rows, type);
+  const html = await renderStockBalanceHtml(rows, type, expiryType);
   const pdfBuffer = await htmlToPdf(html);
   const dateStr = new Date().toISOString().split('T')[0];
   const filename = `Stock_Balance_Report_${dateStr}.pdf`;

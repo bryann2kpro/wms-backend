@@ -18,6 +18,7 @@ import {
   generateStockBalancePdf,
   generateGrnRemainingReportPdf,
   type InventoryBalanceReportType,
+  type InventoryBalanceExpiryType,
 } from './report.service';
 import z from 'zod';
 
@@ -49,10 +50,10 @@ export const resolvers = {
 
     inventoryBalanceReportData: async (
       _: unknown,
-      args: { type: InventoryBalanceReportType },
+      args: { type: InventoryBalanceReportType; expiryType?: InventoryBalanceExpiryType },
       context: { organizationId: string }
     ) => {
-      return getInventoryBalanceReportData(args.type, context.organizationId);
+      return getInventoryBalanceReportData(args.type, context.organizationId, args.expiryType);
     },
   },
   Mutation: {
@@ -185,12 +186,12 @@ export const resolvers = {
 
     generateStockBalanceReport: async (
       _: unknown,
-      args: { type: InventoryBalanceReportType },
+      args: { type: InventoryBalanceReportType; expiryType?: InventoryBalanceExpiryType },
       context: { organizationId: string }
     ) => {
       logger.info('ℹ️ [report.resolvers.generateStockBalanceReport] Generating stock balance PDF...');
-      const rows = await getInventoryBalanceReportData(args.type, context.organizationId);
-      return generateStockBalancePdf(rows, args.type);
+      const rows = await getInventoryBalanceReportData(args.type, context.organizationId, args.expiryType);
+      return generateStockBalancePdf(rows, args.type, args.expiryType);
     },
 
     generateGrnRemainingReportPdf: async (
