@@ -57,19 +57,49 @@ export class GrnItemsRepositoryClass {
      * its PO/ASN — i.e. GRNs are the unit of "is this outstanding", but once a GRN
      * qualifies, ALL of its lines come back (fulfilled lines included) so the report can
      * show the whole GRN together instead of isolated, context-less rows.
+     *
+     * remainingCtn/remainingLoosePcs are write-once snapshots taken when each GRN is created —
+     * they're never recalculated once a *later* GRN against the same PO/SKU line closes the
+     * shortfall. So a line only "qualifies" as outstanding if its own GRN is the most recent
+     * one received against that (po_no, sku_id) pair; earlier GRNs' stale snapshots are ignored.
+     * GRNs without a po_no can't be cross-referenced this way and fall back to their own snapshot.
      */
     async getRemainingItems(organizationId: string) {
         try {
+            const latestReceivedPerLine = db
+                .select({
+                    poNo: GrnsTable.poNo,
+                    skuId: GrnItemsTable.skuId,
+                    latestReceivedAt: sql`max(${GrnsTable.receivedAt})`.as('latest_received_at'),
+                })
+                .from(GrnItemsTable)
+                .innerJoin(GrnsTable, eq(GrnItemsTable.grnId, GrnsTable.id))
+                .where(and(eq(GrnsTable.organizationId, organizationId), sql`${GrnsTable.poNo} is not null`))
+                .groupBy(GrnsTable.poNo, GrnItemsTable.skuId)
+                .as('latest_per_line');
+
             const qualifyingGrnIds = db
                 .select({ grnId: GrnItemsTable.grnId })
                 .from(GrnItemsTable)
                 .innerJoin(GrnsTable, eq(GrnItemsTable.grnId, GrnsTable.id))
+                .leftJoin(
+                    latestReceivedPerLine,
+                    and(
+                        eq(GrnsTable.poNo, latestReceivedPerLine.poNo),
+                        eq(GrnItemsTable.skuId, latestReceivedPerLine.skuId),
+                    ),
+                )
                 .where(
                     and(
                         eq(GrnsTable.organizationId, organizationId),
                         or(
                             gt(sql`${GrnItemsTable.remainingCtn}::numeric`, 0),
                             gt(sql`${GrnItemsTable.remainingLoosePcs}::numeric`, 0),
+                        ),
+                        // Stale if a later GRN exists for the same PO/SKU line.
+                        or(
+                            sql`${GrnsTable.poNo} is null`,
+                            eq(GrnsTable.receivedAt, latestReceivedPerLine.latestReceivedAt),
                         ),
                     ),
                 );
