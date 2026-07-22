@@ -1093,6 +1093,8 @@ export async function renderStockBalanceHtml(
   const qtyHeader = withBreakdown ? 'Qty in Rack' : 'On-Hand Qty';
   const reportVariantParts = [withRack ? 'With Rack' : 'Without Rack', withExpiry ? 'With Expiry' : null].filter(Boolean);
   const generatedDate = new Date().toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' });
+  // Landscape (triggered by withRack/withExpiry in generateStockBalancePdf) gives more page width to use.
+  const wrapMaxWidth = withBreakdown ? '1100px' : '860px';
 
   return template
     .replace(/\{\{logoImgHtml\}\}/, logoImgHtml)
@@ -1100,6 +1102,7 @@ export async function renderStockBalanceHtml(
     .replace(/\{\{rackHeader\}\}/, rackHeader)
     .replace(/\{\{expiryHeader\}\}/, expiryHeader)
     .replace(/\{\{qtyHeader\}\}/, qtyHeader)
+    .replace(/\{\{wrapMaxWidth\}\}/, wrapMaxWidth)
     .replace(/\{\{tableRows\}\}/, tableRows)
     .replace(/\{\{generatedDate\}\}/g, generatedDate);
 }
@@ -1110,7 +1113,9 @@ export async function generateStockBalancePdf(
   expiryType: InventoryBalanceExpiryType = 'WITHOUT_EXPIRY',
 ): Promise<{ pdfBase64: string; filename: string }> {
   const html = await renderStockBalanceHtml(rows, type, expiryType);
-  const pdfBuffer = await htmlToPdf(html);
+  // Rack and/or expiry breakdown adds columns that don't fit A4 portrait after margins.
+  const needsLandscape = type === 'WITH_RACK' || expiryType === 'WITH_EXPIRY';
+  const pdfBuffer = await htmlToPdf(html, needsLandscape ? { landscape: true } : undefined);
   const dateStr = new Date().toISOString().split('T')[0];
   const filename = `Stock_Balance_Report_${dateStr}.pdf`;
   return { pdfBase64: pdfBuffer.toString('base64'), filename };
