@@ -1094,7 +1094,10 @@ export async function renderStockBalanceHtml(
   const reportVariantParts = [withRack ? 'With Rack' : 'Without Rack', withExpiry ? 'With Expiry' : null].filter(Boolean);
   const generatedDate = new Date().toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' });
   // Landscape (triggered by withRack/withExpiry in generateStockBalancePdf) gives more page width to use.
+  // Must match the `landscape` option passed to htmlToPdf — Chrome's @page CSS size wins over the
+  // Puppeteer API's landscape flag, so the CSS has to declare the orientation itself.
   const wrapMaxWidth = withBreakdown ? '1100px' : '860px';
+  const pageSize = withBreakdown ? 'A4 landscape' : 'A4';
 
   return template
     .replace(/\{\{logoImgHtml\}\}/, logoImgHtml)
@@ -1103,6 +1106,7 @@ export async function renderStockBalanceHtml(
     .replace(/\{\{expiryHeader\}\}/, expiryHeader)
     .replace(/\{\{qtyHeader\}\}/, qtyHeader)
     .replace(/\{\{wrapMaxWidth\}\}/, wrapMaxWidth)
+    .replace(/\{\{pageSize\}\}/, pageSize)
     .replace(/\{\{tableRows\}\}/, tableRows)
     .replace(/\{\{generatedDate\}\}/g, generatedDate);
 }
