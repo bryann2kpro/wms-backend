@@ -244,11 +244,14 @@ async function assertLotTrackedAsnItemsHaveLotAndExpiry(input: {
     if (lotTrackedItemIds.size === 0) return;
 
     const itemList = input.items ?? [];
+    // Only lot-tracked SKUs actually present in this GRN need lotNo/expiryDate — a lot-tracked
+    // SKU that merely exists elsewhere in the shared ASN (e.g. arriving on a later, separate
+    // delivery) must not block submission of GRNs that don't include it.
     const invalidLotTrackedSkus = [...lotTrackedItemIds].filter((itemId) => {
         const matchingItems = itemList.filter(
             (item) => (item.skuCode ?? '').trim() === itemId,
         );
-        if (matchingItems.length === 0) return true;
+        if (matchingItems.length === 0) return false;
         return matchingItems.some(
             (item) => !(item.lotNo ?? '').trim() || !(item.expiryDate ?? '').trim(),
         );
