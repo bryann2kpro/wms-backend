@@ -1,0 +1,30 @@
+name: Version Bump
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute and push next version tag
+        run: |
+          git fetch --tags
+          LATEST=$(git tag -l "v*.*.*" | sort -V | tail -1)
+          if [ -z "$LATEST" ]; then
+            NEXT_TAG="v0.0.1"
+          else
+            NEXT_TAG=$(echo "$LATEST" | awk -F. '{ patch=substr($3,1)+1; print $1"."$2"."patch }')
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$NEXT_TAG"
+          git push origin "$NEXT_TAG"
