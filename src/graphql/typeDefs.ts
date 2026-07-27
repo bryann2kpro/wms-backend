@@ -41,6 +41,7 @@ import { typeDefs as pickupCriteriaTypeDefs } from '@/features/master-data/picku
 import { typeDefs as palletLabelTypeDefs } from '@/features/master-data/pallet-label.typeDefs';
 import { typeDefs as transportTypeDefs } from '@/features/master-data/transport.typeDefs';
 import { typeDefs as driversTypeDefs } from '@/features/tms-driver/drivers.typeDefs';
+import { typeDefs as podTypeDefs } from '@/features/tms-driver/pod.typeDefs';
 import { typeDefs as zoneTypeDefs } from '@/features/master-data/zone.typeDefs';
 import { typeDefs as binTypeDefs } from '@/features/master-data/bin.typeDefs';
 import { typeDefs as putawayRuleTypeDefs } from '@/features/master-data/putaway-rule.typeDefs';
@@ -152,6 +153,7 @@ export const typeDefs = [
   palletLabelTypeDefs,
   transportTypeDefs,
   driversTypeDefs,
+  podTypeDefs,
   zoneTypeDefs,
   binTypeDefs,
   putawayRuleTypeDefs,
