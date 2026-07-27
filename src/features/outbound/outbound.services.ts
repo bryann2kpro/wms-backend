@@ -741,7 +741,12 @@ export class OutboundServices {
                         }
                     }
 
-                    // Add new items to PO, DO, and create RESERVED movements
+                    // Add new items to PO, DO, and create RESERVED movements.
+                    // Reservation must run BEFORE the DO items are inserted so each row can be
+                    // written with the batch it was actually reserved against (stockQuantId) —
+                    // otherwise the reservation still lands on stock_quant but the DO item is left
+                    // unlinked, showing no rack/expiry anywhere in the UI despite stock being held.
+                    const newItemMovements: InventoryMovementsInsertType[] = [];
                     if (data.newItems?.length) {
                         await this.purchaseOrdersRepository.createPurchaseOrderItems(
                             data.newItems.map(item => ({
@@ -755,21 +760,46 @@ export class OutboundServices {
                         );
 
                         if (doRow) {
-                            await this.deliveryOrderRepository.createDeliveryOrderItems(
-                                data.newItems.map(item => ({
-                                    purchaseOrderId: po.id,
-                                    purchaseOrderNo: po.purchaseOrderNo,
+                            const newItemDoItemsToInsert: DeliveryOrderItemInsertType[] = [];
+                            for (const item of data.newItems) {
+                                const portions = await reserveStockQuantForPurchaseOrderLine({
+                                    organizationId: data.organizationId,
+                                    userId: data.userId,
+                                    referenceNo: po.purchaseOrderNo,
                                     skuId: item.skuId,
+                                    skuCode: item.skuCode,
                                     qtyRequired: String(item.qtyRequired),
-                                    createdBy: data.userId,
-                                    updatedBy: data.userId,
-                                })),
-                                tx
-                            );
+                                    tx,
+                                });
+
+                                if (portions.length > 0) {
+                                    for (const portion of portions) {
+                                        newItemDoItemsToInsert.push({
+                                            purchaseOrderId: po.id,
+                                            purchaseOrderNo: po.purchaseOrderNo,
+                                            skuId: item.skuId,
+                                            qtyRequired: String(portion.qty),
+                                            stockQuantId: portion.stockQuantId,
+                                            createdBy: data.userId,
+                                            updatedBy: data.userId,
+                                        });
+                                    }
+                                } else {
+                                    newItemDoItemsToInsert.push({
+                                        purchaseOrderId: po.id,
+                                        purchaseOrderNo: po.purchaseOrderNo,
+                                        skuId: item.skuId,
+                                        qtyRequired: String(item.qtyRequired),
+                                        createdBy: data.userId,
+                                        updatedBy: data.userId,
+                                    });
+                                }
+                            }
+                            await this.deliveryOrderRepository.createDeliveryOrderItems(newItemDoItemsToInsert, tx);
                         }
 
                         for (const item of data.newItems) {
-                            movementsToCreate.push({
+                            newItemMovements.push({
                                 skuId: item.skuId,
                                 regionId: outlet.regionId,
                                 quantity: String(item.qtyRequired),
@@ -778,6 +808,7 @@ export class OutboundServices {
                                 createdBy: data.userId,
                             });
                         }
+                        movementsToCreate.push(...newItemMovements);
                     }
 
                     // Batch-create all inventory movements
@@ -790,6 +821,9 @@ export class OutboundServices {
                         );
 
                         for (const movement of movementsToCreate) {
+                            // New items were already reserved above (with the batch link written
+                            // onto their DO item rows) — reserving again here would double-book stock.
+                            if (newItemMovements.includes(movement)) continue;
                             const qty = parseFloat(String(movement.quantity));
                             if (!Number.isFinite(qty) || qty === 0) continue;
                             if (qty > 0) {
