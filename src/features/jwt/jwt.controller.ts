@@ -15,7 +15,7 @@ dotenv.config();
 interface TokenPayload extends JwtPayload {
   [key: string]: any;
   username: string;
-  loginType: 'EMAIL' | 'CONTACT_NO';
+  loginType: 'EMAIL' | 'CONTACT_NO' | 'DRIVER';
   sessionId: string;
 }
 
