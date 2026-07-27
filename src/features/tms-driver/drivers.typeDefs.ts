@@ -1,9 +1,11 @@
 /**
  * Drivers GraphQL Type Definitions
  *
- * @description Driver roster synced from TMS, plus a lightweight driver-auth
- * surface (driverLogin) intended for the tmsmobile app to call directly.
- * Resolvers are in drivers.resolvers.ts
+ * @description Driver roster synced from TMS. This schema intentionally mirrors
+ * TMS's own driver API shape exactly (field names, arg names, return types) —
+ * the tmsmobile app's GraphQL operations are fixed/already deployed to real
+ * drivers' phones, so WMS matches TMS's contract rather than the other way
+ * around. Resolvers are in drivers.resolvers.ts
  */
 
 export const typeDefs = `#graphql
@@ -31,20 +33,9 @@ export const typeDefs = `#graphql
     updatedAt: String!
   }
 
-  type DriverPaginatedResponse {
-    query: [Driver!]!
-    pagination: Pagination!
-  }
-
   type DriverAuthPayload {
     accessToken: String!
     driver: Driver!
-  }
-
-  input DriverFilterInput {
-    id: ID
-    name: String
-    status: String
   }
 
   input CreateDriverInput {
@@ -88,8 +79,8 @@ export const typeDefs = `#graphql
   }
 
   extend type Query {
-    """Get drivers with optional filtering and pagination. Requires authentication."""
-    drivers(filter: DriverFilterInput, pageSize: Int, pageNumber: Int): DriverPaginatedResponse! @auth
+    """Get drivers, optionally filtered by status (e.g. "ACTIVE"). Requires authentication."""
+    drivers(status: String): [Driver!]! @auth
 
     """Get a single driver by ID. Requires authentication."""
     driver(id: ID!): Driver @auth
@@ -105,8 +96,11 @@ export const typeDefs = `#graphql
     """Delete a driver. Requires authentication."""
     deleteDriver(id: ID!): Boolean! @auth
 
-    """Toggle a driver's clock in/out state. Requires authentication (either admin, or the driver's own token)."""
-    setDriverClock(id: ID!, clockedIn: Boolean!): Driver!
+    """Toggle a driver's clock state. action is "IN" or "OUT". Callable by an admin, or the driver's own token."""
+    setDriverClock(driverId: ID!, action: String!): Driver!
+
+    """Set/reset a driver's password. Requires authentication (admin or the driver's own token)."""
+    setDriverPassword(driverId: ID!, password: String!): Boolean!
 
     """Driver-app login (email + password) — issues a driver-scoped token for tmsmobile."""
     driverLogin(email: String!, password: String!): DriverAuthPayload!

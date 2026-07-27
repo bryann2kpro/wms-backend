@@ -3,9 +3,8 @@
  */
 
 import { driversRepository, jwtController } from '@/composition-root';
-import { DriverFilter } from './drivers.repository';
 import { GraphQLContext, isAuthenticated } from '@/graphql/context';
-import { comparePassword } from '@/util/password';
+import { comparePassword, hashPassword } from '@/util/password';
 import { prettifyError, z } from 'zod';
 import { GraphQLError } from 'graphql';
 import { logger } from '@/util/logger';
@@ -75,21 +74,9 @@ function getBearerToken(context: GraphQLContext): string | null {
 
 export const resolvers = {
   Query: {
-    drivers: async (_: unknown, args: { filter?: { id?: string; name?: string; status?: string }; pageSize?: number; pageNumber?: number }) => {
-      const filter: DriverFilter = {};
-      if (args.filter) {
-        if (args.filter.id) filter.id = args.filter.id;
-        if (args.filter.name) filter.name = args.filter.name;
-        if (args.filter.status) filter.status = args.filter.status;
-      }
-      const result = await driversRepository.getDrivers(filter, {
-        pageSize: args.pageSize,
-        pageNumber: args.pageNumber,
-      });
-      return {
-        query: result.query.map(transformDriver),
-        pagination: result.pagination,
-      };
+    drivers: async (_: unknown, args: { status?: string }) => {
+      const records = await driversRepository.getDrivers(args.status);
+      return records.map(transformDriver);
     },
 
     driver: async (_: unknown, { id }: { id: string }) => {
@@ -124,7 +111,12 @@ export const resolvers = {
       return await driversRepository.deleteDriver(id);
     },
 
-    setDriverClock: async (_: unknown, { id, clockedIn }: { id: string; clockedIn: boolean }, context: GraphQLContext) => {
+    setDriverClock: async (_: unknown, { driverId, action }: { driverId: string; action: string }, context: GraphQLContext) => {
+      const normalizedAction = action.toUpperCase();
+      if (normalizedAction !== 'IN' && normalizedAction !== 'OUT') {
+        throw new GraphQLError('action must be "IN" or "OUT"', { extensions: { code: 'BAD_USER_INPUT' } });
+      }
+
       const isAdmin = isAuthenticated(context);
       let isSelf = false;
 
@@ -133,7 +125,7 @@ export const resolvers = {
         if (token) {
           try {
             const payload = jwtController.verifyToken(token);
-            isSelf = payload.loginType === 'DRIVER' && payload.driverId === id;
+            isSelf = payload.loginType === 'DRIVER' && payload.driverId === driverId;
           } catch {
             isSelf = false;
           }
@@ -144,11 +136,35 @@ export const resolvers = {
         throw new GraphQLError('Unauthorized', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
       }
 
-      const record = await driversRepository.setDriverClock(id, clockedIn);
+      const record = await driversRepository.setDriverClock(driverId, normalizedAction as 'IN' | 'OUT');
       if (!record) {
         throw new GraphQLError('Driver not found', { extensions: { code: 'NOT_FOUND' } });
       }
       return transformDriver(record);
+    },
+
+    setDriverPassword: async (_: unknown, { driverId, password }: { driverId: string; password: string }, context: GraphQLContext) => {
+      const isAdmin = isAuthenticated(context);
+      let isSelf = false;
+
+      if (!isAdmin) {
+        const token = getBearerToken(context);
+        if (token) {
+          try {
+            const payload = jwtController.verifyToken(token);
+            isSelf = payload.loginType === 'DRIVER' && payload.driverId === driverId;
+          } catch {
+            isSelf = false;
+          }
+        }
+      }
+
+      if (!isAdmin && !isSelf) {
+        throw new GraphQLError('Unauthorized', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
+      }
+
+      const hash = await hashPassword(password);
+      return await driversRepository.setDriverPassword(driverId, hash);
     },
 
     driverLogin: async (_: unknown, { email, password }: { email: string; password: string }) => {
