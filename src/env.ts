@@ -57,6 +57,8 @@ export const env = createEnv({
     NETSUITE_TOKEN_ID: z.string(),
     NETSUITE_TOKEN_SECRET: z.string(),
     NETSUITE_ITEM_RECEIPT_URL: z.string().url(),
+    // TMS Loading integration — outlet/warehouse geocoding for route ordering
+    GOOGLE_MAPS_API_KEY: z.string().optional(),
   },
  
   /**

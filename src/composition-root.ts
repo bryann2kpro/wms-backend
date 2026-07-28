@@ -41,6 +41,7 @@ import { PalletLabelRepositoryClass } from '@/features/master-data/pallet-label.
 import { TransportRepositoryClass } from '@/features/master-data/transport.repository.js';
 import { DriversRepositoryClass } from '@/features/tms-driver/drivers.repository.js';
 import { PodRepositoryClass } from '@/features/tms-driver/pod.repository.js';
+import { LoadBatchesRepositoryClass } from '@/features/tms-loading/load-batches.repository.js';
 import { ZoneRepositoryClass } from '@/features/master-data/zone.repository.js';
 import { BinRepositoryClass } from '@/features/master-data/bin.repository.js';
 import { PutawayRuleRepositoryClass } from '@/features/master-data/putaway-rule.repository.js';
@@ -135,6 +136,7 @@ export const palletLabelsRepository = new PalletLabelRepositoryClass();
 export const transportsRepository = new TransportRepositoryClass();
 export const driversRepository = new DriversRepositoryClass();
 export const podRepository = new PodRepositoryClass();
+export const loadBatchesRepository = new LoadBatchesRepositoryClass();
 export const zonesRepository = new ZoneRepositoryClass();
 export const binsRepository = new BinRepositoryClass();
 export const putawayRulesRepository = new PutawayRuleRepositoryClass();

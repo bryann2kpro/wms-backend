@@ -1,0 +1,58 @@
+/**
+ * Load Batches GraphQL Type Definitions
+ *
+ * @description Mirrors TMS's loading-pipeline API shape (query/mutation names)
+ * where practical, minus the priority-tier grouping and paid Google Routes
+ * traffic-ETA call, which were intentionally scoped out for v1.
+ */
+
+export const typeDefs = `#graphql
+  type LoadBatchStop {
+    doId: ID!
+    doNo: String!
+    outletId: ID
+    outletName: String
+    outletAddress: String
+    loadOrder: Int
+    loadedAt: String
+  }
+
+  type LoadBatch {
+    id: ID!
+    date: String!
+    zone: String!
+    status: String!
+    assignedAt: String
+    createdAt: String!
+    driver: Driver
+    stops: [LoadBatchStop!]!
+  }
+
+  extend type Query {
+    """List load batches, optionally filtered by date (YYYY-MM-DD). Requires authentication."""
+    loadBatches(date: String): [LoadBatch!]! @auth
+  }
+
+  extend type Mutation {
+    """Assign a specific driver to a batch — computes route order via geocoding + nearest-neighbour/3-opt."""
+    assignBatchDriver(batchId: ID!, driverId: ID!): LoadBatch! @auth
+
+    """Assign the first available clocked-in driver to a batch."""
+    autoAssignBatchDriver(batchId: ID!): LoadBatch @auth
+
+    """Remove the driver from a batch, reverting it to PENDING_DRIVER."""
+    unassignBatchDriver(batchId: ID!): LoadBatch! @auth
+
+    """Mark a single DO as physically loaded (or not) onto the vehicle."""
+    markBatchItemLoaded(doId: ID!, loaded: Boolean!): Boolean! @auth
+
+    """Bulk-confirm which DOs in a batch were loaded."""
+    confirmBatchLoading(batchId: ID!, loadedDoIds: [ID!]!): Boolean! @auth
+
+    """Mark a batch as fully DONE (vehicle departed)."""
+    completeBatch(batchId: ID!): Boolean! @auth
+
+    """Undo a batch back to PENDING_DRIVER — clears driver and load confirmations."""
+    undoLoadBatch(batchId: ID!): Boolean! @auth
+  }
+`;

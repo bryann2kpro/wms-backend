@@ -1,7 +1,8 @@
 import { MainSchema } from "@/db/db.schema";
-import { uuid, text, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
+import { uuid, text, numeric, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { OrganizationsTable } from "@/features/master-data/organization.model";
 import { GrnItemsTable } from "@/features/inbound/grns.model";
+import { LoadBatchesTable } from "@/features/tms-loading/load-batches.model";
 
 /**
  * Delivery Orders Table (Outbound)
@@ -32,6 +33,11 @@ export const DeliveryOrdersTable = MainSchema.table('delivery_orders', {
 
   /** Physical staging bin assigned during packing (e.g. "A1") — mirrors TMS's packing zone concept. */
   stagingBin: text('staging_bin'),
+
+  /** Loading pipeline — set once this DO is grouped into a load batch. */
+  loadBatchId: uuid('load_batch_id').references(() => LoadBatchesTable.id, { onDelete: 'set null' }),
+  loadOrder: integer('load_order'),
+  loadedAt: timestamp('loaded_at', { withTimezone: true }),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

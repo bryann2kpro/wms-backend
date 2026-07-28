@@ -45,6 +45,7 @@ import { resolvers as palletLabelResolvers } from '@/features/master-data/pallet
 import { resolvers as transportResolvers } from '@/features/master-data/transport.resolvers';
 import { resolvers as driversResolvers } from '@/features/tms-driver/drivers.resolvers';
 import { resolvers as podResolvers } from '@/features/tms-driver/pod.resolvers';
+import { resolvers as loadBatchesResolvers } from '@/features/tms-loading/load-batches.resolvers';
 import { resolvers as zoneResolvers } from '@/features/master-data/zone.resolver';
 import { resolvers as binResolvers } from '@/features/master-data/bin.resolver';
 import { resolvers as putawayRuleResolvers } from '@/features/master-data/putaway-rule.resolver';
@@ -159,6 +160,7 @@ export const resolvers = mergeResolvers([
   transportResolvers,
   driversResolvers,
   podResolvers,
+  loadBatchesResolvers,
   zoneResolvers,
   binResolvers,
   putawayRuleResolvers,

@@ -6,7 +6,7 @@
  */
 
 import { prettifyError, z } from "zod";
-import { outboundServices, deliveryOrdersRepository, purchaseOrdersRepository } from "@/composition-root";
+import { outboundServices, deliveryOrdersRepository, purchaseOrdersRepository, loadBatchesRepository } from "@/composition-root";
 import type { GraphQLContext } from "@/graphql/context";
 import { withAudit } from "@/features/audit-log/audit.wrapper";
 import { GraphQLError } from "graphql";
@@ -797,11 +797,24 @@ export const resolvers = {
           extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
         });
       }
-      await deliveryOrdersRepository.updateDeliveryOrder(
-        doId,
-        { stagingBin: stagingBin || null, updatedBy: userId },
-        context.organizationId ?? undefined
-      );
+
+      const bin = stagingBin || null;
+      if (bin) {
+        const today = new Date().toISOString().slice(0, 10);
+        const batch = await loadBatchesRepository.findOrCreateBatchForZone(bin, today);
+        await deliveryOrdersRepository.updateDeliveryOrder(
+          doId,
+          { stagingBin: bin, loadBatchId: batch.id, updatedBy: userId },
+          context.organizationId ?? undefined
+        );
+      } else {
+        await loadBatchesRepository.detachDoFromPendingBatch(doId);
+        await deliveryOrdersRepository.updateDeliveryOrder(
+          doId,
+          { stagingBin: null, updatedBy: userId },
+          context.organizationId ?? undefined
+        );
+      }
       return true;
     },
 

@@ -841,6 +841,13 @@
       "when": 1785202915838,
       "tag": "0120_tense_sentry",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1785206222516,
+      "tag": "0121_vengeful_goliath",
+      "breakpoints": true
     }
   ]
 }
