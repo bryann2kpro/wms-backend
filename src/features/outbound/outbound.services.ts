@@ -294,9 +294,12 @@ export class OutboundServices {
                 );
                 await this.deliveryOrderRepository.createDeliveryOrderItems(doItemsToInsert, tx);
 
-                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 8: Auto-assign staging bin...');
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 8: Auto-assign staging bin and regional load batch...');
                 const nextBin = await loadBatchesRepository.getNextAvailableBin(tx);
-                await loadBatchesRepository.assignStagingBin(createdDo.id, nextBin, data.userId, tx);
+                await loadBatchesRepository.setStagingBin(createdDo.id, nextBin, data.userId, tx);
+                if (outlet.regionId) {
+                    await loadBatchesRepository.assignDoToRegionalBatch(createdDo.id, outlet.regionId, tx);
+                }
             });
             if (!created) throw new Error("Purchase order was not created.");
             logger.info("✅ [OutboundServices.createPurchaseOrder] Purchase order and Delivery Order created");

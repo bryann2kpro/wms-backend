@@ -43,6 +43,7 @@ function transformStop(s: LoadBatchStop) {
     outletId: s.outletId,
     outletName: s.outletName,
     outletAddress: s.outletAddress,
+    stagingBin: s.stagingBin,
     loadOrder: s.loadOrder,
     loadedAt: s.loadedAt ? s.loadedAt.toISOString() : null,
   };
@@ -52,7 +53,9 @@ function transformBatch(b: LoadBatchWithDetails) {
   return {
     id: b.id,
     date: b.date,
-    zone: b.zone,
+    regionId: b.regionId,
+    regionName: b.region?.regionName ?? null,
+    regionCode: b.region?.regionCode ?? null,
     status: b.status,
     assignedAt: b.assignedAt ? b.assignedAt.toISOString() : null,
     createdAt: b.createdAt.toISOString(),

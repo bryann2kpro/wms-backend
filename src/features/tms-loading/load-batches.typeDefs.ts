@@ -13,6 +13,7 @@ export const typeDefs = `#graphql
     outletId: ID
     outletName: String
     outletAddress: String
+    stagingBin: String
     loadOrder: Int
     loadedAt: String
   }
@@ -20,7 +21,9 @@ export const typeDefs = `#graphql
   type LoadBatch {
     id: ID!
     date: String!
-    zone: String!
+    regionId: ID!
+    regionName: String
+    regionCode: String
     status: String!
     assignedAt: String
     createdAt: String!

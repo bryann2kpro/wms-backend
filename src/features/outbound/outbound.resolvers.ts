@@ -798,17 +798,7 @@ export const resolvers = {
         });
       }
 
-      const bin = stagingBin || null;
-      if (bin) {
-        await loadBatchesRepository.assignStagingBin(doId, bin, userId);
-      } else {
-        await loadBatchesRepository.detachDoFromPendingBatch(doId);
-        await deliveryOrdersRepository.updateDeliveryOrder(
-          doId,
-          { stagingBin: null, updatedBy: userId },
-          context.organizationId ?? undefined
-        );
-      }
+      await loadBatchesRepository.setStagingBin(doId, stagingBin || null, userId);
       return true;
     },
 

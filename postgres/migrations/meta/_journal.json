@@ -848,6 +848,13 @@
       "when": 1785206222516,
       "tag": "0121_vengeful_goliath",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1785207600000,
+      "tag": "0122_load_batches_by_region",
+      "breakpoints": true
     }
   ]
 }

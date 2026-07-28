@@ -1,10 +1,11 @@
 /**
  * Load Batches Repository
  *
- * A batch groups DOs sharing a staging bin (set during Packing) onto one
- * driver/vehicle. Batches are auto-created/reused per zone+date the moment
- * a staging bin is assigned (see outbound.resolvers.ts setDeliveryOrderStagingBin) —
- * there's no separate manual "confirm staged" step like TMS has.
+ * A batch groups DOs sharing an outlet region onto one driver/vehicle —
+ * matching TMS's own Loading page (one batch per region per day). Batches
+ * are auto-created/reused the moment a DO is created (see
+ * outbound.services.ts createPurchaseOrder). Each DO's staging bin (from
+ * Packing) travels along as a per-row attribute, independent of batching.
  */
 
 import { db } from "@/db";
@@ -12,6 +13,7 @@ import { LoadBatchesTable, LoadBatchType, LoadBatchInsertType } from "./load-bat
 import { DeliveryOrdersTable } from "@/features/outbound/delivery-orders.model";
 import { PurchaseOrdersTable } from "@/features/outbound/purchase-orders.model";
 import { OutletsTable } from "@/features/master-data/outlets.model";
+import { RegionTable, RegionType } from "@/features/master-data/region.model";
 import { DriversTable, DriverType } from "@/features/tms-driver/drivers.model";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "@/util/logger";
@@ -23,11 +25,13 @@ export type LoadBatchStop = {
   outletId: string | null;
   outletName: string | null;
   outletAddress: string | null;
+  stagingBin: string | null;
   loadOrder: number | null;
   loadedAt: Date | null;
 };
 
 export type LoadBatchWithDetails = LoadBatchType & {
+  region: RegionType | null;
   driver: DriverType | null;
   stops: LoadBatchStop[];
 };
@@ -35,15 +39,15 @@ export type LoadBatchWithDetails = LoadBatchType & {
 export class LoadBatchesRepositoryClass {
   constructor() {}
 
-  /** Finds an existing PENDING_DRIVER/LOADING batch for this zone+date, or creates one. */
-  async findOrCreateBatchForZone(zone: string, date: string, tx?: DbTransaction): Promise<LoadBatchType> {
+  /** Finds an existing PENDING_DRIVER/LOADING batch for this region+date, or creates one. */
+  async findOrCreateBatchForRegion(regionId: string, date: string, tx?: DbTransaction): Promise<LoadBatchType> {
     const dbClient = tx ?? db;
     const [existing] = await dbClient
       .select()
       .from(LoadBatchesTable)
       .where(
         and(
-          eq(LoadBatchesTable.zone, zone),
+          eq(LoadBatchesTable.regionId, regionId),
           eq(LoadBatchesTable.date, date),
           inArray(LoadBatchesTable.status, ["PENDING_DRIVER", "LOADING"])
         )
@@ -53,10 +57,18 @@ export class LoadBatchesRepositoryClass {
 
     const [created] = await dbClient
       .insert(LoadBatchesTable)
-      .values({ zone, date, status: "PENDING_DRIVER" })
+      .values({ regionId, date, status: "PENDING_DRIVER" })
       .returning();
-    logger.info("✅ [LoadBatchesRepository.findOrCreateBatchForZone] Created batch:", created.id);
+    logger.info("✅ [LoadBatchesRepository.findOrCreateBatchForRegion] Created batch:", created.id);
     return created;
+  }
+
+  /** Adds a DO to today's batch for its outlet's region — called once at DO creation. */
+  async assignDoToRegionalBatch(doId: string, regionId: string, tx?: DbTransaction): Promise<void> {
+    const dbClient = tx ?? db;
+    const today = new Date().toISOString().slice(0, 10);
+    const batch = await this.findOrCreateBatchForRegion(regionId, today, tx);
+    await dbClient.update(DeliveryOrdersTable).set({ loadBatchId: batch.id }).where(eq(DeliveryOrdersTable.id, doId));
   }
 
   /** Next unused bin in A1..A10, B1..B10, ... J10 order, among currently-active DOs. */
@@ -84,25 +96,10 @@ export class LoadBatchesRepositoryClass {
     return `OVERFLOW-${used.size + 1}`;
   }
 
-  /** Assigns a bin to a DO and links it to that zone's batch for today — the single entry point used both by manual assignment and DO-creation auto-assignment. */
-  async assignStagingBin(doId: string, bin: string, updatedBy: string, tx?: DbTransaction): Promise<void> {
+  /** Sets a DO's staging bin — independent of batch membership, which is region-based and set at DO creation. */
+  async setStagingBin(doId: string, bin: string | null, updatedBy: string, tx?: DbTransaction): Promise<void> {
     const dbClient = tx ?? db;
-    const today = new Date().toISOString().slice(0, 10);
-    const batch = await this.findOrCreateBatchForZone(bin, today, tx);
-    await dbClient
-      .update(DeliveryOrdersTable)
-      .set({ stagingBin: bin, loadBatchId: batch.id, updatedBy })
-      .where(eq(DeliveryOrdersTable.id, doId));
-  }
-
-  /** Detaches a DO from its batch — used when a staging bin is cleared, only while still PENDING_DRIVER. */
-  async detachDoFromPendingBatch(doId: string, tx?: DbTransaction): Promise<void> {
-    const dbClient = tx ?? db;
-    const [doRow] = await dbClient.select().from(DeliveryOrdersTable).where(eq(DeliveryOrdersTable.id, doId)).limit(1);
-    if (!doRow?.loadBatchId) return;
-    const [batch] = await dbClient.select().from(LoadBatchesTable).where(eq(LoadBatchesTable.id, doRow.loadBatchId)).limit(1);
-    if (batch?.status !== "PENDING_DRIVER") return;
-    await dbClient.update(DeliveryOrdersTable).set({ loadBatchId: null, loadOrder: null }).where(eq(DeliveryOrdersTable.id, doId));
+    await dbClient.update(DeliveryOrdersTable).set({ stagingBin: bin, updatedBy }).where(eq(DeliveryOrdersTable.id, doId));
   }
 
   async getLoadBatches(date?: string): Promise<LoadBatchWithDetails[]> {
@@ -123,6 +120,13 @@ export class LoadBatchesRepositoryClass {
         for (const d of drivers) driversMap.set(d.id, d);
       }
 
+      const regionIds = [...new Set(batches.map((b) => b.regionId))];
+      const regionsMap = new Map<string, RegionType>();
+      if (regionIds.length > 0) {
+        const regions = await db.select().from(RegionTable).where(inArray(RegionTable.regionId, regionIds));
+        for (const r of regions) regionsMap.set(r.regionId, r);
+      }
+
       const batchIds = batches.map((b) => b.id);
       const stopRows = await db
         .select({
@@ -132,6 +136,7 @@ export class LoadBatchesRepositoryClass {
           outletId: OutletsTable.outletId,
           outletName: OutletsTable.outletName,
           outletAddress: OutletsTable.address,
+          stagingBin: DeliveryOrdersTable.stagingBin,
           loadOrder: DeliveryOrdersTable.loadOrder,
           loadedAt: DeliveryOrdersTable.loadedAt,
         })
@@ -150,6 +155,7 @@ export class LoadBatchesRepositoryClass {
           outletId: row.outletId,
           outletName: row.outletName,
           outletAddress: row.outletAddress,
+          stagingBin: row.stagingBin,
           loadOrder: row.loadOrder,
           loadedAt: row.loadedAt,
         });
@@ -158,6 +164,7 @@ export class LoadBatchesRepositoryClass {
 
       return batches.map((b) => ({
         ...b,
+        region: regionsMap.get(b.regionId) ?? null,
         driver: b.driverId ? (driversMap.get(b.driverId) ?? null) : null,
         stops: (stopsByBatch.get(b.id) ?? []).sort((a, c) => (a.loadOrder ?? 9999) - (c.loadOrder ?? 9999)),
       }));

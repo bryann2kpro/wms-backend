@@ -1,16 +1,18 @@
 import { MainSchema } from "@/db/db.schema";
 import { uuid, text, timestamp, date, jsonb } from "drizzle-orm/pg-core";
 import { DriversTable } from "@/features/tms-driver/drivers.model";
+import { RegionTable } from "@/features/master-data/region.model";
 
 /**
- * A load batch groups delivery orders sharing a staging bin (assigned during
- * Packing) onto one vehicle/driver. Mirrors TMS's tms_loadlist table, minus
- * the region/priority-tier grouping we intentionally skipped for v1.
+ * A load batch groups delivery orders sharing an outlet region onto one
+ * vehicle/driver — matching TMS's own Loading page (one batch per region per
+ * day). Each DO within the batch carries its own staging bin (assigned
+ * during Packing) as a per-row attribute, not the batch's identity.
  */
 export const LoadBatchesTable = MainSchema.table("load_batches", {
   id: uuid("id").defaultRandom().notNull().primaryKey(),
   date: date("date").notNull(),
-  zone: text("zone").notNull(), // = the staging bin value this batch was created from
+  regionId: uuid("region_id").notNull().references(() => RegionTable.regionId),
   driverId: uuid("driver_id").references(() => DriversTable.id, { onDelete: "set null" }),
   status: text("status").notNull().default("PENDING_DRIVER"), // PENDING_DRIVER | LOADING | DONE
   assignedAt: timestamp("assigned_at", { withTimezone: true }),
