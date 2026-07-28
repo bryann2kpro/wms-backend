@@ -46,6 +46,7 @@ import { resolvers as transportResolvers } from '@/features/master-data/transpor
 import { resolvers as driversResolvers } from '@/features/tms-driver/drivers.resolvers';
 import { resolvers as podResolvers } from '@/features/tms-driver/pod.resolvers';
 import { resolvers as loadBatchesResolvers } from '@/features/tms-loading/load-batches.resolvers';
+import { resolvers as routesResolvers } from '@/features/tms-loading/routes.resolvers';
 import { resolvers as zoneResolvers } from '@/features/master-data/zone.resolver';
 import { resolvers as binResolvers } from '@/features/master-data/bin.resolver';
 import { resolvers as putawayRuleResolvers } from '@/features/master-data/putaway-rule.resolver';
@@ -161,6 +162,7 @@ export const resolvers = mergeResolvers([
   driversResolvers,
   podResolvers,
   loadBatchesResolvers,
+  routesResolvers,
   zoneResolvers,
   binResolvers,
   putawayRuleResolvers,

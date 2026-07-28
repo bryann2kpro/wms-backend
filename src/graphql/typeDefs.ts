@@ -43,6 +43,7 @@ import { typeDefs as transportTypeDefs } from '@/features/master-data/transport.
 import { typeDefs as driversTypeDefs } from '@/features/tms-driver/drivers.typeDefs';
 import { typeDefs as podTypeDefs } from '@/features/tms-driver/pod.typeDefs';
 import { typeDefs as loadBatchesTypeDefs } from '@/features/tms-loading/load-batches.typeDefs';
+import { typeDefs as routesTypeDefs } from '@/features/tms-loading/routes.typeDefs';
 import { typeDefs as zoneTypeDefs } from '@/features/master-data/zone.typeDefs';
 import { typeDefs as binTypeDefs } from '@/features/master-data/bin.typeDefs';
 import { typeDefs as putawayRuleTypeDefs } from '@/features/master-data/putaway-rule.typeDefs';
@@ -156,6 +157,7 @@ export const typeDefs = [
   driversTypeDefs,
   podTypeDefs,
   loadBatchesTypeDefs,
+  routesTypeDefs,
   zoneTypeDefs,
   binTypeDefs,
   putawayRuleTypeDefs,

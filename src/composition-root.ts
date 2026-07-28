@@ -42,6 +42,7 @@ import { TransportRepositoryClass } from '@/features/master-data/transport.repos
 import { DriversRepositoryClass } from '@/features/tms-driver/drivers.repository.js';
 import { PodRepositoryClass } from '@/features/tms-driver/pod.repository.js';
 import { LoadBatchesRepositoryClass } from '@/features/tms-loading/load-batches.repository.js';
+import { RoutesRepositoryClass } from '@/features/tms-loading/routes.repository.js';
 import { ZoneRepositoryClass } from '@/features/master-data/zone.repository.js';
 import { BinRepositoryClass } from '@/features/master-data/bin.repository.js';
 import { PutawayRuleRepositoryClass } from '@/features/master-data/putaway-rule.repository.js';
@@ -137,6 +138,7 @@ export const transportsRepository = new TransportRepositoryClass();
 export const driversRepository = new DriversRepositoryClass();
 export const podRepository = new PodRepositoryClass();
 export const loadBatchesRepository = new LoadBatchesRepositoryClass();
+export const routesRepository = new RoutesRepositoryClass();
 export const zonesRepository = new ZoneRepositoryClass();
 export const binsRepository = new BinRepositoryClass();
 export const putawayRulesRepository = new PutawayRuleRepositoryClass();
