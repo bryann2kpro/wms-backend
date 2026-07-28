@@ -13,7 +13,7 @@ import { DeliveryOrdersTable } from "@/features/outbound/delivery-orders.model";
 import { PurchaseOrdersTable } from "@/features/outbound/purchase-orders.model";
 import { OutletsTable } from "@/features/master-data/outlets.model";
 import { DriversTable, DriverType } from "@/features/tms-driver/drivers.model";
-import { and, eq, isNull, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "@/util/logger";
 import { DbTransaction } from "@/types/db-transaction";
 
@@ -57,6 +57,42 @@ export class LoadBatchesRepositoryClass {
       .returning();
     logger.info("✅ [LoadBatchesRepository.findOrCreateBatchForZone] Created batch:", created.id);
     return created;
+  }
+
+  /** Next unused bin in A1..A10, B1..B10, ... J10 order, among currently-active DOs. */
+  async getNextAvailableBin(tx?: DbTransaction): Promise<string> {
+    const dbClient = tx ?? db;
+    const rows = await dbClient
+      .select({ stagingBin: DeliveryOrdersTable.stagingBin })
+      .from(DeliveryOrdersTable)
+      .where(
+        and(
+          sql`${DeliveryOrdersTable.stagingBin} is not null`,
+          sql`${DeliveryOrdersTable.status} not in ('SHIPPED', 'DELIVERED', 'DELIVERED_CONFIRMED', 'CANCELLED')`
+        )
+      );
+    const used = new Set(rows.map((r) => r.stagingBin).filter((b): b is string => !!b));
+
+    const cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+    for (const col of cols) {
+      for (let row = 1; row <= 10; row++) {
+        const bin = `${col}${row}`;
+        if (!used.has(bin)) return bin;
+      }
+    }
+    // Grid exhausted (100 concurrent active DOs) — fall back to a numbered overflow bin.
+    return `OVERFLOW-${used.size + 1}`;
+  }
+
+  /** Assigns a bin to a DO and links it to that zone's batch for today — the single entry point used both by manual assignment and DO-creation auto-assignment. */
+  async assignStagingBin(doId: string, bin: string, updatedBy: string, tx?: DbTransaction): Promise<void> {
+    const dbClient = tx ?? db;
+    const today = new Date().toISOString().slice(0, 10);
+    const batch = await this.findOrCreateBatchForZone(bin, today, tx);
+    await dbClient
+      .update(DeliveryOrdersTable)
+      .set({ stagingBin: bin, loadBatchId: batch.id, updatedBy })
+      .where(eq(DeliveryOrdersTable.id, doId));
   }
 
   /** Detaches a DO from its batch — used when a staging bin is cleared, only while still PENDING_DRIVER. */

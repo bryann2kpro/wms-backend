@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { logger } from "@/util/logger";
 import { DbTransaction } from "@/types/db-transaction";
-import { invoicesRepository } from "@/composition-root";
+import { invoicesRepository, loadBatchesRepository } from "@/composition-root";
 import { isWithinMonthEndWindow } from "@/util/date";
 import { DeliveryOrdersRepositoryClass, DoItemAllocationWithDetails } from "./delivery-orders.repository";
 import { DeliveryOrderItemInsertType, DeliveryOrderItemType, DoItemAllocationInsertType } from "./delivery-orders.model";
@@ -256,7 +256,7 @@ export class OutboundServices {
                     ? data.purchaseOrderNo.replace('PO', 'DO') 
                     : `DO-${data.purchaseOrderNo}`;
 
-                await this.deliveryOrderRepository.createDeliveryOrder({
+                const createdDo = await this.deliveryOrderRepository.createDeliveryOrder({
                     doNo,
                     purchaseOrderId: created!.id,
                     poNo: data.purchaseOrderNo,
@@ -293,6 +293,10 @@ export class OutboundServices {
                         }],
                 );
                 await this.deliveryOrderRepository.createDeliveryOrderItems(doItemsToInsert, tx);
+
+                logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 8: Auto-assign staging bin...');
+                const nextBin = await loadBatchesRepository.getNextAvailableBin(tx);
+                await loadBatchesRepository.assignStagingBin(createdDo.id, nextBin, data.userId, tx);
             });
             if (!created) throw new Error("Purchase order was not created.");
             logger.info("✅ [OutboundServices.createPurchaseOrder] Purchase order and Delivery Order created");

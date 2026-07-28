@@ -800,13 +800,7 @@ export const resolvers = {
 
       const bin = stagingBin || null;
       if (bin) {
-        const today = new Date().toISOString().slice(0, 10);
-        const batch = await loadBatchesRepository.findOrCreateBatchForZone(bin, today);
-        await deliveryOrdersRepository.updateDeliveryOrder(
-          doId,
-          { stagingBin: bin, loadBatchId: batch.id, updatedBy: userId },
-          context.organizationId ?? undefined
-        );
+        await loadBatchesRepository.assignStagingBin(doId, bin, userId);
       } else {
         await loadBatchesRepository.detachDoFromPendingBatch(doId);
         await deliveryOrdersRepository.updateDeliveryOrder(
