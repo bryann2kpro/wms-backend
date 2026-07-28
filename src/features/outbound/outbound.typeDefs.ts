@@ -75,6 +75,12 @@ export const typeDefs = `#graphql
         doNo: String
         "Delivery order status"
         doStatus: String
+        "Physical staging bin assigned during packing (e.g. A1)"
+        stagingBin: String
+        "Delivery outlet name"
+        outletName: String
+        "Delivery outlet address"
+        outletAddress: String
         "On-hand quantity from inventory balance"
         onHandQty: String
         "Loss quantity from inventory balance"
@@ -407,6 +413,11 @@ export const typeDefs = `#graphql
         Used in work queue when staff picks an item.
         """
         markDeliveryOrderItemPicked(id: ID!, qtyPicked: String!): DeliveryOrderItemWithDetails!
+
+        """
+        Assign a physical staging bin (e.g. "A1") to a delivery order during packing.
+        """
+        setDeliveryOrderStagingBin(doId: ID!, stagingBin: String!): Boolean! @auth
 
         """
         Apply emergency delivery to an existing purchase order.

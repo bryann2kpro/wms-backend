@@ -30,6 +30,9 @@ export const DeliveryOrdersTable = MainSchema.table('delivery_orders', {
   status: text('status').notNull().default('CREATED'),
   isEmergency: boolean('is_emergency').notNull().default(false),
 
+  /** Physical staging bin assigned during packing (e.g. "A1") — mirrors TMS's packing zone concept. */
+  stagingBin: text('staging_bin'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   createdBy: text('created_by').notNull(),

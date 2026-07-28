@@ -236,6 +236,9 @@ function transformDeliveryOrderItemWithDetails(item: DeliveryOrderItemWithDetail
     doId: item.doId ?? null,
     doNo: item.doNo ?? null,
     doStatus: item.doStatus ?? null,
+    stagingBin: item.stagingBin ?? null,
+    outletName: item.outletName ?? null,
+    outletAddress: item.outletAddress ?? null,
     onHandQty: item.onHandQty ?? "0",
     lossQty: item.lossQty ?? "0",
     reservedQty: item.reservedQty ?? "0",
@@ -782,6 +785,25 @@ export const resolvers = {
         return transformDeliveryOrderItemWithDetails(result.query[0]);
       }
     ),
+
+    setDeliveryOrderStagingBin: async (
+      _: unknown,
+      { doId, stagingBin }: { doId: string; stagingBin: string },
+      context: GraphQLContext
+    ) => {
+      const userId = context.user?.id ?? null;
+      if (!userId) {
+        throw new GraphQLError("Authentication required", {
+          extensions: { code: "UNAUTHENTICATED", http: { status: 401 } },
+        });
+      }
+      await deliveryOrdersRepository.updateDeliveryOrder(
+        doId,
+        { stagingBin, updatedBy: userId },
+        context.organizationId ?? undefined
+      );
+      return true;
+    },
 
     allocatePickList: withAudit<
       unknown,

@@ -1,0 +1,1 @@
+ALTER TABLE "main"."delivery_orders" ADD COLUMN "staging_bin" text;

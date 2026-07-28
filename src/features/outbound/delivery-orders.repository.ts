@@ -53,6 +53,9 @@ export type DeliveryOrderItemWithDetails = DeliveryOrderItemType & {
   doId: string | null;
   doNo: string | null;
   doStatus: string | null;
+  stagingBin: string | null;
+  outletName: string | null;
+  outletAddress: string | null;
   onHandQty: string | null;
   lossQty: string | null;
   reservedQty: string | null;
@@ -504,6 +507,9 @@ export class DeliveryOrdersRepositoryClass {
           doId: DeliveryOrdersTable.id,
           doNo: DeliveryOrdersTable.doNo,
           doStatus: DeliveryOrdersTable.status,
+          stagingBin: DeliveryOrdersTable.stagingBin,
+          outletName: OutletsTable.outletName,
+          outletAddress: OutletsTable.address,
           onHandQty: InventoryBalancesTable.onHandQty,
           lossQty: InventoryBalancesTable.lossQty,
           reservedQty: InventoryBalancesTable.reservedQty,
