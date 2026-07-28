@@ -415,9 +415,9 @@ export const typeDefs = `#graphql
         markDeliveryOrderItemPicked(id: ID!, qtyPicked: String!): DeliveryOrderItemWithDetails!
 
         """
-        Assign a physical staging bin (e.g. "A1") to a delivery order during packing.
+        Assign (or clear, when null/empty) a physical staging bin (e.g. "A1") to a delivery order during packing.
         """
-        setDeliveryOrderStagingBin(doId: ID!, stagingBin: String!): Boolean! @auth
+        setDeliveryOrderStagingBin(doId: ID!, stagingBin: String): Boolean! @auth
 
         """
         Apply emergency delivery to an existing purchase order.

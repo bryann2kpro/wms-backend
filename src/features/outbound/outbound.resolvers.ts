@@ -788,7 +788,7 @@ export const resolvers = {
 
     setDeliveryOrderStagingBin: async (
       _: unknown,
-      { doId, stagingBin }: { doId: string; stagingBin: string },
+      { doId, stagingBin }: { doId: string; stagingBin?: string | null },
       context: GraphQLContext
     ) => {
       const userId = context.user?.id ?? null;
@@ -799,7 +799,7 @@ export const resolvers = {
       }
       await deliveryOrdersRepository.updateDeliveryOrder(
         doId,
-        { stagingBin, updatedBy: userId },
+        { stagingBin: stagingBin || null, updatedBy: userId },
         context.organizationId ?? undefined
       );
       return true;
