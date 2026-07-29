@@ -12,12 +12,21 @@ export const typeDefs = `#graphql
     doNo: String!
     outletId: ID
     outletName: String
+    outletCode: String
     outletAddress: String
+    """Not tracked in WMS — always null. Kept for tmsmobile query-shape compatibility."""
+    outletPhone: String
     stagingBin: String
     loadOrder: Int
     loadedAt: String
     lat: Float
     lng: Float
+    """Not tracked in WMS (priority tiers intentionally out of scope) — always null. Kept for tmsmobile query-shape compatibility."""
+    priority: String
+    """Alias for stagingBin — tmsmobile's own field name for this concept."""
+    zone: String
+    """Not wired up in WMS yet — always null. Kept for tmsmobile query-shape compatibility."""
+    podUrl: String
   }
 
   type WarehouseCoords {
@@ -31,9 +40,13 @@ export const typeDefs = `#graphql
     regionId: ID!
     regionName: String
     regionCode: String
+    """Alias for regionCode — tmsmobile's own field name for this concept."""
+    zone: String
     status: String!
     assignedAt: String
     createdAt: String!
+    """Not computed in WMS yet — always null. Kept for tmsmobile query-shape compatibility."""
+    legDurationsSeconds: [Int!]
     driver: Driver
     stops: [LoadBatchStop!]!
   }

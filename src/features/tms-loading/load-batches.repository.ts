@@ -25,6 +25,7 @@ export type LoadBatchStop = {
   doNo: string;
   outletId: string | null;
   outletName: string | null;
+  outletCode: string | null;
   outletAddress: string | null;
   stagingBin: string | null;
   loadOrder: number | null;
@@ -143,6 +144,7 @@ export class LoadBatchesRepositoryClass {
           doNo: DeliveryOrdersTable.doNo,
           outletId: OutletsTable.outletId,
           outletName: OutletsTable.outletName,
+          outletCode: OutletsTable.outletCode,
           outletAddress: OutletsTable.address,
           stagingBin: DeliveryOrdersTable.stagingBin,
           loadOrder: DeliveryOrdersTable.loadOrder,
@@ -175,6 +177,7 @@ export class LoadBatchesRepositoryClass {
           doNo: row.doNo,
           outletId: row.outletId,
           outletName: row.outletName,
+          outletCode: row.outletCode,
           outletAddress: row.outletAddress,
           stagingBin: row.stagingBin,
           loadOrder: row.loadOrder,

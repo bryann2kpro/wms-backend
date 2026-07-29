@@ -49,12 +49,17 @@ function transformStop(s: LoadBatchStop) {
     doNo: s.doNo,
     outletId: s.outletId,
     outletName: s.outletName,
+    outletCode: s.outletCode,
     outletAddress: s.outletAddress,
+    outletPhone: null,
     stagingBin: s.stagingBin,
     loadOrder: s.loadOrder,
     loadedAt: s.loadedAt ? s.loadedAt.toISOString() : null,
     lat: s.lat,
     lng: s.lng,
+    priority: null,
+    zone: s.stagingBin,
+    podUrl: null,
   };
 }
 
@@ -65,6 +70,8 @@ function transformBatch(b: LoadBatchWithDetails) {
     regionId: b.regionId,
     regionName: b.region?.regionName ?? null,
     regionCode: b.region?.regionCode ?? null,
+    zone: b.region?.regionCode ?? null,
+    legDurationsSeconds: null,
     status: b.status,
     assignedAt: b.assignedAt ? b.assignedAt.toISOString() : null,
     createdAt: b.createdAt.toISOString(),
