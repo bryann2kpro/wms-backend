@@ -77,10 +77,18 @@ export const typeDefs = `#graphql
         doStatus: String
         "Physical staging bin assigned during packing (e.g. A1)"
         stagingBin: String
+        "Route-optimized delivery sequence position within its load batch (1 = first stop). Null until the batch has been geocoded/routed."
+        loadOrder: Int
         "Delivery outlet name"
         outletName: String
         "Delivery outlet address"
         outletAddress: String
+        "Delivery outlet's region ID"
+        regionId: ID
+        "Delivery outlet's region name"
+        regionName: String
+        "Delivery outlet's region code"
+        regionCode: String
         "On-hand quantity from inventory balance"
         onHandQty: String
         "Loss quantity from inventory balance"

@@ -15,6 +15,7 @@ import { PurchaseOrdersTable } from "@/features/outbound/purchase-orders.model";
 import { OutletsTable } from "@/features/master-data/outlets.model";
 import { RegionTable, RegionType } from "@/features/master-data/region.model";
 import { DriversTable, DriverType } from "@/features/tms-driver/drivers.model";
+import { GeocodeTable } from "./geocode.model";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "@/util/logger";
 import { DbTransaction } from "@/types/db-transaction";
@@ -28,6 +29,8 @@ export type LoadBatchStop = {
   stagingBin: string | null;
   loadOrder: number | null;
   loadedAt: Date | null;
+  lat: number | null;
+  lng: number | null;
 };
 
 export type LoadBatchWithDetails = LoadBatchType & {
@@ -63,15 +66,20 @@ export class LoadBatchesRepositoryClass {
     return created;
   }
 
-  /** Adds a DO to today's batch for its outlet's region — called once at DO creation. */
-  async assignDoToRegionalBatch(doId: string, regionId: string, tx?: DbTransaction): Promise<void> {
+  /** Adds a DO to today's batch for its outlet's region — called once at DO creation. Returns the batch so the caller can (re)compute its route once the transaction commits. */
+  async assignDoToRegionalBatch(doId: string, regionId: string, tx?: DbTransaction): Promise<LoadBatchType> {
     const dbClient = tx ?? db;
     const today = new Date().toISOString().slice(0, 10);
     const batch = await this.findOrCreateBatchForRegion(regionId, today, tx);
     await dbClient.update(DeliveryOrdersTable).set({ loadBatchId: batch.id }).where(eq(DeliveryOrdersTable.id, doId));
+    return batch;
   }
 
-  /** Next unused bin in A1..A10, B1..B10, ... J10 order, among currently-active DOs. */
+  /**
+   * Next unused bin in B1..B14, C1..C14, ... M14 order, among currently-active DOs.
+   * Matches the real warehouse map's staging area: columns B-M (12 cols, A/N are
+   * real storage racks not staging), rows 1-14, single layer (no level suffix).
+   */
   async getNextAvailableBin(tx?: DbTransaction): Promise<string> {
     const dbClient = tx ?? db;
     const rows = await dbClient
@@ -85,14 +93,14 @@ export class LoadBatchesRepositoryClass {
       );
     const used = new Set(rows.map((r) => r.stagingBin).filter((b): b is string => !!b));
 
-    const cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+    const cols = ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
     for (const col of cols) {
-      for (let row = 1; row <= 10; row++) {
+      for (let row = 1; row <= 14; row++) {
         const bin = `${col}${row}`;
         if (!used.has(bin)) return bin;
       }
     }
-    // Grid exhausted (100 concurrent active DOs) — fall back to a numbered overflow bin.
+    // Grid exhausted (168 concurrent active DOs) — fall back to a numbered overflow bin.
     return `OVERFLOW-${used.size + 1}`;
   }
 
@@ -145,9 +153,22 @@ export class LoadBatchesRepositoryClass {
         .leftJoin(OutletsTable, eq(PurchaseOrdersTable.outletId, OutletsTable.outletId))
         .where(inArray(DeliveryOrdersTable.loadBatchId, batchIds));
 
+      const outletIds = [...new Set(stopRows.map((r) => r.outletId).filter((id): id is string => !!id))];
+      const geocodeMap = new Map<string, { lat: number; lng: number }>();
+      if (outletIds.length > 0) {
+        const geoRows = await db
+          .select({ entityId: GeocodeTable.entityId, lat: GeocodeTable.lat, lng: GeocodeTable.lng })
+          .from(GeocodeTable)
+          .where(and(eq(GeocodeTable.entityType, "outlet"), inArray(GeocodeTable.entityId, outletIds)));
+        for (const g of geoRows) {
+          if (g.lat != null && g.lng != null) geocodeMap.set(g.entityId, { lat: Number(g.lat), lng: Number(g.lng) });
+        }
+      }
+
       const stopsByBatch = new Map<string, LoadBatchStop[]>();
       for (const row of stopRows) {
         if (!row.loadBatchId) continue;
+        const coords = row.outletId ? geocodeMap.get(row.outletId) : undefined;
         const list = stopsByBatch.get(row.loadBatchId) ?? [];
         list.push({
           doId: row.doId,
@@ -158,6 +179,8 @@ export class LoadBatchesRepositoryClass {
           stagingBin: row.stagingBin,
           loadOrder: row.loadOrder,
           loadedAt: row.loadedAt,
+          lat: coords?.lat ?? null,
+          lng: coords?.lng ?? null,
         });
         stopsByBatch.set(row.loadBatchId, list);
       }
@@ -199,6 +222,22 @@ export class LoadBatchesRepositoryClass {
 
   async setLoadOrder(doId: string, loadOrder: number): Promise<void> {
     await db.update(DeliveryOrdersTable).set({ loadOrder }).where(eq(DeliveryOrdersTable.id, doId));
+  }
+
+  /** Always creates a fresh batch (unlike findOrCreateBatchForRegion) — used to split overflow stops off an existing batch. */
+  async createBatchForRegion(regionId: string, date: string): Promise<LoadBatchType> {
+    const [created] = await db.insert(LoadBatchesTable).values({ regionId, date, status: "PENDING_DRIVER" }).returning();
+    logger.info("✅ [LoadBatchesRepository.createBatchForRegion] Created overflow batch:", created.id);
+    return created;
+  }
+
+  /** Moves DOs to a different batch, resetting their load order so it can be recomputed there. */
+  async moveDosToBatch(doIds: string[], batchId: string): Promise<void> {
+    if (doIds.length === 0) return;
+    await db
+      .update(DeliveryOrdersTable)
+      .set({ loadBatchId: batchId, loadOrder: null })
+      .where(inArray(DeliveryOrdersTable.id, doIds));
   }
 
   async markDoLoaded(doId: string, loaded: boolean): Promise<void> {

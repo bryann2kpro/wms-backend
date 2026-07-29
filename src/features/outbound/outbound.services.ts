@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { logger } from "@/util/logger";
 import { DbTransaction } from "@/types/db-transaction";
 import { invoicesRepository, loadBatchesRepository } from "@/composition-root";
+import { computeRouteForBatch } from "../tms-loading/route-compute.service";
 import { isWithinMonthEndWindow } from "@/util/date";
 import { DeliveryOrdersRepositoryClass, DoItemAllocationWithDetails } from "./delivery-orders.repository";
 import { DeliveryOrderItemInsertType, DeliveryOrderItemType, DoItemAllocationInsertType } from "./delivery-orders.model";
@@ -96,6 +97,7 @@ export class OutboundServices {
             const organizationId = data.organizationId;
 
             let created: PurchaseOrderType | null = null;
+            let batchIdToRoute: string | null = null;
             await db.transaction(async (tx) => {
                 logger.info('ℹ️ [OutboundServices.createPurchaseOrder] Step 1: Check if skus are in stock...');
                 const resolvedLines = await this.resolveAndValidateLineItems(data.items, tx);
@@ -298,11 +300,19 @@ export class OutboundServices {
                 const nextBin = await loadBatchesRepository.getNextAvailableBin(tx);
                 await loadBatchesRepository.setStagingBin(createdDo.id, nextBin, data.userId, tx);
                 if (outlet.regionId) {
-                    await loadBatchesRepository.assignDoToRegionalBatch(createdDo.id, outlet.regionId, tx);
+                    const batch = await loadBatchesRepository.assignDoToRegionalBatch(createdDo.id, outlet.regionId, tx);
+                    batchIdToRoute = batch.id;
                 }
             });
             if (!created) throw new Error("Purchase order was not created.");
             logger.info("✅ [OutboundServices.createPurchaseOrder] Purchase order and Delivery Order created");
+            if (batchIdToRoute) {
+                // Geocode + order the route now (not just at driver-assignment time) so the batch
+                // is already visible on the Routing map before it has a driver.
+                computeRouteForBatch(batchIdToRoute).catch((err) =>
+                    logger.error("❌ [OutboundServices.createPurchaseOrder] computeRouteForBatch failed:", err)
+                );
+            }
             return created;
         } catch (error) {
             logger.error("❌ [OutboundServices.createPurchaseOrder] Error:", error);

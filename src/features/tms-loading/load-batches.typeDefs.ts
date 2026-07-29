@@ -16,6 +16,13 @@ export const typeDefs = `#graphql
     stagingBin: String
     loadOrder: Int
     loadedAt: String
+    lat: Float
+    lng: Float
+  }
+
+  type WarehouseCoords {
+    lat: Float!
+    lng: Float!
   }
 
   type LoadBatch {
@@ -34,6 +41,9 @@ export const typeDefs = `#graphql
   extend type Query {
     """List load batches, optionally filtered by date (YYYY-MM-DD). Requires authentication."""
     loadBatches(date: String): [LoadBatch!]! @auth
+
+    """The warehouse depot's geocoded coordinates, for rendering routes on a map."""
+    warehouseCoords: WarehouseCoords @auth
   }
 
   extend type Mutation {

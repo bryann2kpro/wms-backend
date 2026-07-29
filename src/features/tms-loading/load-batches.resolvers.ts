@@ -2,13 +2,20 @@
  * Load Batches GraphQL Resolvers
  */
 
-import { loadBatchesRepository } from "@/composition-root";
-import { geocodeEntity, getGeocodeMap, getWarehouseCoords } from "./geocode.service";
-import { optimizeRoute, type RouteStop } from "./route-optimizer.util";
+import { loadBatchesRepository, driversRepository } from "@/composition-root";
+import { getWarehouseCoords } from "./geocode.service";
+import { computeRouteForBatch } from "./route-compute.service";
 import { GraphQLError } from "graphql";
 import { logger } from "@/util/logger";
 import type { DriverType } from "@/features/tms-driver/drivers.model";
 import type { LoadBatchWithDetails, LoadBatchStop } from "./load-batches.repository";
+
+/** Falls back to 10 pallets when a driver has no configured capacity, matching TMS's default-vehicle behaviour. */
+const DEFAULT_CAPACITY = 10;
+function getDriverCapacity(d: DriverType): number {
+  const parsed = d.pallet4x3 != null ? Number(d.pallet4x3) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CAPACITY;
+}
 
 function transformDriver(d: DriverType) {
   return {
@@ -46,6 +53,8 @@ function transformStop(s: LoadBatchStop) {
     stagingBin: s.stagingBin,
     loadOrder: s.loadOrder,
     loadedAt: s.loadedAt ? s.loadedAt.toISOString() : null,
+    lat: s.lat,
+    lng: s.lng,
   };
 }
 
@@ -64,38 +73,37 @@ function transformBatch(b: LoadBatchWithDetails) {
   };
 }
 
-/** Geocodes any un-cached outlets in the batch, then persists a nearest-neighbour + 3-opt load order. */
-async function computeRouteForBatch(batchId: string): Promise<void> {
+/**
+ * Assigns a driver to a batch, splitting off overflow stops into a new
+ * PENDING_DRIVER batch (same region/date) when the stop count exceeds the
+ * driver's pallet capacity — matching TMS's autoAssignDriverForBatch.
+ * Route order is computed first so the split keeps the nearest [capacity]
+ * stops with the driver and pushes the tail of the route to the overflow batch.
+ */
+async function assignDriverWithCapacitySplit(batchId: string, driverId: string): Promise<void> {
+  const driver = await driversRepository.getDriverById(driverId);
+  if (!driver) throw new GraphQLError("Driver not found", { extensions: { code: "NOT_FOUND" } });
+
+  await computeRouteForBatch(batchId);
   const batches = await loadBatchesRepository.getLoadBatches();
   const batch = batches.find((b) => b.id === batchId);
-  if (!batch || batch.stops.length === 0) return;
+  if (!batch) throw new GraphQLError("Load batch not found", { extensions: { code: "NOT_FOUND" } });
 
-  const warehouseCoords = await getWarehouseCoords();
-  if (!warehouseCoords) {
-    logger.warn("[load-batches] No warehouse coords available — skipping route ordering");
-    return;
+  const capacity = getDriverCapacity(driver);
+  if (batch.stops.length > capacity) {
+    const sorted = [...batch.stops].sort((a, c) => (a.loadOrder ?? 9999) - (c.loadOrder ?? 9999));
+    const overflowDoIds = sorted.slice(capacity).map((s) => s.doId);
+
+    const overflowBatch = await loadBatchesRepository.createBatchForRegion(batch.regionId, batch.date);
+    await loadBatchesRepository.moveDosToBatch(overflowDoIds, overflowBatch.id);
+    await computeRouteForBatch(overflowBatch.id);
+    logger.info(
+      `ℹ️ [load-batches] Split batch ${batchId}: ${overflowDoIds.length} overflow stop(s) moved to new batch ${overflowBatch.id}`
+    );
   }
 
-  const outletIds = batch.stops.map((s) => s.outletId).filter((id): id is string => !!id);
-  const coordsMap = await getGeocodeMap(outletIds);
-
-  for (const stop of batch.stops) {
-    if (!stop.outletId || coordsMap.has(stop.outletId)) continue;
-    if (!stop.outletAddress) continue;
-    const coords = await geocodeEntity("outlet", stop.outletId, stop.outletAddress);
-    if (coords) coordsMap.set(stop.outletId, coords);
-  }
-
-  const routeStops: RouteStop[] = batch.stops
-    .filter((s) => s.outletId && coordsMap.has(s.outletId))
-    .map((s) => ({ doId: s.doId, ...coordsMap.get(s.outletId as string)! }));
-
-  if (routeStops.length === 0) return;
-
-  const orderedDoIds = optimizeRoute(routeStops, warehouseCoords);
-  for (let i = 0; i < orderedDoIds.length; i++) {
-    await loadBatchesRepository.setLoadOrder(orderedDoIds[i], i + 1);
-  }
+  await loadBatchesRepository.assignDriver(batchId, driverId);
+  await computeRouteForBatch(batchId);
 }
 
 export const resolvers = {
@@ -104,12 +112,15 @@ export const resolvers = {
       const batches = await loadBatchesRepository.getLoadBatches(date);
       return batches.map(transformBatch);
     },
+
+    warehouseCoords: async () => {
+      return getWarehouseCoords();
+    },
   },
 
   Mutation: {
     assignBatchDriver: async (_: unknown, { batchId, driverId }: { batchId: string; driverId: string }) => {
-      await loadBatchesRepository.assignDriver(batchId, driverId);
-      await computeRouteForBatch(batchId);
+      await assignDriverWithCapacitySplit(batchId, driverId);
       const batches = await loadBatchesRepository.getLoadBatches();
       const batch = batches.find((b) => b.id === batchId);
       if (!batch) throw new GraphQLError("Load batch not found", { extensions: { code: "NOT_FOUND" } });
@@ -121,8 +132,7 @@ export const resolvers = {
       if (!batch) throw new GraphQLError("Load batch not found", { extensions: { code: "NOT_FOUND" } });
       const available = await loadBatchesRepository.getAvailableDrivers(batch.driverId);
       if (available.length === 0) return null;
-      await loadBatchesRepository.assignDriver(batchId, available[0].id);
-      await computeRouteForBatch(batchId);
+      await assignDriverWithCapacitySplit(batchId, available[0].id);
       const batches = await loadBatchesRepository.getLoadBatches();
       const updated = batches.find((b) => b.id === batchId);
       return updated ? transformBatch(updated) : null;

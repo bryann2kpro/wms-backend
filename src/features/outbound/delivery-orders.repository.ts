@@ -26,6 +26,7 @@ import { InventoryBalancesTable } from "@/features/inventory/inventory-balance/i
 import { RacksTable } from "@/features/master-data/racks.model";
 import { PurchaseOrdersTable } from "./purchase-orders.model";
 import { OutletsTable } from "@/features/master-data/outlets.model";
+import { RegionTable } from "@/features/master-data/region.model";
 import { PaginationParams, PaginatedResponse } from "@/features/rbac/rbac.model";
 import { pagination, PgQueryType } from "@/util/pagination";
 import { DbTransaction } from "@/types/db-transaction";
@@ -54,8 +55,12 @@ export type DeliveryOrderItemWithDetails = DeliveryOrderItemType & {
   doNo: string | null;
   doStatus: string | null;
   stagingBin: string | null;
+  loadOrder: number | null;
   outletName: string | null;
   outletAddress: string | null;
+  regionId: string | null;
+  regionName: string | null;
+  regionCode: string | null;
   onHandQty: string | null;
   lossQty: string | null;
   reservedQty: string | null;
@@ -508,8 +513,12 @@ export class DeliveryOrdersRepositoryClass {
           doNo: DeliveryOrdersTable.doNo,
           doStatus: DeliveryOrdersTable.status,
           stagingBin: DeliveryOrdersTable.stagingBin,
+          loadOrder: DeliveryOrdersTable.loadOrder,
           outletName: OutletsTable.outletName,
           outletAddress: OutletsTable.address,
+          regionId: OutletsTable.regionId,
+          regionName: RegionTable.regionName,
+          regionCode: RegionTable.regionCode,
           onHandQty: InventoryBalancesTable.onHandQty,
           lossQty: InventoryBalancesTable.lossQty,
           reservedQty: InventoryBalancesTable.reservedQty,
@@ -536,6 +545,7 @@ export class DeliveryOrdersRepositoryClass {
         .leftJoin(InventoryBalancesTable, eq(DeliveryOrderItemsTable.skuId, InventoryBalancesTable.skuId))
         .leftJoin(PurchaseOrdersTable, eq(DeliveryOrderItemsTable.purchaseOrderId, PurchaseOrdersTable.id))
         .leftJoin(OutletsTable, eq(PurchaseOrdersTable.outletId, OutletsTable.outletId))
+        .leftJoin(RegionTable, eq(OutletsTable.regionId, RegionTable.regionId))
         .leftJoin(StockQuantTable, eq(DeliveryOrderItemsTable.stockQuantId, StockQuantTable.id))
         .leftJoin(SelectedRackTable, eq(StockQuantTable.rackId, SelectedRackTable.rackId))
         .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
