@@ -13,8 +13,10 @@ export const typeDefs = `#graphql
     id: ID!
     name: String!
     phone: String!
-    licenseNumber: String!
-    licenseExpiry: String!
+    """Null for WhatsApp self-registered drivers until an admin fills it in."""
+    licenseNumber: String
+    """Null for WhatsApp self-registered drivers until an admin fills it in."""
+    licenseExpiry: String
     status: String!
     plateNumber: String
     vehicleType: String
@@ -36,6 +38,16 @@ export const typeDefs = `#graphql
   type DriverAuthPayload {
     accessToken: String!
     driver: Driver!
+  }
+
+  type DriverOtpVerifyResult {
+    """True when this phone number has no driver record yet — client should prompt for a name and call completeDriverRegistration."""
+    isNewDriver: Boolean!
+    """Present only when isNewDriver is true. Proves the phone was OTP-verified; pass it to completeDriverRegistration."""
+    registrationToken: String
+    """Present only when isNewDriver is false — same as driverLogin's payload."""
+    accessToken: String
+    driver: Driver
   }
 
   input CreateDriverInput {
@@ -105,10 +117,13 @@ export const typeDefs = `#graphql
     """Driver-app login (email + password) — issues a driver-scoped token for tmsmobile."""
     driverLogin(email: String!, password: String!): DriverAuthPayload!
 
-    """Sends a 6-digit login code to the driver's phone over WhatsApp. Returns false if a code was already sent within the last minute (cooldown) or the phone isn't recognised."""
+    """Sends a 6-digit login code to the given phone over WhatsApp — works for phones with no driver record yet too (self-registration). Returns false if a code was already sent within the last minute (cooldown) or the send failed."""
     sendDriverOtp(phone: String!): Boolean!
 
-    """Verifies a WhatsApp OTP code and issues a driver-scoped token for tmsmobile, same shape as driverLogin."""
-    verifyDriverOtp(phone: String!, code: String!): DriverAuthPayload!
+    """Verifies a WhatsApp OTP code. If the phone already has a driver record, logs them in directly (like driverLogin). Otherwise returns isNewDriver: true with a registrationToken — call completeDriverRegistration next with a name to finish."""
+    verifyDriverOtp(phone: String!, code: String!): DriverOtpVerifyResult!
+
+    """Finishes WhatsApp self-registration for a phone verified by verifyDriverOtp — creates the driver record and issues a token, same shape as driverLogin."""
+    completeDriverRegistration(registrationToken: String!, name: String!): DriverAuthPayload!
   }
 `;

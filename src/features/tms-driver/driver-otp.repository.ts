@@ -1,7 +1,9 @@
 /**
  * Driver OTP Repository
  *
- * @description Data access layer for WhatsApp OTP login codes.
+ * @description Data access layer for WhatsApp OTP login codes. Keyed by
+ * phone number (not driverId) so a number with no driver record yet can
+ * still receive and verify a code as part of self-registration.
  */
 
 import { db } from '@/db';
@@ -21,16 +23,16 @@ function generateCode(): string {
 export class DriverOtpRepositoryClass {
   constructor() {}
 
-  /** Returns the plaintext code to send via WhatsApp, or null if a code was already sent too recently (cooldown). */
-  async createOtp(driverId: string, phone: string): Promise<string | null> {
+  /** Returns the plaintext code to send via WhatsApp, or null if a code was already sent too recently (cooldown). driverId is null for phones with no driver record yet. */
+  async createOtp(phone: string, driverId: string | null): Promise<string | null> {
     const [recent] = await db
       .select()
       .from(DriverOtpCodesTable)
-      .where(and(eq(DriverOtpCodesTable.driverId, driverId), gt(DriverOtpCodesTable.createdAt, new Date(Date.now() - OTP_RESEND_COOLDOWN_MS))))
+      .where(and(eq(DriverOtpCodesTable.phone, phone), gt(DriverOtpCodesTable.createdAt, new Date(Date.now() - OTP_RESEND_COOLDOWN_MS))))
       .orderBy(desc(DriverOtpCodesTable.createdAt))
       .limit(1);
     if (recent) {
-      logger.warn(`⚠️ [DriverOtpRepository.createOtp] Cooldown active for driver ${driverId}`);
+      logger.warn(`⚠️ [DriverOtpRepository.createOtp] Cooldown active for phone ${phone}`);
       return null;
     }
 
@@ -45,14 +47,14 @@ export class DriverOtpRepositoryClass {
     return code;
   }
 
-  /** Verifies a code for the given driver. Returns true on success (and marks the code consumed); false otherwise. */
-  async verifyOtp(driverId: string, code: string): Promise<boolean> {
+  /** Verifies a code for the given phone. Returns true on success (and marks the code consumed); false otherwise. */
+  async verifyOtp(phone: string, code: string): Promise<boolean> {
     const [otp] = await db
       .select()
       .from(DriverOtpCodesTable)
       .where(
         and(
-          eq(DriverOtpCodesTable.driverId, driverId),
+          eq(DriverOtpCodesTable.phone, phone),
           isNull(DriverOtpCodesTable.consumedAt),
           gt(DriverOtpCodesTable.expiresAt, new Date())
         )

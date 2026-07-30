@@ -6,10 +6,13 @@ import { DriversTable } from "./drivers.model";
  * WhatsApp OTP login codes for tmsmobile drivers. A code is hashed (never
  * stored plaintext) and single-use — consumedAt is set once verifyDriverOtp
  * succeeds, so a stale code can't be replayed even before it expires.
+ *
+ * Keyed by phone, not driverId — driverId is null when the phone number
+ * doesn't have a driver record yet (self-registration flow).
  */
 export const DriverOtpCodesTable = MainSchema.table('driver_otp_codes', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
-  driverId: uuid('driver_id').notNull().references(() => DriversTable.id, { onDelete: 'cascade' }),
+  driverId: uuid('driver_id').references(() => DriversTable.id, { onDelete: 'cascade' }),
   phone: text('phone').notNull(),
   codeHash: text('code_hash').notNull(),
   attempts: integer('attempts').default(0).notNull(),

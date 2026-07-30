@@ -193,15 +193,10 @@ export const resolvers = {
     },
 
     sendDriverOtp: async (_: unknown, { phone }: { phone: string }) => {
+      // Works whether or not a driver record exists yet — an unrecognised phone
+      // just means this is the start of self-registration (see verifyDriverOtp).
       const driver = await driversRepository.getDriverByPhone(phone);
-      if (!driver) {
-        logger.warn('⚠️ [DriversResolvers.sendDriverOtp] No driver found for phone:', phone);
-        // Same response whether the phone is unrecognised or the send just cooled down —
-        // don't let this endpoint be used to enumerate valid driver phone numbers.
-        return false;
-      }
-
-      const code = await driverOtpRepository.createOtp(driver.id, phone);
+      const code = await driverOtpRepository.createOtp(phone, driver?.id ?? null);
       if (!code) return false;
 
       const digitsOnly = phone.replace(/\D/g, '');
@@ -210,14 +205,21 @@ export const resolvers = {
     },
 
     verifyDriverOtp: async (_: unknown, { phone, code }: { phone: string; code: string }) => {
-      const driver = await driversRepository.getDriverByPhone(phone);
-      if (!driver) {
+      const isValid = await driverOtpRepository.verifyOtp(phone, code);
+      if (!isValid) {
         throw new GraphQLError('Invalid phone or code', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
       }
 
-      const isValid = await driverOtpRepository.verifyOtp(driver.id, code);
-      if (!isValid) {
-        throw new GraphQLError('Invalid phone or code', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
+      const driver = await driversRepository.getDriverByPhone(phone);
+      if (!driver) {
+        // Phone verified, but no driver record yet — client must call
+        // completeDriverRegistration with a name to finish.
+        const registrationToken = jwtController.generateAccessToken({
+          username: phone,
+          loginType: 'DRIVER_REGISTRATION',
+          phone,
+        });
+        return { isNewDriver: true, registrationToken, accessToken: null, driver: null };
       }
 
       const accessToken = jwtController.generateAccessToken({
@@ -226,10 +228,35 @@ export const resolvers = {
         driverId: driver.id,
       });
 
-      return {
-        accessToken,
-        driver: transformDriver(driver),
-      };
+      return { isNewDriver: false, registrationToken: null, accessToken, driver: transformDriver(driver) };
+    },
+
+    completeDriverRegistration: async (_: unknown, { registrationToken, name }: { registrationToken: string; name: string }) => {
+      let payload;
+      try {
+        payload = jwtController.verifyToken(registrationToken);
+      } catch {
+        throw new GraphQLError('Registration link expired — please verify your phone again', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
+      }
+      if (payload.loginType !== 'DRIVER_REGISTRATION' || !payload.phone) {
+        throw new GraphQLError('Invalid registration token', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
+      }
+
+      const phone = payload.phone as string;
+      const existing = await driversRepository.getDriverByPhone(phone);
+      if (existing) {
+        throw new GraphQLError('This phone number is already registered', { extensions: { code: 'BAD_USER_INPUT' } });
+      }
+
+      const driver = await driversRepository.createDriver({ name, phone, status: 'ACTIVE' });
+
+      const accessToken = jwtController.generateAccessToken({
+        username: driver.email ?? driver.phone,
+        loginType: 'DRIVER',
+        driverId: driver.id,
+      });
+
+      return { accessToken, driver: transformDriver(driver) };
     },
   },
 };

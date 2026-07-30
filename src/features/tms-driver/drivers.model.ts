@@ -9,8 +9,9 @@ export const DriversTable = MainSchema.table('drivers', {
   id: uuid('id').defaultRandom().notNull().primaryKey(),
   name: text('name').notNull(),
   phone: text('phone').notNull(),
-  licenseNumber: text('license_number').notNull(),
-  licenseExpiry: text('license_expiry').notNull(),
+  // Nullable — WhatsApp self-registration only captures name+phone; an admin fills these in later.
+  licenseNumber: text('license_number'),
+  licenseExpiry: text('license_expiry'),
   status: text('status').default('ACTIVE').notNull(),
   plateNumber: text('plate_number'),
   vehicleType: text('vehicle_type'),
