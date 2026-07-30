@@ -6,7 +6,7 @@
 
 import { db } from '@/db';
 import { DriversTable, DriverType, DriverInsertType } from './drivers.model';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { logger } from '@/util/logger';
 import { DbTransaction } from '@/types/db-transaction';
 
@@ -35,6 +35,17 @@ export class DriversRepositoryClass {
 
   async getDriverByEmail(email: string): Promise<DriverType | null> {
     const [record] = await db.select().from(DriversTable).where(eq(DriversTable.email, email)).limit(1);
+    return record || null;
+  }
+
+  /** Matches on digits-only comparison so "+60 14-558 3312" and "60145583312" both resolve to the same driver. */
+  async getDriverByPhone(phone: string): Promise<DriverType | null> {
+    const digitsOnly = phone.replace(/\D/g, '');
+    const [record] = await db
+      .select()
+      .from(DriversTable)
+      .where(sql`regexp_replace(${DriversTable.phone}, '[^0-9]', '', 'g') = ${digitsOnly}`)
+      .limit(1);
     return record || null;
   }
 

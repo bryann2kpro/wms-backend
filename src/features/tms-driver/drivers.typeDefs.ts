@@ -104,5 +104,11 @@ export const typeDefs = `#graphql
 
     """Driver-app login (email + password) — issues a driver-scoped token for tmsmobile."""
     driverLogin(email: String!, password: String!): DriverAuthPayload!
+
+    """Sends a 6-digit login code to the driver's phone over WhatsApp. Returns false if a code was already sent within the last minute (cooldown) or the phone isn't recognised."""
+    sendDriverOtp(phone: String!): Boolean!
+
+    """Verifies a WhatsApp OTP code and issues a driver-scoped token for tmsmobile, same shape as driverLogin."""
+    verifyDriverOtp(phone: String!, code: String!): DriverAuthPayload!
   }
 `;

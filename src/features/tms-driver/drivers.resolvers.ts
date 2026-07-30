@@ -2,9 +2,10 @@
  * Drivers GraphQL Resolvers
  */
 
-import { driversRepository, jwtController } from '@/composition-root';
+import { driversRepository, jwtController, driverOtpRepository } from '@/composition-root';
 import { GraphQLContext, isAuthenticated } from '@/graphql/context';
 import { comparePassword, hashPassword } from '@/util/password';
+import { sendWhatsappOtp } from './whatsapp.service';
 import { prettifyError, z } from 'zod';
 import { GraphQLError } from 'graphql';
 import { logger } from '@/util/logger';
@@ -177,6 +178,46 @@ export const resolvers = {
       const isValid = await comparePassword(password, driver.passwordHash);
       if (!isValid) {
         throw new GraphQLError('Invalid email or password', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
+      }
+
+      const accessToken = jwtController.generateAccessToken({
+        username: driver.email ?? driver.phone,
+        loginType: 'DRIVER',
+        driverId: driver.id,
+      });
+
+      return {
+        accessToken,
+        driver: transformDriver(driver),
+      };
+    },
+
+    sendDriverOtp: async (_: unknown, { phone }: { phone: string }) => {
+      const driver = await driversRepository.getDriverByPhone(phone);
+      if (!driver) {
+        logger.warn('⚠️ [DriversResolvers.sendDriverOtp] No driver found for phone:', phone);
+        // Same response whether the phone is unrecognised or the send just cooled down —
+        // don't let this endpoint be used to enumerate valid driver phone numbers.
+        return false;
+      }
+
+      const code = await driverOtpRepository.createOtp(driver.id, phone);
+      if (!code) return false;
+
+      const digitsOnly = phone.replace(/\D/g, '');
+      const sent = await sendWhatsappOtp(digitsOnly, code);
+      return sent;
+    },
+
+    verifyDriverOtp: async (_: unknown, { phone, code }: { phone: string; code: string }) => {
+      const driver = await driversRepository.getDriverByPhone(phone);
+      if (!driver) {
+        throw new GraphQLError('Invalid phone or code', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
+      }
+
+      const isValid = await driverOtpRepository.verifyOtp(driver.id, code);
+      if (!isValid) {
+        throw new GraphQLError('Invalid phone or code', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
       }
 
       const accessToken = jwtController.generateAccessToken({
