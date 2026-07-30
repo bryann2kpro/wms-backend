@@ -50,6 +50,14 @@ export type UserLoader = DataLoader<string, UserType | null>;
 export interface GraphQLContext {
   /** The authenticated user, or null if not authenticated */
   user: UserType | null;
+  /**
+   * The authenticated driver's ID, set only for tmsmobile tokens (loginType: 'DRIVER').
+   * Drivers have no row in the admin `users` table, so they never populate `user` —
+   * this lets @auth-gated fields the driver app depends on (loadBatches, drivers, warehouseCoords)
+   * accept a valid driver token too, without granting any admin permission (userPermissions
+   * stays empty, so @requirePermission-gated fields remain admin-only).
+   */
+  driverId: string | null;
   /** The organization ID from JWT token (for multi-tenant data isolation) */
   organizationId: string | null;
   /** The user's roles with permissions (for authorization checks) */
@@ -123,6 +131,7 @@ export async function createContext({ req }: { req: Request }): Promise<GraphQLC
   const userLoader = createUserLoader();
   const context: GraphQLContext = {
     user: null,
+    driverId: null,
     organizationId: null,
     userPermissions: [],
     isSuperAdmin: false,
@@ -148,6 +157,18 @@ export async function createContext({ req }: { req: Request }): Promise<GraphQLC
     // Get user from token and extract organization ID
     const user = await authRepository.getUserDataByToken(token);
     if (!user) {
+      // Not an admin user — check whether it's a valid driver token instead
+      // (tmsmobile's driverLogin issues loginType: 'DRIVER' tokens, which have
+      // no row in the admin `users` table, so getUserDataByToken always misses).
+      try {
+        const jwtPayload = jwtController.verifyToken(token) as any;
+        if (jwtPayload?.loginType === 'DRIVER' && jwtPayload?.driverId) {
+          context.driverId = jwtPayload.driverId;
+          context.organizationId = jwtPayload?.organizationId ?? null;
+        }
+      } catch {
+        // Not a valid token at all — stays unauthenticated.
+      }
       return context;
     }
 
@@ -223,7 +244,7 @@ export function hasPermission(
  * @returns true if user is authenticated
  */
 export function isAuthenticated(context: GraphQLContext): boolean {
-  return context.user !== null;
+  return context.user !== null || context.driverId !== null;
 }
 
 // ============================================
