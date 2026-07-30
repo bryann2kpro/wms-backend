@@ -6,6 +6,7 @@ import { driversRepository, jwtController, driverOtpRepository } from '@/composi
 import { GraphQLContext, isAuthenticated } from '@/graphql/context';
 import { comparePassword, hashPassword } from '@/util/password';
 import { sendWhatsappOtp } from './whatsapp.service';
+import { VEHICLE_TYPE_SPECS, VEHICLE_TYPES } from './vehicle-type-specs';
 import { prettifyError, z } from 'zod';
 import { GraphQLError } from 'graphql';
 import { logger } from '@/util/logger';
@@ -84,6 +85,8 @@ export const resolvers = {
       const record = await driversRepository.getDriverById(id);
       return record ? transformDriver(record) : null;
     },
+
+    vehicleTypes: async () => VEHICLE_TYPES,
   },
 
   Mutation: {
@@ -231,7 +234,10 @@ export const resolvers = {
       return { isNewDriver: false, registrationToken: null, accessToken, driver: transformDriver(driver) };
     },
 
-    completeDriverRegistration: async (_: unknown, { registrationToken, name }: { registrationToken: string; name: string }) => {
+    completeDriverRegistration: async (
+      _: unknown,
+      { registrationToken, name, plateNumber, vehicleType }: { registrationToken: string; name: string; plateNumber: string; vehicleType: string }
+    ) => {
       let payload;
       try {
         payload = jwtController.verifyToken(registrationToken);
@@ -242,13 +248,25 @@ export const resolvers = {
         throw new GraphQLError('Invalid registration token', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
       }
 
+      const spec = VEHICLE_TYPE_SPECS[vehicleType];
+      if (!spec) {
+        throw new GraphQLError(`Unknown vehicle type "${vehicleType}"`, { extensions: { code: 'BAD_USER_INPUT' } });
+      }
+
       const phone = payload.phone as string;
       const existing = await driversRepository.getDriverByPhone(phone);
       if (existing) {
         throw new GraphQLError('This phone number is already registered', { extensions: { code: 'BAD_USER_INPUT' } });
       }
 
-      const driver = await driversRepository.createDriver({ name, phone, status: 'ACTIVE' });
+      const driver = await driversRepository.createDriver({
+        name,
+        phone,
+        status: 'ACTIVE',
+        plateNumber,
+        vehicleType,
+        ...spec,
+      });
 
       const accessToken = jwtController.generateAccessToken({
         username: driver.email ?? driver.phone,

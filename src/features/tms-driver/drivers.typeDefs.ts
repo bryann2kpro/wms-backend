@@ -96,6 +96,9 @@ export const typeDefs = `#graphql
 
     """Get a single driver by ID. Requires authentication."""
     driver(id: ID!): Driver @auth
+
+    """Known vehicle type names (e.g. "3-Ton Lorry") for the WhatsApp self-registration picker. Public — no auth required, since it's needed before a driver has a session."""
+    vehicleTypes: [String!]!
   }
 
   extend type Mutation {
@@ -123,7 +126,7 @@ export const typeDefs = `#graphql
     """Verifies a WhatsApp OTP code. If the phone already has a driver record, logs them in directly (like driverLogin). Otherwise returns isNewDriver: true with a registrationToken — call completeDriverRegistration next with a name to finish."""
     verifyDriverOtp(phone: String!, code: String!): DriverOtpVerifyResult!
 
-    """Finishes WhatsApp self-registration for a phone verified by verifyDriverOtp — creates the driver record and issues a token, same shape as driverLogin."""
-    completeDriverRegistration(registrationToken: String!, name: String!): DriverAuthPayload!
+    """Finishes WhatsApp self-registration for a phone verified by verifyDriverOtp — creates the driver record (auto-filling BTM/BDM/payload/dimensions/pallet4x3 from vehicleType) and issues a token, same shape as driverLogin."""
+    completeDriverRegistration(registrationToken: String!, name: String!, plateNumber: String!, vehicleType: String!): DriverAuthPayload!
   }
 `;
