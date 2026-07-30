@@ -7,6 +7,7 @@ import { GraphQLContext, isAuthenticated } from '@/graphql/context';
 import { comparePassword, hashPassword } from '@/util/password';
 import { sendWhatsappOtp } from './whatsapp.service';
 import { VEHICLE_TYPE_SPECS, VEHICLE_TYPES } from './vehicle-type-specs';
+import { autoAssignPendingBatchToDriver } from '@/features/tms-loading/driver-assignment.service';
 import { prettifyError, z } from 'zod';
 import { GraphQLError } from 'graphql';
 import { logger } from '@/util/logger';
@@ -144,6 +145,17 @@ export const resolvers = {
       if (!record) {
         throw new GraphQLError('Driver not found', { extensions: { code: 'NOT_FOUND' } });
       }
+
+      if (normalizedAction === 'IN') {
+        // Best-effort — a clocked-in driver should never fail to clock in just because
+        // there's a routing/geocoding hiccup on whichever batch they'd get auto-assigned to.
+        try {
+          await autoAssignPendingBatchToDriver(driverId);
+        } catch (err) {
+          logger.error('❌ [DriversResolvers.setDriverClock] Auto-assign on clock-in failed:', err);
+        }
+      }
+
       return transformDriver(record);
     },
 

@@ -2,20 +2,12 @@
  * Load Batches GraphQL Resolvers
  */
 
-import { loadBatchesRepository, driversRepository } from "@/composition-root";
+import { loadBatchesRepository } from "@/composition-root";
 import { getWarehouseCoords } from "./geocode.service";
-import { computeRouteForBatch } from "./route-compute.service";
+import { assignDriverWithCapacitySplit } from "./driver-assignment.service";
 import { GraphQLError } from "graphql";
-import { logger } from "@/util/logger";
 import type { DriverType } from "@/features/tms-driver/drivers.model";
 import type { LoadBatchWithDetails, LoadBatchStop } from "./load-batches.repository";
-
-/** Falls back to 10 pallets when a driver has no configured capacity, matching TMS's default-vehicle behaviour. */
-const DEFAULT_CAPACITY = 10;
-function getDriverCapacity(d: DriverType): number {
-  const parsed = d.pallet4x3 != null ? Number(d.pallet4x3) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CAPACITY;
-}
 
 function transformDriver(d: DriverType) {
   return {
@@ -78,39 +70,6 @@ function transformBatch(b: LoadBatchWithDetails) {
     driver: b.driver ? transformDriver(b.driver) : null,
     stops: b.stops.map(transformStop),
   };
-}
-
-/**
- * Assigns a driver to a batch, splitting off overflow stops into a new
- * PENDING_DRIVER batch (same region/date) when the stop count exceeds the
- * driver's pallet capacity — matching TMS's autoAssignDriverForBatch.
- * Route order is computed first so the split keeps the nearest [capacity]
- * stops with the driver and pushes the tail of the route to the overflow batch.
- */
-async function assignDriverWithCapacitySplit(batchId: string, driverId: string): Promise<void> {
-  const driver = await driversRepository.getDriverById(driverId);
-  if (!driver) throw new GraphQLError("Driver not found", { extensions: { code: "NOT_FOUND" } });
-
-  await computeRouteForBatch(batchId);
-  const batches = await loadBatchesRepository.getLoadBatches();
-  const batch = batches.find((b) => b.id === batchId);
-  if (!batch) throw new GraphQLError("Load batch not found", { extensions: { code: "NOT_FOUND" } });
-
-  const capacity = getDriverCapacity(driver);
-  if (batch.stops.length > capacity) {
-    const sorted = [...batch.stops].sort((a, c) => (a.loadOrder ?? 9999) - (c.loadOrder ?? 9999));
-    const overflowDoIds = sorted.slice(capacity).map((s) => s.doId);
-
-    const overflowBatch = await loadBatchesRepository.createBatchForRegion(batch.regionId, batch.date);
-    await loadBatchesRepository.moveDosToBatch(overflowDoIds, overflowBatch.id);
-    await computeRouteForBatch(overflowBatch.id);
-    logger.info(
-      `ℹ️ [load-batches] Split batch ${batchId}: ${overflowDoIds.length} overflow stop(s) moved to new batch ${overflowBatch.id}`
-    );
-  }
-
-  await loadBatchesRepository.assignDriver(batchId, driverId);
-  await computeRouteForBatch(batchId);
 }
 
 export const resolvers = {
