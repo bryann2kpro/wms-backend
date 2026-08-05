@@ -2,7 +2,7 @@
  * Drivers GraphQL Resolvers
  */
 
-import { driversRepository, jwtController, driverOtpRepository } from '@/composition-root';
+import { driversRepository, jwtController, driverOtpRepository, driverLocationRepository } from '@/composition-root';
 import { GraphQLContext, isAuthenticated } from '@/graphql/context';
 import { comparePassword, hashPassword } from '@/util/password';
 import { sendWhatsappOtp } from './whatsapp.service';
@@ -63,6 +63,15 @@ function transformDriver(record: DriverType) {
   };
 }
 
+function transformLocation(record: { driverId: string; lat: string; lng: string; capturedAt: Date }) {
+  return {
+    driverId: record.driverId,
+    lat: Number(record.lat),
+    lng: Number(record.lng),
+    capturedAt: record.capturedAt.toISOString(),
+  };
+}
+
 /**
  * setDriverClock is callable by an admin (normal @auth session) OR by the
  * driver themselves via a DRIVER-scoped token from tmsmobile — the standard
@@ -88,6 +97,22 @@ export const resolvers = {
     },
 
     vehicleTypes: async () => VEHICLE_TYPES,
+
+    driverLatestLocation: async (_: unknown, { driverId }: { driverId: string }) => {
+      const record = await driverLocationRepository.getLatestLocation(driverId);
+      return record ? transformLocation(record) : null;
+    },
+
+    driverLocationHistory: async (_: unknown, { driverId, date }: { driverId: string; date?: string }) => {
+      let from: Date | undefined;
+      let to: Date | undefined;
+      if (date) {
+        from = new Date(`${date}T00:00:00.000Z`);
+        to = new Date(`${date}T23:59:59.999Z`);
+      }
+      const records = await driverLocationRepository.getLocationHistory(driverId, from, to);
+      return records.map(transformLocation);
+    },
   },
 
   Mutation: {
@@ -287,6 +312,14 @@ export const resolvers = {
       });
 
       return { accessToken, driver: transformDriver(driver) };
+    },
+
+    recordDriverLocation: async (_: unknown, { lat, lng }: { lat: number; lng: number }, context: GraphQLContext) => {
+      if (!context.driverId) {
+        throw new GraphQLError('This action requires a driver-scoped token', { extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } } });
+      }
+      await driverLocationRepository.recordLocation(context.driverId, lat, lng);
+      return true;
     },
   },
 };

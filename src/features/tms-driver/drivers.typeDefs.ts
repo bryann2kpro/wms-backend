@@ -40,6 +40,13 @@ export const typeDefs = `#graphql
     driver: Driver!
   }
 
+  type DriverLocation {
+    driverId: ID!
+    lat: Float!
+    lng: Float!
+    capturedAt: String!
+  }
+
   type DriverOtpVerifyResult {
     """True when this phone number has no driver record yet — client should prompt for a name and call completeDriverRegistration."""
     isNewDriver: Boolean!
@@ -99,6 +106,12 @@ export const typeDefs = `#graphql
 
     """Known vehicle type names (e.g. "3-Ton Lorry") for the WhatsApp self-registration picker. Public — no auth required, since it's needed before a driver has a session."""
     vehicleTypes: [String!]!
+
+    """A driver's most recent GPS ping, or null if none recorded yet (e.g. not clocked in today). Requires authentication."""
+    driverLatestLocation(driverId: ID!): DriverLocation @auth
+
+    """Full GPS ping history for a driver, oldest first, optionally bounded to one day (YYYY-MM-DD). Requires authentication."""
+    driverLocationHistory(driverId: ID!, date: String): [DriverLocation!]! @auth
   }
 
   extend type Mutation {
@@ -128,5 +141,8 @@ export const typeDefs = `#graphql
 
     """Finishes WhatsApp self-registration for a phone verified by verifyDriverOtp — creates the driver record (auto-filling BTM/BDM/payload/dimensions/pallet4x3 from vehicleType) and issues a token, same shape as driverLogin."""
     completeDriverRegistration(registrationToken: String!, name: String!, plateNumber: String!, vehicleType: String!): DriverAuthPayload!
+
+    """Records one raw GPS ping for the calling driver (device-native coordinates — no Google Geocoding/Directions API involved). Callable only with a driver-scoped token; records against that token's own driverId."""
+    recordDriverLocation(lat: Float!, lng: Float!): Boolean! @auth
   }
 `;
