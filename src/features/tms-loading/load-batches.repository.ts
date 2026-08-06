@@ -16,7 +16,8 @@ import { OutletsTable } from "@/features/master-data/outlets.model";
 import { RegionTable, RegionType } from "@/features/master-data/region.model";
 import { DriversTable, DriverType } from "@/features/tms-driver/drivers.model";
 import { GeocodeTable } from "./geocode.model";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { PodRecordsTable } from "@/features/tms-driver/pod.model";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "@/util/logger";
 import { DbTransaction } from "@/types/db-transaction";
 
@@ -32,6 +33,7 @@ export type LoadBatchStop = {
   loadedAt: Date | null;
   lat: number | null;
   lng: number | null;
+  podUrl: string | null;
 };
 
 export type LoadBatchWithDetails = LoadBatchType & {
@@ -167,6 +169,20 @@ export class LoadBatchesRepositoryClass {
         }
       }
 
+      const doIds = stopRows.map((r) => r.doId);
+      const podUrlMap = new Map<string, string>();
+      if (doIds.length > 0) {
+        const podRows = await db
+          .select({ doId: PodRecordsTable.doId, photoUrl: PodRecordsTable.photoUrl })
+          .from(PodRecordsTable)
+          .where(inArray(PodRecordsTable.doId, doIds))
+          .orderBy(desc(PodRecordsTable.capturedAt));
+        // First row per doId wins — rows arrive newest-first, so this keeps the latest POD.
+        for (const p of podRows) {
+          if (!podUrlMap.has(p.doId)) podUrlMap.set(p.doId, p.photoUrl);
+        }
+      }
+
       const stopsByBatch = new Map<string, LoadBatchStop[]>();
       for (const row of stopRows) {
         if (!row.loadBatchId) continue;
@@ -184,6 +200,7 @@ export class LoadBatchesRepositoryClass {
           loadedAt: row.loadedAt,
           lat: coords?.lat ?? null,
           lng: coords?.lng ?? null,
+          podUrl: podUrlMap.get(row.doId) ?? null,
         });
         stopsByBatch.set(row.loadBatchId, list);
       }

@@ -51,7 +51,7 @@ function transformStop(s: LoadBatchStop) {
     lng: s.lng,
     priority: null,
     zone: s.stagingBin,
-    podUrl: null,
+    podUrl: s.podUrl,
   };
 }
 
