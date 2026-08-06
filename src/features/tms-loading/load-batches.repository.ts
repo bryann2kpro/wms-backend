@@ -251,6 +251,14 @@ export class LoadBatchesRepositoryClass {
     return created;
   }
 
+  async getBatchIdForDo(doId: string): Promise<string | null> {
+    const [row] = await db
+      .select({ loadBatchId: DeliveryOrdersTable.loadBatchId })
+      .from(DeliveryOrdersTable)
+      .where(eq(DeliveryOrdersTable.id, doId));
+    return row?.loadBatchId ?? null;
+  }
+
   /** Moves DOs to a different batch, resetting their load order so it can be recomputed there. */
   async moveDosToBatch(doIds: string[], batchId: string): Promise<void> {
     if (doIds.length === 0) return;

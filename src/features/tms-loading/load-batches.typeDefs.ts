@@ -69,6 +69,9 @@ export const typeDefs = `#graphql
     """Remove the driver from a batch, reverting it to PENDING_DRIVER."""
     unassignBatchDriver(batchId: ID!): LoadBatch! @auth
 
+    """Manually move a single DO into a different batch (e.g. admin editing a driver's loadlist) — bypasses capacity-split, recomputes route order for both batches affected."""
+    moveDoToBatch(doId: ID!, targetBatchId: ID!): LoadBatch! @auth
+
     """Mark a single DO as physically loaded (or not) onto the vehicle."""
     markBatchItemLoaded(doId: ID!, loaded: Boolean!): Boolean! @auth
 

@@ -5,6 +5,7 @@
 import { loadBatchesRepository } from "@/composition-root";
 import { getWarehouseCoords } from "./geocode.service";
 import { assignDriverWithCapacitySplit } from "./driver-assignment.service";
+import { computeRouteForBatch } from "./route-compute.service";
 import { GraphQLError } from "graphql";
 import type { DriverType } from "@/features/tms-driver/drivers.model";
 import type { LoadBatchWithDetails, LoadBatchStop } from "./load-batches.repository";
@@ -108,6 +109,19 @@ export const resolvers = {
       await loadBatchesRepository.unassignDriver(batchId);
       const batches = await loadBatchesRepository.getLoadBatches();
       const batch = batches.find((b) => b.id === batchId);
+      if (!batch) throw new GraphQLError("Load batch not found", { extensions: { code: "NOT_FOUND" } });
+      return transformBatch(batch);
+    },
+
+    moveDoToBatch: async (_: unknown, { doId, targetBatchId }: { doId: string; targetBatchId: string }) => {
+      const previousBatchId = await loadBatchesRepository.getBatchIdForDo(doId);
+      await loadBatchesRepository.moveDosToBatch([doId], targetBatchId);
+      await computeRouteForBatch(targetBatchId).catch(() => {});
+      if (previousBatchId && previousBatchId !== targetBatchId) {
+        await computeRouteForBatch(previousBatchId).catch(() => {});
+      }
+      const batches = await loadBatchesRepository.getLoadBatches();
+      const batch = batches.find((b) => b.id === targetBatchId);
       if (!batch) throw new GraphQLError("Load batch not found", { extensions: { code: "NOT_FOUND" } });
       return transformBatch(batch);
     },
